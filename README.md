@@ -15,6 +15,13 @@ What's included
 - requirements.txt — Python dependencies.
 - .gitignore
 
+Setup
+1. Create and activate a Python virtual environment.
+2. Install the dependencies:
+   `python -m pip install -r requirements.txt`
+3. Run the tests:
+   `python -m pytest`
+
 Key entities
 - students: individual student IDs. Classes list which students attend.
 - teacher: main teacher for a class. Must be available and can't teach two classes at once.
@@ -26,6 +33,10 @@ How your mom can use this (non-technical steps)
 2. Run the scheduler from a terminal:
    python -m src.run_scheduler examples/sample_input.yaml output_schedule.xlsx
 3. Open the produced output_schedule.xlsx in Excel.
+
+Invalid input (such as duplicate IDs or references to missing people) produces a
+clear error. The scheduler only writes an output when every class can be placed;
+it never silently returns a partial schedule.
 
 Tips for using with AI assistants
 - If your mom uses ChatGPT or similar, she can paste the sample_input.yaml and ask the assistant how to modify it (e.g., add a teacher, change availability) or ask for help interpreting errors when running the script.

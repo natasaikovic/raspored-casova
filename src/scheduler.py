@@ -1,135 +1,154 @@
-"""
-Simple CP-SAT-based scheduler.
-Input dict structure (see examples/sample_input.yaml):
-- timeslots: ["Mon-09", "Mon-10", ...]
-- rooms: [{id: "R1", capacity: 20}, ...]
-- teachers: [{id: "T1", name: "Ana", available: ["Mon-09", ...]}, ...]
-- accompanists: [{id: "A1", name: "Maja", available: [...]}, ...]  # optional
-- students: [{id: "S1", name: "Ivana"}, ...]
-- classes: [{id: "C1", name: "Ballet Beginners", teacher: "T1", students: ["S1","S2"], size: 12, accompanist: "A1"}, ...]
+"""Build a conflict-free schedule from validated input data."""
 
-Output: list of assignments: [{class_id, class_name, teacher, accompanist, room, timeslot, students}]
-"""
+from collections import defaultdict
+from typing import Any
+
 from ortools.sat.python import cp_model
 
 
-def schedule_from_data(data, time_limit_seconds=10):
-    timeslots = data.get('timeslots', [])
-    rooms = data.get('rooms', [])
-    teachers = {t['id']: t for t in data.get('teachers', [])}
-    accompanists = {a['id']: a for a in data.get('accompanists', [])}
-    students = {s['id']: s for s in data.get('students', [])}
-    classes = data.get('classes', [])
+class SchedulingError(RuntimeError):
+    """Raised when valid input has no complete schedule."""
 
-    # Build quick lookup
-    room_by_id = {r['id']: r for r in rooms}
-    class_by_id = {c['id']: c for c in classes}
-    room_ids = list(room_by_id.keys())
 
+def _index(items: list[dict[str, Any]], kind: str) -> dict[str, dict[str, Any]]:
+    """Index entities by ID while checking the common input rules."""
+    indexed: dict[str, dict[str, Any]] = {}
+    for item in items:
+        item_id = item.get("id")
+        if not item_id:
+            raise ValueError(f"Every {kind} must have an id")
+        if item_id in indexed:
+            raise ValueError(f"Duplicate {kind} id: {item_id}")
+        indexed[item_id] = item
+    return indexed
+
+
+def _validate(data: dict[str, Any]) -> tuple[
+    list[str],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+]:
+    timeslots = data.get("timeslots", [])
+    if not timeslots:
+        raise ValueError("At least one timeslot is required")
+    if len(timeslots) != len(set(timeslots)):
+        raise ValueError("Timeslot names must be unique")
+
+    rooms = _index(data.get("rooms", []), "room")
+    teachers = _index(data.get("teachers", []), "teacher")
+    accompanists = _index(data.get("accompanists", []), "accompanist")
+    students = _index(data.get("students", []), "student")
+    classes = _index(data.get("classes", []), "class")
+    if not rooms:
+        raise ValueError("At least one room is required")
+
+    for room_id, room in rooms.items():
+        if not isinstance(room.get("capacity"), int) or room["capacity"] < 0:
+            raise ValueError(f"Room {room_id} must have a non-negative integer capacity")
+
+    for class_id, lesson in classes.items():
+        teacher_id = lesson.get("teacher")
+        if teacher_id not in teachers:
+            raise ValueError(f"Class {class_id} references unknown teacher: {teacher_id}")
+        accompanist_id = lesson.get("accompanist")
+        if accompanist_id is not None and accompanist_id not in accompanists:
+            raise ValueError(
+                f"Class {class_id} references unknown accompanist: {accompanist_id}"
+            )
+        unknown_students = set(lesson.get("students", [])) - students.keys()
+        if unknown_students:
+            names = ", ".join(sorted(unknown_students))
+            raise ValueError(f"Class {class_id} references unknown students: {names}")
+        size = lesson.get("size", len(lesson.get("students", [])))
+        if not isinstance(size, int) or size < 0:
+            raise ValueError(f"Class {class_id} must have a non-negative integer size")
+
+    return timeslots, rooms, teachers, accompanists, students, classes
+
+
+def schedule_from_data(
+    data: dict[str, Any], time_limit_seconds: float = 10
+) -> list[dict[str, Any]]:
+    """Return a complete schedule or raise when the input cannot be scheduled."""
+    timeslots, rooms, teachers, accompanists, students, classes = _validate(data)
     model = cp_model.CpModel()
+    assignments: dict[tuple[str, str, str], Any] = {}
+    by_class: dict[str, list[Any]] = defaultdict(list)
+    by_teacher_time: dict[tuple[str, str], list[Any]] = defaultdict(list)
+    by_accompanist_time: dict[tuple[str, str], list[Any]] = defaultdict(list)
+    by_student_time: dict[tuple[str, str], list[Any]] = defaultdict(list)
+    by_room_time: dict[tuple[str, str], list[Any]] = defaultdict(list)
 
-    # Variables: assign[(c_id, t, r)] = 0/1
-    assign = {}
-    for c in classes:
-        c_id = c['id']
-        class_size = c.get('size', len(c.get('students', [])))
-        for t in timeslots:
-            for r in room_ids:
-                # disallow room if capacity < class size
-                room = room_by_id[r]
-                if room.get('capacity', 0) < class_size:
+    for class_id, lesson in classes.items():
+        size = lesson.get("size", len(lesson.get("students", [])))
+        teacher_id = lesson["teacher"]
+        accompanist_id = lesson.get("accompanist")
+        teacher_availability = teachers[teacher_id].get("available")
+        accompanist_availability = (
+            accompanists[accompanist_id].get("available") if accompanist_id else None
+        )
+
+        for timeslot in timeslots:
+            if teacher_availability is not None and timeslot not in teacher_availability:
+                continue
+            if (
+                accompanist_availability is not None
+                and timeslot not in accompanist_availability
+            ):
+                continue
+            for room_id, room in rooms.items():
+                if room["capacity"] < size:
                     continue
-                # disallow if teacher unavailable for timeslot
-                teacher = teachers.get(c['teacher'])
-                if teacher:
-                    avail = teacher.get('available')
-                    if avail is not None and t not in avail:
-                        continue
-                # disallow if accompanist specified but unavailable
-                accomp_id = c.get('accompanist')
-                if accomp_id:
-                    accomp = accompanists.get(accomp_id)
-                    if accomp:
-                        avail = accomp.get('available')
-                        if avail is not None and t not in avail:
-                            continue
-                assign[(c_id, t, r)] = model.NewBoolVar(f"assign_{c_id}_{t}_{r}")
+                variable = model.NewBoolVar(f"assign_{class_id}_{timeslot}_{room_id}")
+                assignments[class_id, timeslot, room_id] = variable
+                by_class[class_id].append(variable)
+                by_teacher_time[teacher_id, timeslot].append(variable)
+                by_room_time[room_id, timeslot].append(variable)
+                if accompanist_id:
+                    by_accompanist_time[accompanist_id, timeslot].append(variable)
+                for student_id in lesson.get("students", []):
+                    by_student_time[student_id, timeslot].append(variable)
 
-    # Each class assigned exactly once
-    for c in classes:
-        c_id = c['id']
-        vars_for_class = [v for (cid, tt, rr), v in assign.items() if cid == c_id]
-        if not vars_for_class:
-            # no feasible assignment (e.g., no room with capacity or no availability). Skip constraint to keep model consistent.
-            continue
-        model.Add(sum(vars_for_class) == 1)
+    for class_id in classes:
+        if not by_class[class_id]:
+            raise SchedulingError(f"Class {class_id} has no feasible room and timeslot")
+        model.AddExactlyOne(by_class[class_id])
+    for grouped_variables in (
+        by_teacher_time,
+        by_accompanist_time,
+        by_student_time,
+        by_room_time,
+    ):
+        for variables in grouped_variables.values():
+            model.AddAtMostOne(variables)
 
-    # No teacher overlap: for each teacher and timeslot sum <= 1
-    for teacher_id in teachers.keys():
-        for t in timeslots:
-            vars_for_teacher_time = [v for (c_id, tt, r), v in assign.items()
-                                     if tt == t and class_by_id.get(c_id, {}).get('teacher') == teacher_id]
-            if vars_for_teacher_time:
-                model.Add(sum(vars_for_teacher_time) <= 1)
-
-    # No accompanist overlap: for each accompanist and timeslot sum <= 1
-    for accomp_id in accompanists.keys():
-        for t in timeslots:
-            vars_for_accomp_time = [v for (c_id, tt, r), v in assign.items()
-                                     if tt == t and class_by_id.get(c_id, {}).get('accompanist') == accomp_id]
-            if vars_for_accomp_time:
-                model.Add(sum(vars_for_accomp_time) <= 1)
-
-    # No student double-booking: for each student and timeslot sum <= 1
-    for student_id in students.keys():
-        for t in timeslots:
-            vars_for_student_time = [v for (c_id, tt, r), v in assign.items()
-                                     if tt == t and student_id in class_by_id.get(c_id, {}).get('students', [])]
-            if vars_for_student_time:
-                model.Add(sum(vars_for_student_time) <= 1)
-
-    # No room overlap: for each room and timeslot sum <= 1
-    for r in room_ids:
-        for t in timeslots:
-            vars_for_room_time = [v for (c_id, tt, rr), v in assign.items() if tt == t and rr == r]
-            if vars_for_room_time:
-                model.Add(sum(vars_for_room_time) <= 1)
-
-    # Optional objective: try to satisfy preferred_times if provided (soft)
-    pref_literals = []
-    for c in classes:
-        prefs = c.get('preferred_times')
-        if not prefs:
-            continue
-        c_id = c['id']
-        for t in prefs:
-            for r in room_ids:
-                lit = assign.get((c_id, t, r))
-                if lit is not None:
-                    pref_literals.append(lit)
+    preferred = [
+        variable
+        for (class_id, timeslot, _), variable in assignments.items()
+        if timeslot in classes[class_id].get("preferred_times", [])
+    ]
+    if preferred:
+        model.Maximize(sum(preferred))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_seconds
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        raise SchedulingError("No complete schedule satisfies all constraints")
 
-    if pref_literals:
-        # maximize number of preferred assignments
-        model.Maximize(sum(pref_literals))
-
-    result = solver.Solve(model)
-    if result not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return []
-
-    assignments = []
-    for (c_id, t, r), var in assign.items():
-        if solver.Value(var) == 1:
-            c = class_by_id.get(c_id, {})
-            assignments.append({
-                'class_id': c_id,
-                'class_name': c.get('name'),
-                'teacher': c.get('teacher'),
-                'accompanist': c.get('accompanist'),
-                'room': r,
-                'timeslot': t,
-                'students': c.get('students', []),
-            })
-    return assignments
+    return [
+        {
+            "class_id": class_id,
+            "class_name": classes[class_id].get("name"),
+            "teacher": classes[class_id]["teacher"],
+            "accompanist": classes[class_id].get("accompanist"),
+            "room": room_id,
+            "timeslot": timeslot,
+            "students": classes[class_id].get("students", []),
+        }
+        for (class_id, timeslot, room_id), variable in assignments.items()
+        if solver.Value(variable)
+    ]

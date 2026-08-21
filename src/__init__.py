@@ -1,0 +1,1 @@
+"""Ballet school scheduling package."""
