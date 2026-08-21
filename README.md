@@ -10,6 +10,12 @@ Ulaz su CSV fajlovi u direktorijumu `ulazi/`, sa ćiriličnim zaglavljima. Za sa
 
 Modul `src/loader.py` učitava CSV ulaz i proverava njegovu ispravnost, dok `src/model.py` sadrži domenski model rasporeda.
 
+## Referentni raspored
+
+Direktorijum `referenca/` sadrži prošlogodišnji raspored (2025/26), izvučen iz ručno vođene Excel tabele koja se ne nalazi u repozitorijumu. To **nije ulaz** — ulazni podaci nalaze se isključivo u direktorijumu `ulazi/`.
+
+Referentni raspored služi za proveru modela ograničenja, topli start solvera (`AddHint()`) i kao predlog oblika izlaza. Detalji su u dokumentu [referenca/README.md](referenca/README.md).
+
 ## Pravila rasporeda
 
 Pravila i domenske odluke opisani su u dokumentu [docs/pravila-rasporeda.md](docs/pravila-rasporeda.md).
