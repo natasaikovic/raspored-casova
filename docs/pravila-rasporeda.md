@@ -49,10 +49,12 @@ Osnovna škola radi u dve smene:
 - prva smena: 08:00–11:20;
 - druga smena: 15:15–20:00.
 
-Postoji:
+Organizacija smena po razredima:
 
-- paran broj odeljenja koja naizmenično menjaju smene;
-- jedno odeljenje koje je uvek u popodnevnoj smeni.
+- u prvom razredu odeljenje 13 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
+- u drugom razredu odeljenje 23 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
+- u trećem razredu odeljenje 33 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
+- četvrti razred nema odeljenje koje je uvek u popodnevnoj smeni.
 
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
