@@ -128,8 +128,4 @@ Potrebno je naknadno precizirati:
 - dostupnost svakog nastavnika i korepetitora po danima i vremenskim blokovima;
 - koji predmeti su dvočasi, a koji se održavaju kao pojedinačni časovi.
 
-## Objavljivanje rasporeda
-
-- Konačni raspored mora biti javno dostupan.
-- Format i mesto objavljivanja biće određeni tokom razvoja izlaznog dela sistema.
 
