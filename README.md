@@ -2,6 +2,9 @@
 
 Minimal starter project to build a constraint-based scheduler that outputs an Excel file.
 
+Project documentation
+- [Pravila za izradu rasporeda](docs/pravila-rasporeda.md)
+
 Purpose
 - Provide a small, maintainable codebase for two roles:
   - Developer: edits/extends Python code (solver, constraints, exports).
