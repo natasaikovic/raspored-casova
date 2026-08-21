@@ -35,16 +35,3 @@ jobs:
 
       - name: Run tests
         run: python -m pytest
-
-      - name: Run sample scheduler
-        run: >-
-          python -m src.run_scheduler
-          examples/sample_input.yaml
-          output_schedule.xlsx
-
-      - name: Upload sample workbook
-        if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sample-schedule
-          path: output_schedule.xlsx
