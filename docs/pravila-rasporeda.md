@@ -127,6 +127,7 @@ Potrebno je naknadno precizirati:
 - tačnu specijalnu učionicu za Informatiku;
 - dostupnost svakog nastavnika i korepetitora po danima i vremenskim blokovima;
 - koji predmeti su dvočasi, a koji se održavaju kao pojedinačni časovi.
+
 ## Objavljivanje rasporeda
 
 - Konačni raspored mora biti javno dostupan.
