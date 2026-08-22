@@ -1,5 +1,3 @@
-openpyxl
-ortools
-pandas
-PyYAML
+# Za sada je dovoljan samo pytest — loader i model koriste isključivo
+# standardnu biblioteku. `ortools` se dodaje kada bude napisan solver.
 pytest
