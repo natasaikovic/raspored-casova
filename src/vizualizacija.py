@@ -75,7 +75,7 @@ main { padding: 20px 24px 40px; overflow-x: auto; }
 .meta { margin: 0 0 12px; color: #526079; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1000px; background: white; box-shadow: 0 2px 12px #0001; }
 th, td { border-right: 1px solid #dfe4ed; border-bottom: 1px solid #dfe4ed; padding: 7px; vertical-align: top; }
-th { background: #e8edf7; text-align: left; position: sticky; top: 73px; z-index: 1; }
+th { background: #e8edf7; text-align: left; }
 th:first-child, td:first-child { width: 62px; text-align: center; font-weight: 700; background: #f1f4f9; }
 .lesson { padding: 7px; margin: 0 0 5px; border-left: 4px solid #5377b8; border-radius: 4px; background: #eef3fc; font-size: 12px; line-height: 1.35; }
 .lesson:last-child { margin-bottom: 0; }
