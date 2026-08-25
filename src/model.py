@@ -25,6 +25,7 @@ class Smena(Enum):
 
     ``CRVENA`` and ``PLAVA`` swap every week: one is in the morning window while
     the other is in the afternoon window. ``STALNO_POPODNE`` never swaps.
+    ``CEO_DAN`` is the srednja škola, which has no shifts and may use any block.
     ``POSEBNA`` marks a group whose availability is written as free text in the
     input and needs a hand-written rule (currently only П1).
     """
@@ -32,6 +33,7 @@ class Smena(Enum):
     CRVENA = "црвена смена"
     PLAVA = "плава смена"
     STALNO_POPODNE = "стално послеподне"
+    CEO_DAN = "цео дан"
     POSEBNA = "посебна"
 
     @property
@@ -87,31 +89,60 @@ DRUGA_SMENA: tuple[int, ...] = (9, 10, 11, 12, 13, 14)
 
 @dataclass(frozen=True)
 class Odeljenje:
-    """A class group; the unit that attends lessons together."""
+    """A class group; the unit that attends lessons together.
+
+    ``roditelj`` links a half-group (``I5А``/``I5Б``) to its full group
+    (``I5``): the same children, so the halves must never overlap in time with
+    the full group's lessons.
+    """
 
     oznaka: str
     razred: str
     smena: Smena
     skola: Skola
+    roditelj: str | None = None
 
 
 @dataclass(frozen=True)
 class Predmet:
-    """A subject, classified by whether it needs an accompanist.
+    """A subject, classified by accompanist and by the room it needs.
 
-    ``docs/pravila-rasporeda.md`` splits subjects into igrački (one group, one
-    teacher, one korepetitor, one sala) and opšti (one or more groups, one
-    teacher, no korepetitor, one učionica). Needing a korepetitor is what
-    separates them, so it is derived rather than configured.
+    In osnovna the two coincide: igrački predmeti have a korepetitor and need a
+    sala. Srednja breaks the shortcut — Репертоар савремене игре and Игре XX
+    века need a sala but have no korepetitor — so ``trazi_salu`` is stored
+    separately instead of derived.
     """
 
     naziv: str
     igracki: bool
+    trazi_salu: bool
 
-    @property
-    def trazi_salu(self) -> bool:
-        """Dance subjects need a sala; everything else takes a učionica."""
-        return self.igracki
+
+class TipProstorije(Enum):
+    SALA = "сала"
+    UCIONICA = "учионица"
+
+
+@dataclass(frozen=True)
+class Prostorija:
+    """A room: sala for dance subjects, učionica for everything else."""
+
+    oznaka: str
+    lokacija: str
+    tip: TipProstorije
+    prioritet: int | None
+    napomena: str
+
+
+@dataclass(frozen=True)
+class Nedostupnost:
+    """A block range in a day when a teacher cannot be scheduled."""
+
+    nastavnik: str
+    dan: str
+    od_bloka: int
+    do_bloka: int
+    napomena: str
 
 
 @dataclass(frozen=True)
@@ -128,6 +159,14 @@ class Zahtev:
     smena: Smena
     smena_opis: str
     red: int
+    datoteka: str = ""
+
+    @property
+    def gde(self) -> str:
+        """Where this row lives, for error messages spanning several files."""
+        if self.datoteka:
+            return f"{self.datoteka}, ред {self.red}"
+        return f"ред {self.red}"
 
     @property
     def zajednicki(self) -> bool:
@@ -142,7 +181,8 @@ class Ulaz:
     zahtevi: tuple[Zahtev, ...]
     odeljenja: dict[str, Odeljenje]
     predmeti: dict[str, Predmet]
-    skola: Skola
+    #: None when the input mixes both schools (the usual, whole-institution case).
+    skola: Skola | None
 
     @property
     def ukupno_casova(self) -> int:
@@ -214,4 +254,6 @@ def kapacitet_smene(smena: Smena, broj_dana: int = len(DANI)) -> int | None:
         return len(PRVA_SMENA) * broj_dana
     if smena is Smena.STALNO_POPODNE:
         return len(DRUGA_SMENA) * broj_dana
+    if smena is Smena.CEO_DAN:
+        return len(BLOKOVI) * broj_dana
     return None
