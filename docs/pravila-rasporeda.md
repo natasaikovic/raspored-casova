@@ -110,8 +110,9 @@ popunjena.
 
 ### Knez Miletina
 
-- šest sala koje se koriste;
-- jedna dodatna sala koju ne treba koristiti;
+- šest redovnih sala;
+- sala br. 8, koja se obavezno koristi za **Primenjenu gimnastiku**, a za
+  druge predmete samo u nuždi;
 - četiri učionice;
 - jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
   samo u nuždi;
@@ -132,6 +133,8 @@ popunjena.
 
 - Informatika se održava u specijalnoj učionici.
 - Gluma se održava isključivo u videoteci.
+- Primenjena gimnastika se održava u sali br. 8; sala br. 8 za ostale
+  predmete ima najniži prioritet.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.

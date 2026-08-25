@@ -30,12 +30,6 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
-- **„Dodatna sala koju ne treba koristiti“.** Koja je to sala u Knez
-  Miletinoj? Potvrđeno je da sala `KM-7` ne postoji; broj 7 nosi učionica
-  `KM-uč7`. Da li se ranija napomena odnosi na salu `KM-8`?
-
-  Odgovor upisati u: `ulazi/prostorije.csv`.
-
 - **Fond odeljenja П1.** Potvrđeno je da se nastava održava tačno
   ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15). U ulazu je, međutim,
   nedeljni fond 6 časova, a tri potvrđena termina daju samo 3 časa. Da li fond
