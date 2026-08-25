@@ -99,6 +99,8 @@ sredom i petkom u bloku 13 (18:30–19:15). Nedeljni fond od 6 časova još treb
 uskladiti sa ova tri potvrđena termina.
 
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
+Odeljenje 14 nema parnjaka u suprotnoj smeni, ali i dalje redovno menja smene
+iz nedelje u nedelju; zahtev za simetriju na njega se ne primenjuje.
 
 ## Učionice, sale i lokacije
 

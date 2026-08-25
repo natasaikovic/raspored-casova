@@ -46,12 +46,6 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 ## Pravila koja treba raščistiti
 
-- **Mirror ne izlazi tačno.** Smenjujuća odeljenja osnovne se uparuju 6:7 —
-  odeljenje 14 (plava) nema crvenog parnjaka. Kako se to rešava u praksi?
-
-  Odgovor upisati u:
-  [pravila-rasporeda.md](pravila-rasporeda.md).
-
 - **Biblioteke.** Dve biblioteke u Knez Miletinoj — smeju li da se koriste kao
   obične učionice? Prošle godine se u njima držala samo verska nastava.
 
