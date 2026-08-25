@@ -37,9 +37,10 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
-- **Odeljenje П1.** Smena mu je slobodan tekst: „стално од 18,30 часова
-  понедељком средом петком“. Da li to znači tačno blok 13 (18:30–19:15) i
-  tačno ta tri dana?
+- **Fond odeljenja П1.** Potvrđeno je da se nastava održava tačno
+  ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15). U ulazu je, međutim,
+  nedeljni fond 6 časova, a tri potvrđena termina daju samo 3 časa. Da li fond
+  treba promeniti na 3 ili jedan termin obuhvata još jedan blok?
 
   Odgovor upisati u: `ulazi/osnovna_baletska_skola.csv`.
 

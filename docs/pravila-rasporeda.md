@@ -94,6 +94,10 @@ Organizacija smena po razredima:
 - u trećem razredu odeljenje 33 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
 - četvrti razred nema odeljenje koje je uvek u popodnevnoj smeni.
 
+Pripremno odeljenje `П1` ima posebno vreme: nastava se održava ponedeljkom,
+sredom i petkom u bloku 13 (18:30–19:15). Nedeljni fond od 6 časova još treba
+uskladiti sa ova tri potvrđena termina.
+
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
 ## Učionice, sale i lokacije
