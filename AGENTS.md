@@ -50,3 +50,26 @@ Raspored časova za baletsku školu — osnovnu i srednju. Krajnji korisnik je
 - `python -m pytest`
 - Testovi za loader koriste samo standardnu biblioteku i moraju tako i ostati.
 - `ortools` je potreban samo za solver, kada bude napisan.
+
+
+## Prikaz rasporeda korisniku
+
+Workflow `.github/workflows/vizualizacija.yml` pravi artifact
+`raspored-html`, koji sadrži samostalni fajl `raspored.html`. Kada korisnik
+traži da vidi raspored, agent treba da:
+
+1. pronađe poslednji uspešan workflow run **Vizuelizacija rasporeda** za tačan
+   commit ili PR koji se trenutno pregleda (ne koristiti artifact starijeg
+   commita);
+2. pronađe i preuzme artifact `raspored-html`;
+3. raspakuje ZIP u radni direktorijum;
+4. priloži raspakovani `raspored.html` direktno u ChatGPT razgovoru kao
+   klikabilan lokalni fajl, na primer:
+   `[Otvori vizuelizaciju](sandbox:/apsolutna/putanja/raspored.html)`;
+5. po potrebi doda i link ka GitHub workflow run-u radi provere porekla.
+
+Nemoj korisniku proslediti samo GitHub API adresu artifacta: ona obično traži
+GitHub prijavu i preuzima ZIP umesto da otvori HTML. Raspakovan HTML omogućava
+da se interaktivni pregled otvori direktno iz razgovora. Artifact se čuva 30
+dana; ako je istekao, ponovo pokrenuti workflow. Generisani HTML se ne commituje
+u repozitorijum — CSV ostaje izvor istine.
