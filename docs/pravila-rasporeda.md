@@ -135,6 +135,12 @@ popunjena.
 - Gluma se održava isključivo u videoteci.
 - Primenjena gimnastika se održava u sali br. 8; sala br. 8 za ostale
   predmete ima najniži prioritet.
+- Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
+  glavni predmet**.
+- Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
+- Sala br. 2 prioritetno se koristi za **Karakterne igre**.
+- Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
+  savremene igre** i **Improvizacije**.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
@@ -184,7 +190,6 @@ popunjena.
 ## Napomene za dalju razradu
 
 Otvorena pitanja su izdvojena u [otvorena-pitanja.md](otvorena-pitanja.md).
-Od prvobitnog spiska ostalo je: prioriteti sala, koja je „dodatna sala koju ne
-treba koristiti" u Knez Miletinoj, i dostupnost nastavnika po danima.
+Od prvobitnog spiska ostali su prioriteti sala i dostupnost nastavnika po danima.
 Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
 odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.

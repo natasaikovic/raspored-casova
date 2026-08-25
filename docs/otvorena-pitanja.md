@@ -26,7 +26,10 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
   Odgovor upisati u: `ulazi/nedostupnost.csv`.
 
 - **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
-  prazna. Dovoljno je 1 (najbolja) do 3 po sali.
+  delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
+  još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj
+  gimnaziji. Treba proveriti i da li je jedan broj 1–3 dovoljan pored
+  prioriteta koji zavisi od predmeta.
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
