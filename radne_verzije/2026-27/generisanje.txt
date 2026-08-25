@@ -1,0 +1,7 @@
+Izabrano seme: 14
+Cilj (neraspoređene sesije, greške, upozorenja): (0, 299, 186)
+Redova nedelja A: 866
+Redova nedelja B: 866
+Neraspoređenih sesija: 0
+
+Neraspoređene sesije:
