@@ -28,6 +28,21 @@ Primer:
 
 Ovo su samo ilustrativni redovi iz stvarnih ulaza, ne kompletan raspored.
 
+## Nedelje A i B
+
+Kompletan raspored čine **dve CSV datoteke**, po jedna za svaku nedelju.
+Crvena i plava smena se ogledaju: u nedelji A crvena je ujutru, a u nedelji B
+plava je ujutru. Svaka datoteka se proverava zasebno:
+
+```bash
+python -m src.proveravac nedelja_a.csv --jutarnja-smena crvena
+python -m src.proveravac nedelja_b.csv --jutarnja-smena plava
+```
+
+Srednja škola i stalno-popodnevna odeljenja imaju isti raspored u obe nedelje.
+Proveravač za sada ne poredi dve datoteke i ne proverava njihovu međusobnu
+simetriju; proverava samo da je svaka nedelja zasebno ispravna.
+
 ## Pokretanje provere
 
 Iz korena repozitorijuma:
@@ -36,7 +51,8 @@ Iz korena repozitorijuma:
 python -m src.proveravac putanja/do/resenja.csv
 ```
 
-Podrazumeva se nedelja u kojoj je crvena smena ujutru. Za suprotnu nedelju:
+Ako opcija nije navedena, podrazumeva se nedelja A, u kojoj je crvena smena
+ujutru. Za nedelju B koristi se:
 
 ```bash
 python -m src.proveravac putanja/do/resenja.csv --jutarnja-smena plava
