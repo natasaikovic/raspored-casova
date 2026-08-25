@@ -31,9 +31,8 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
 - **„Dodatna sala koju ne treba koristiti“.** Koja je to sala u Knez
-  Miletinoj? U prošlogodišnjem rasporedu ne postoji `KM-7`, a `KM-8` se
-  koristila skoro samo za Primere i gimnastiku osnovne. Da li je `KM-7` ta
-  zabranjena sala?
+  Miletinoj? Potvrđeno je da sala `KM-7` ne postoji; broj 7 nosi učionica
+  `KM-uč7`. Da li se ranija napomena odnosi na salu `KM-8`?
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
