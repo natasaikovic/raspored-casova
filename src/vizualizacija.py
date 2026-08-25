@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from .pismo import u_latinicu
+
 
 OBAVEZNE_KOLONE = (
     "dan",
@@ -19,12 +21,50 @@ OBAVEZNE_KOLONE = (
     "prostorija",
 )
 
+CIRILICNE_KOLONE = {
+    "dan": "дан",
+    "blok": "блок",
+    "predmet": "предмет",
+    "odeljenja": "одељења",
+    "nastavnik": "наставник",
+    "korepetitor": "корепетитор",
+    "prostorija": "просторија",
+}
+
+DANI = ("ponedeljak", "utorak", "sreda", "četvrtak", "petak", "subota")
+
+BLOK_VREMENA = {
+    1: "08:00–08:45",
+    2: "08:50–09:35",
+    3: "09:45–10:30",
+    4: "10:35–11:20",
+    5: "11:40–12:25",
+    6: "12:30–13:15",
+    7: "13:30–14:15",
+    8: "14:20–15:05",
+    9: "15:15–16:00",
+    10: "16:00–16:45",
+    11: "16:55–17:40",
+    12: "17:40–18:25",
+    13: "18:30–19:15",
+    14: "19:15–20:00",
+}
+
 
 def ucitaj(putanja: Path, nedelja: str) -> list[dict[str, object]]:
     with putanja.open(encoding="utf-8-sig", newline="") as datoteka:
         citac = csv.DictReader(datoteka)
-        nedostaju = [kolona for kolona in OBAVEZNE_KOLONE if kolona not in (citac.fieldnames or ())]
-        if nedostaju:
+        zaglavlje = tuple(citac.fieldnames or ())
+        if all(kolona in zaglavlje for kolona in OBAVEZNE_KOLONE):
+            kolone = {kolona: kolona for kolona in OBAVEZNE_KOLONE}
+        elif all(kolona in zaglavlje for kolona in CIRILICNE_KOLONE.values()):
+            kolone = CIRILICNE_KOLONE
+        else:
+            nedostaju = [
+                kolona for kolona in OBAVEZNE_KOLONE
+                if kolona not in zaglavlje
+                and CIRILICNE_KOLONE[kolona] not in zaglavlje
+            ]
             raise ValueError(
                 f"{putanja}: nedostaju kolone: {', '.join(nedostaju)}"
             )
@@ -32,25 +72,32 @@ def ucitaj(putanja: Path, nedelja: str) -> list[dict[str, object]]:
         rezultat: list[dict[str, object]] = []
         for broj_reda, red in enumerate(citac, start=2):
             try:
-                blok = int(red["blok"])
+                blok = int(red[kolone["blok"]])
             except (TypeError, ValueError) as greska:
                 raise ValueError(
                     f"{putanja}:{broj_reda}: blok mora biti ceo broj"
                 ) from greska
+
+            dan = u_latinicu(red[kolone["dan"]].strip())
+            if dan not in DANI:
+                raise ValueError(
+                    f"{putanja}:{broj_reda}: nepoznat dan „{dan}“"
+                )
+
             rezultat.append(
                 {
                     "nedelja": nedelja,
-                    "dan": red["dan"].strip(),
+                    "dan": dan,
                     "blok": blok,
-                    "predmet": red["predmet"].strip(),
+                    "predmet": red[kolone["predmet"]].strip(),
                     "odeljenja": [
                         deo.strip()
-                        for deo in red["odeljenja"].split(";")
+                        for deo in red[kolone["odeljenja"]].split(";")
                         if deo.strip()
                     ],
-                    "nastavnik": red["nastavnik"].strip(),
-                    "korepetitor": red["korepetitor"].strip(),
-                    "prostorija": red["prostorija"].strip(),
+                    "nastavnik": red[kolone["nastavnik"]].strip(),
+                    "korepetitor": red[kolone["korepetitor"]].strip(),
+                    "prostorija": red[kolone["prostorija"]].strip(),
                 }
             )
     return rezultat
@@ -76,7 +123,8 @@ main { padding: 20px 24px 40px; overflow-x: auto; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1000px; background: white; box-shadow: 0 2px 12px #0001; }
 th, td { border-right: 1px solid #dfe4ed; border-bottom: 1px solid #dfe4ed; padding: 7px; vertical-align: top; }
 th { background: #e8edf7; text-align: left; }
-th:first-child, td:first-child { width: 62px; text-align: center; font-weight: 700; background: #f1f4f9; }
+th:first-child, td:first-child { width: 96px; text-align: center; font-weight: 700; background: #f1f4f9; }
+.block-time { display: block; margin-top: 3px; color: #65728a; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .lesson { padding: 7px; margin: 0 0 5px; border-left: 4px solid #5377b8; border-radius: 4px; background: #eef3fc; font-size: 12px; line-height: 1.35; }
 .lesson:last-child { margin-bottom: 0; }
 .lesson strong { display: block; font-size: 13px; }
@@ -113,6 +161,7 @@ th:first-child, td:first-child { width: 62px; text-align: center; font-weight: 7
 <script>
 const lessons = __PODACI__;
 const days = ["ponedeljak","utorak","sreda","četvrtak","petak","subota"];
+const times = __VREMENA__;
 const week = document.querySelector("#week");
 const kind = document.querySelector("#kind");
 const entity = document.querySelector("#entity");
@@ -168,6 +217,10 @@ function render() {
     const tr = document.createElement("tr");
     const number = document.createElement("td");
     number.textContent = block;
+    const time = document.createElement("span");
+    time.className = "block-time";
+    time.textContent = times[block];
+    number.append(time);
     tr.append(number);
     days.forEach(day => {
       const td = document.createElement("td");
@@ -192,8 +245,10 @@ fillEntities();
 def napravi_html(nedelja_a: Path, nedelja_b: Path, izlaz: Path) -> None:
     podaci = ucitaj(nedelja_a, "A") + ucitaj(nedelja_b, "B")
     json_podaci = json.dumps(podaci, ensure_ascii=False).replace("</", "<\\/")
+    vremena = json.dumps(BLOK_VREMENA, ensure_ascii=False)
+    html = SABLON.replace("__PODACI__", json_podaci).replace("__VREMENA__", vremena)
     izlaz.parent.mkdir(parents=True, exist_ok=True)
-    izlaz.write_text(SABLON.replace("__PODACI__", json_podaci), encoding="utf-8")
+    izlaz.write_text(html, encoding="utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
