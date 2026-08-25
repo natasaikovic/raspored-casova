@@ -1,3 +1,2 @@
-# Za sada je dovoljan samo pytest — loader i model koriste isključivo
-# standardnu biblioteku. `ortools` se dodaje kada bude napisan solver.
+ortools>=9.10,<10
 pytest
