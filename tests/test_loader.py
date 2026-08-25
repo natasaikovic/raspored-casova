@@ -219,7 +219,7 @@ class TestCelaInstitucija:
 
         # Ђорђина Убовић свира 14 часова у основној и предаје Солфеђо у средњој.
         assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 14
-        assert ulaz.opterecenje_nastavnika()["Ђорђина Убовић"] == 5
+        assert ulaz.opterecenje_nastavnika()["Ђорђина Убовић"] == 6
         # Лана Јеленковић reaches the 20h norm only across the two schools.
         assert ulaz.opterecenje_korepetitora()["Лана Јеленковић"] == 20
         assert ulaz.opterecenje_nastavnika()["Ива Илиевска"] == 20
