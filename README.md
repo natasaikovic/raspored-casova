@@ -20,9 +20,23 @@ Referentni raspored služi za proveru modela ograničenja, topli start solvera (
 
 Pravila i domenske odluke opisani su u dokumentu [docs/pravila-rasporeda.md](docs/pravila-rasporeda.md).
 
+## Provera rešenja
+
+Predloženi raspored može da napravi budući rešavač, AI agent ili čovek. Bez
+obzira na način nastanka, proverava se istom komandom:
+
+```bash
+python -m src.proveravac putanja/do/resenja.csv
+```
+
+Format rešenja i spisak provera opisani su u dokumentu
+[docs/format-resenja.md](docs/format-resenja.md). Kratak, nepotpun primer nalazi
+se u `primeri/format-resenja.csv`.
+
 ## Trenutno stanje
 
-Učitavanje, validacija i domenski model postoje. Solver za pravljenje rasporeda još ne postoji — njegova izrada je sledeći korak.
+Učitavanje, validacija ulaza, domenski model i nezavisna provera predloženog
+rasporeda postoje. Automatski rešavač za pravljenje rasporeda još ne postoji.
 
 ## Testovi
 
