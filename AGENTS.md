@@ -5,6 +5,12 @@
 Raspored časova za baletsku školu — osnovnu i srednju. Krajnji korisnik je
 školski administrator koji nije programer.
 
+Podaci i pravila ovog projekta namenjeni su objavljivanju u javnom GitHub
+repozitorijumu. Školski administrator je potvrdio da su informacije koje se
+unose u repozitorijum javno dostupne. Ovo ne ukida obavezu da se ne dodaju
+lozinke, pristupni tokeni, privatni ključevi ili drugi tehnički poverljivi
+podaci.
+
 ## Rad sa školskim administratorom i pull requestovima
 
 Školski administrator ne treba da poznaje GitHub, grane, commitove ni pull
@@ -37,6 +43,25 @@ Za svaku traženu izmenu agent treba da:
 7. **Ne spaja pull request pre odobrenja administratora.** Kada administrator
    jasno kaže da je zadovoljan, da je dobro ili zatraži spajanje, agent
    samostalno mergeuje pull request i potvrđuje da je posao završen.
+
+### Odgovori na otvorena pitanja
+
+Kada administrator odgovara na pitanja iz `docs/otvorena-pitanja.md`, agent ne
+sme reći da je odgovor „zabeležen“ ako ga je samo zapamtio u razgovoru. Odgovor
+je zabeležen tek kada su odgovarajući CSV, dokumentacija, kod ili testovi
+izmenjeni i commitovani na grani otvorenog pull requesta.
+
+- Pre prvog odgovora proveriti postoji li otvoren pull request; ako ne postoji,
+  odmah napraviti granu i, čim prvi odgovor bude commitovan, otvoriti jedan
+  pull request za odgovore.
+- Svaki potvrđeni odgovor uneti kao **zaseban commit** u taj isti pull request.
+- Jedan odgovor sme u istom commitu menjati više datoteka kada zajedno čine
+  jednu domensku odluku.
+- Posle svakog sledećeg odgovora odmah ažurirati isti pull request, umesto da se
+  odgovori skupljaju samo u razgovoru.
+- Rešeno pitanje obrisati iz `docs/otvorena-pitanja.md`, potvrđeni podatak uneti
+  na predviđeno mesto, a svaku novu nedoumicu nastalu iz odgovora dodati kao
+  novo otvoreno pitanje.
 
 ## Ulazni podaci
 
