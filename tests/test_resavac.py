@@ -11,7 +11,7 @@ from src.model import (
     Zahtev,
 )
 from src.proveravac import ucitaj_resenje
-from src.resavac import resi_nedelju, sacuvaj_csv
+from src.resavac import resi_nedelju, resi_obe_nedelje, sacuvaj_csv
 
 
 SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
@@ -122,3 +122,52 @@ def test_srednjoskolski_dvocasi_istog_predmeta_su_razlicitim_danima():
     assert len(po_danu) == 3
     assert all(sorted(blokovi)[1] == sorted(blokovi)[0] + 1 for blokovi in po_danu.values())
     assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
+
+
+def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
+    osnovna = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
+    srednja = Zahtev(
+        predmet="Савремена игра",
+        razred="I",
+        odeljenja=("I1",),
+        fond=2,
+        fond_korepeticije=2,
+        nastavnik="Јована",
+        korepetitor="Ана",
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+        red=3,
+    )
+    u = Ulaz(
+        (osnovna, srednja),
+        {
+            "11": Odeljenje("11", "први", Smena.CRVENA, Skola.OSNOVNA),
+            "I1": Odeljenje("I1", "I", Smena.CEO_DAN, Skola.SREDNJA),
+        },
+        {
+            osnovna.predmet: Predmet(osnovna.predmet, True, True),
+            srednja.predmet: Predmet(srednja.predmet, True, True),
+        },
+        None,
+    )
+
+    a, b = resi_obe_nedelje(
+        u, (SALA,), (), vremensko_ogranicenje=5, broj_radnika=1
+    )
+
+    assert a.pronadjen and b.pronadjen
+    osnovna_a = [c for c in a.casovi if c.odeljenja == ("11",)]
+    osnovna_b = [c for c in b.casovi if c.odeljenja == ("11",)]
+    assert all(1 <= c.blok <= 4 for c in osnovna_a)
+    assert all(9 <= c.blok <= 14 for c in osnovna_b)
+    srednja_a = [
+        (c.dan, c.blok, c.predmet, c.nastavnik, c.korepetitor, c.prostorija)
+        for c in a.casovi if c.odeljenja == ("I1",)
+    ]
+    srednja_b = [
+        (c.dan, c.blok, c.predmet, c.nastavnik, c.korepetitor, c.prostorija)
+        for c in b.casovi if c.odeljenja == ("I1",)
+    ]
+    assert srednja_a == srednja_b
+    assert a.izvestaj is not None and a.izvestaj.ispravan
+    assert b.izvestaj is not None and b.izvestaj.ispravan

@@ -1,8 +1,8 @@
 """CP-SAT rešavač rasporeda časova.
 
-Rešavač proizvodi isti CSV koji čita :mod:`src.proveravac`. Jedna instanca
-predstavlja jednu nedelju; nedelje A i B rešavaju se odvojeno, sa zamenjenom
-jutarnjom smenom osnovne škole.
+Rešavač proizvodi isti CSV koji čita :mod:`src.proveravac`. Model bira obe
+nedelje zajedno. Srednja škola i stalne smene ostaju iste, dok naizmenične
+smene osnovne škole u B koriste inverz smene iz A.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -63,9 +63,17 @@ class PromenljiveJedinice:
     dan: cp_model.IntVar
     blok: cp_model.IntVar
     interval: cp_model.IntervalVar
+    start_b: cp_model.IntVar | None
+    kraj_b: cp_model.IntVar | None
+    dan_b: cp_model.IntVar | None
+    blok_b: cp_model.IntVar | None
+    interval_b: cp_model.IntervalVar | None
     po_danu: tuple[cp_model.BoolVar, ...]
+    po_danu_b: tuple[cp_model.BoolVar, ...] | None
     prostorije: dict[str, cp_model.BoolVar]
+    prostorije_b: dict[str, cp_model.BoolVar] | None
     lokacije: dict[str, cp_model.BoolVar]
+    lokacije_b: dict[str, cp_model.BoolVar] | None
 
 
 @dataclass(frozen=True)
@@ -86,6 +94,11 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
     rezultat: list[Jedinica] = []
     for zahtev_indeks, zahtev in enumerate(ulaz.zahtevi):
         predmet = ulaz.predmeti[zahtev.predmet]
+        if zahtev.smena is Smena.POSEBNA and zahtev.fond % 2:
+            raise ValueError(
+                f"{zahtev.gde}: посебна смена „{zahtev.smena_opis}“ "
+                "захтева паран фонд часова"
+            )
         if predmet.igracki:
             trajanja = [2] * (zahtev.fond // 2) + [1] * (zahtev.fond % 2)
         else:
@@ -124,7 +137,15 @@ def _dozvoljeni_poceci(
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis != poznati_opis:
             return ()
-        return tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 2)
+        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 2)
+        return tuple(
+            (dan, blok)
+            for dan, blok in kandidati
+            if not _nastavnik_nedostupan(
+                zahtev.nastavnik, DANI[dan], range(blok, blok + trajanje),
+                nedostupnosti,
+            )
+        )
 
     skup_blokova = set(blokovi)
     rezultat: list[tuple[int, int]] = []
@@ -133,15 +154,27 @@ def _dozvoljeni_poceci(
             zauzeti = range(blok, blok + trajanje)
             if any(b not in skup_blokova for b in zauzeti):
                 continue
-            if any(
-                stavka.nastavnik == zahtev.nastavnik
-                and stavka.dan == naziv_dana
-                and any(stavka.od_bloka <= b <= stavka.do_bloka for b in zauzeti)
-                for stavka in nedostupnosti
+            if _nastavnik_nedostupan(
+                zahtev.nastavnik, naziv_dana, zauzeti, nedostupnosti
             ):
                 continue
             rezultat.append((dan, blok))
     return tuple(rezultat)
+
+
+def _nastavnik_nedostupan(
+    nastavnik: str,
+    dan: str,
+    blokovi: Iterable[int],
+    nedostupnosti: Sequence[Nedostupnost],
+) -> bool:
+    blokovi = tuple(blokovi)
+    return any(
+        stavka.nastavnik == nastavnik
+        and stavka.dan == dan
+        and any(stavka.od_bloka <= blok <= stavka.do_bloka for blok in blokovi)
+        for stavka in nedostupnosti
+    )
 
 
 def _moguce_prostorije(
@@ -197,12 +230,13 @@ def napravi_model(
     nedostupnosti: Sequence[Nedostupnost],
     jutarnja_smena: Smena,
     hintovi: Sequence[Cas] = (),
+    sa_nedeljom_b: bool = False,
 ) -> tuple[
     cp_model.CpModel,
     tuple[Jedinica, ...],
     dict[int, PromenljiveJedinice],
 ]:
-    """Napravi CP-SAT model za jednu nedelju."""
+    """Napravi model za A; opciono uključi povezanu nedelju B."""
 
     if jutarnja_smena not in (Smena.CRVENA, Smena.PLAVA):
         raise ValueError("Јутарња смена мора бити црвена или плава")
@@ -214,12 +248,18 @@ def napravi_model(
     intervali_nastavnika: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_korepetitora: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_prostorija: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    intervali_nastavnika_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    intervali_korepetitora_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    intervali_prostorija_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
 
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
         dozvoljeni = _dozvoljeni_poceci(
-            zahtev, jedinica.trajanje, jutarnja_smena, nedostupnosti
+            zahtev,
+            jedinica.trajanje,
+            jutarnja_smena,
+            nedostupnosti,
         )
         if not dozvoljeni:
             raise ValueError(
@@ -237,6 +277,46 @@ def napravi_model(
         model.add(start == dan * KORAK_DANA + blok)
         interval = model.new_interval_var(start, jedinica.trajanje, kraj, f"{prefiks}_i")
 
+        start_b: cp_model.IntVar | None = None
+        kraj_b: cp_model.IntVar | None = None
+        dan_b: cp_model.IntVar | None = None
+        blok_b: cp_model.IntVar | None = None
+        interval_b: cp_model.IntervalVar | None = None
+        if sa_nedeljom_b:
+            if zahtev.smena.menja_se:
+                jutarnja_b = (
+                    Smena.PLAVA if jutarnja_smena is Smena.CRVENA else Smena.CRVENA
+                )
+                dozvoljeni_b = _dozvoljeni_poceci(
+                    zahtev,
+                    jedinica.trajanje,
+                    jutarnja_b,
+                    nedostupnosti,
+                )
+                vrednosti_starta_b = [
+                    dan_i * KORAK_DANA + blok_i
+                    for dan_i, blok_i in dozvoljeni_b
+                ]
+                start_b = model.new_int_var_from_domain(
+                    cp_model.Domain.from_values(vrednosti_starta_b),
+                    f"{prefiks}_start_b",
+                )
+                kraj_b = model.new_int_var(
+                    1, (len(DANI) - 1) * KORAK_DANA + 15,
+                    f"{prefiks}_kraj_b",
+                )
+                model.add(kraj_b == start_b + jedinica.trajanje)
+                dan_b = model.new_int_var(0, len(DANI) - 1, f"{prefiks}_dan_b")
+                blok_b = model.new_int_var(1, len(BLOKOVI), f"{prefiks}_blok_b")
+                model.add(start_b == dan_b * KORAK_DANA + blok_b)
+                interval_b = model.new_interval_var(
+                    start_b, jedinica.trajanje, kraj_b, f"{prefiks}_i_b"
+                )
+            else:
+                start_b, kraj_b = start, kraj
+                dan_b, blok_b = dan, blok
+                interval_b = interval
+
         po_danu: list[cp_model.BoolVar] = []
         for indeks_dana in range(len(DANI)):
             prisutan = model.new_bool_var(f"{prefiks}_d{indeks_dana}")
@@ -244,12 +324,30 @@ def napravi_model(
             model.add(dan != indeks_dana).only_enforce_if(~prisutan)
             po_danu.append(prisutan)
         model.add_exactly_one(po_danu)
+        po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
+        if sa_nedeljom_b:
+            if zahtev.smena.menja_se:
+                assert dan_b is not None
+                b_dani: list[cp_model.BoolVar] = []
+                for indeks_dana in range(len(DANI)):
+                    prisutan_b = model.new_bool_var(f"{prefiks}_d{indeks_dana}_b")
+                    model.add(dan_b == indeks_dana).only_enforce_if(prisutan_b)
+                    model.add(dan_b != indeks_dana).only_enforce_if(~prisutan_b)
+                    b_dani.append(prisutan_b)
+                model.add_exactly_one(b_dani)
+                po_danu_b = tuple(b_dani)
+            else:
+                po_danu_b = tuple(po_danu)
 
         moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
         if not moguce:
             raise ValueError(f"{zahtev.gde}: нема одговарајуће просторије")
         izbor_prostorije: dict[str, cp_model.BoolVar] = {}
+        izbor_prostorije_b: dict[str, cp_model.BoolVar] | None = (
+            {} if sa_nedeljom_b else None
+        )
         po_lokaciji: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
+        po_lokaciji_b: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
         for prostorija in moguce:
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
@@ -259,12 +357,44 @@ def napravi_model(
                 f"{prefiks}_{prostorija.oznaka}_i",
             )
             intervali_prostorija[prostorija.oznaka].append(opcion)
+            if sa_nedeljom_b:
+                assert start_b is not None and kraj_b is not None
+                assert izbor_prostorije_b is not None
+                if zahtev.smena.menja_se:
+                    koristi_b = model.new_bool_var(
+                        f"{prefiks}_{prostorija.oznaka}_b"
+                    )
+                    opcion_b = model.new_optional_interval_var(
+                        start_b, jedinica.trajanje, kraj_b, koristi_b,
+                        f"{prefiks}_{prostorija.oznaka}_i_b",
+                    )
+                else:
+                    koristi_b = koristi
+                    opcion_b = opcion
+                izbor_prostorije_b[prostorija.oznaka] = koristi_b
+                po_lokaciji_b[prostorija.lokacija].append(koristi_b)
+                intervali_prostorija_b[prostorija.oznaka].append(opcion_b)
         model.add_exactly_one(izbor_prostorije.values())
+        if sa_nedeljom_b and zahtev.smena.menja_se:
+            assert izbor_prostorije_b is not None
+            model.add_exactly_one(izbor_prostorije_b.values())
         lokacije: dict[str, cp_model.BoolVar] = {}
         for lokacija, izbori in po_lokaciji.items():
             koristi_lokaciju = model.new_bool_var(f"{prefiks}_lok_{len(lokacije)}")
             model.add(koristi_lokaciju == sum(izbori))
             lokacije[lokacija] = koristi_lokaciju
+        lokacije_b: dict[str, cp_model.BoolVar] | None = None
+        if sa_nedeljom_b:
+            if zahtev.smena.menja_se:
+                lokacije_b = {}
+                for lokacija, izbori in po_lokaciji_b.items():
+                    koristi_lokaciju_b = model.new_bool_var(
+                        f"{prefiks}_lok_{len(lokacije_b)}_b"
+                    )
+                    model.add(koristi_lokaciju_b == sum(izbori))
+                    lokacije_b[lokacija] = koristi_lokaciju_b
+            else:
+                lokacije_b = lokacije
 
         promenljive[jedinica.indeks] = PromenljiveJedinice(
             start=start,
@@ -272,11 +402,21 @@ def napravi_model(
             dan=dan,
             blok=blok,
             interval=interval,
+            start_b=start_b,
+            kraj_b=kraj_b,
+            dan_b=dan_b,
+            blok_b=blok_b,
+            interval_b=interval_b,
             po_danu=tuple(po_danu),
+            po_danu_b=po_danu_b,
             prostorije=izbor_prostorije,
+            prostorije_b=izbor_prostorije_b,
             lokacije=lokacije,
+            lokacije_b=lokacije_b,
         )
         intervali_nastavnika[zahtev.nastavnik].append(interval)
+        if interval_b is not None:
+            intervali_nastavnika_b[zahtev.nastavnik].append(interval_b)
         if zahtev.korepetitor:
             resurs = _resurs_korepetitora(zahtev.korepetitor)
             for pomeraj in jedinica.korepeticija:
@@ -296,6 +436,26 @@ def napravi_model(
                         f"{prefiks}_kor_{pomeraj}_i",
                     )
                 )
+                if sa_nedeljom_b:
+                    assert start_b is not None
+                    pocetak_korepeticije_b = model.new_int_var(
+                        1, (len(DANI) - 1) * KORAK_DANA + 14,
+                        f"{prefiks}_kor_{pomeraj}_start_b",
+                    )
+                    model.add(pocetak_korepeticije_b == start_b + pomeraj)
+                    kraj_korepeticije_b = model.new_int_var(
+                        2, (len(DANI) - 1) * KORAK_DANA + 15,
+                        f"{prefiks}_kor_{pomeraj}_kraj_b",
+                    )
+                    model.add(kraj_korepeticije_b == pocetak_korepeticije_b + 1)
+                    intervali_korepetitora_b[resurs].append(
+                        model.new_interval_var(
+                            pocetak_korepeticije_b,
+                            1,
+                            kraj_korepeticije_b,
+                            f"{prefiks}_kor_{pomeraj}_i_b",
+                        )
+                    )
         jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
 
     for intervali in intervali_nastavnika.values():
@@ -304,6 +464,13 @@ def napravi_model(
         model.add_no_overlap(intervali)
     for intervali in intervali_prostorija.values():
         model.add_no_overlap(intervali)
+    if sa_nedeljom_b:
+        for intervali in intervali_nastavnika_b.values():
+            model.add_no_overlap(intervali)
+        for intervali in intervali_korepetitora_b.values():
+            model.add_no_overlap(intervali)
+        for intervali in intervali_prostorija_b.values():
+            model.add_no_overlap(intervali)
 
     # Identične jedinice istog zahteva uređujemo hronološki da uklonimo
     # veliki broj simetričnih rešenja.
@@ -317,6 +484,12 @@ def napravi_model(
                     promenljive[prethodna.indeks].start
                     < promenljive[sledeca.indeks].start
                 )
+                zahtev = ulaz.zahtevi[prethodna.zahtev_indeks]
+                if sa_nedeljom_b and zahtev.smena.menja_se:
+                    start_pre = promenljive[prethodna.indeks].start_b
+                    start_posle = promenljive[sledeca.indeks].start_b
+                    assert start_pre is not None and start_posle is not None
+                    model.add(start_pre < start_posle)
 
     # Igrački predmeti srednje škole raspoređuju svaku sesiju drugog dana.
     # Time se dva zasebna dvočasa ne mogu slučajno spojiti u niz od četiri;
@@ -367,6 +540,12 @@ def napravi_model(
         model.add_no_overlap(
             [promenljive[j.indeks].interval for j in jedinstvene.values()]
         )
+        if sa_nedeljom_b:
+            intervali_b = [
+                promenljive[j.indeks].interval_b for j in jedinstvene.values()
+            ]
+            assert all(interval is not None for interval in intervali_b)
+            model.add_no_overlap(intervali_b)
 
     # Prazni časovi i više lokacija u danu ulaze u cilj. Čvrsto nametanje oba
     # svojstva čini prvi raspored nepotrebno teškim za nalaženje; nezavisni
@@ -442,16 +621,105 @@ def napravi_model(
                 model.add(sum(igracki) <= 4)
                 model.add(sum(opsti) <= 4)
 
+    # Naizmenična odeljenja imaju zaseban raspored u B, pa isti približni cilj
+    # kvaliteta primenjujemo i na njihove B promenljive.
+    if sa_nedeljom_b:
+        for token, stavke in po_ucenickom_tokenu.items():
+            if not ulaz.odeljenja[token].smena.menja_se:
+                continue
+            for indeks_dana in range(len(DANI)):
+                prisutnosti_b = []
+                for jedinica in stavke:
+                    po_danu_b = promenljive[jedinica.indeks].po_danu_b
+                    assert po_danu_b is not None
+                    prisutnosti_b.append(po_danu_b[indeks_dana])
+                ima_cas_b = model.new_bool_var(f"{token}_d{indeks_dana}_ima_b")
+                model.add_max_equality(ima_cas_b, prisutnosti_b)
+                prvi_b = model.new_int_var(
+                    1, len(BLOKOVI), f"{token}_d{indeks_dana}_prvi_b"
+                )
+                poslednji_b = model.new_int_var(
+                    0, len(BLOKOVI), f"{token}_d{indeks_dana}_poslednji_b"
+                )
+                model.add(prvi_b == 1).only_enforce_if(~ima_cas_b)
+                model.add(poslednji_b == 0).only_enforce_if(~ima_cas_b)
+                for jedinica in stavke:
+                    p = promenljive[jedinica.indeks]
+                    assert p.blok_b is not None and p.po_danu_b is not None
+                    model.add(prvi_b <= p.blok_b).only_enforce_if(
+                        p.po_danu_b[indeks_dana]
+                    )
+                    model.add(
+                        poslednji_b >= p.blok_b + jedinica.trajanje - 1
+                    ).only_enforce_if(p.po_danu_b[indeks_dana])
+                zauzeto_b = sum(
+                    jedinica.trajanje
+                    * promenljive[jedinica.indeks].po_danu_b[indeks_dana]
+                    for jedinica in stavke
+                )
+                prazni_b = model.new_int_var(
+                    0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni_b"
+                )
+                model.add(prazni_b >= poslednji_b - prvi_b + 1 - zauzeto_b)
+                kazne.append(1000 * prazni_b)
+
+                sve_lokacije_b = sorted(
+                    {
+                        lokacija
+                        for jedinica in stavke
+                        for lokacija in promenljive[jedinica.indeks].lokacije_b
+                    }
+                )
+                koristi_lokaciju_b: list[cp_model.BoolVar] = []
+                for broj_lokacije, lokacija in enumerate(sve_lokacije_b):
+                    preseci_b: list[cp_model.BoolVar] = []
+                    for jedinica in stavke:
+                        p = promenljive[jedinica.indeks]
+                        assert p.po_danu_b is not None and p.lokacije_b is not None
+                        na_lokaciji_b = p.lokacije_b.get(lokacija)
+                        if na_lokaciji_b is None:
+                            continue
+                        oba_b = model.new_bool_var(
+                            f"{token}_d{indeks_dana}_l{broj_lokacije}"
+                            f"_j{jedinica.indeks}_b"
+                        )
+                        model.add(oba_b <= p.po_danu_b[indeks_dana])
+                        model.add(oba_b <= na_lokaciji_b)
+                        model.add(
+                            oba_b >= p.po_danu_b[indeks_dana] + na_lokaciji_b - 1
+                        )
+                        preseci_b.append(oba_b)
+                    koristi_b = model.new_bool_var(
+                        f"{token}_d{indeks_dana}_l{broj_lokacije}_b"
+                    )
+                    model.add_max_equality(koristi_b, preseci_b)
+                    koristi_lokaciju_b.append(koristi_b)
+                visak_lokacija_b = model.new_int_var(
+                    0,
+                    max(0, len(koristi_lokaciju_b) - 1),
+                    f"{token}_d{indeks_dana}_visak_lokacija_b",
+                )
+                model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)
+                kazne.append(300 * visak_lokacija_b)
+
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.
     # Ispravnost ne zavisi od cilja; sva pravila iznad su čvrsta.
     troskovi: list[cp_model.LinearExprT] = list(kazne)
     for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
         p = promenljive[jedinica.indeks]
         troskovi.append(p.blok)
         for oznaka, koristi in p.prostorije.items():
             prostorija = next(x for x in prostorije if x.oznaka == oznaka)
             if prostorija.lokacija != "Кнез Милетина 8":
                 troskovi.append(3 * koristi)
+        if sa_nedeljom_b and zahtev.smena.menja_se:
+            assert p.blok_b is not None and p.prostorije_b is not None
+            troskovi.append(p.blok_b)
+            for oznaka, koristi in p.prostorije_b.items():
+                prostorija = next(x for x in prostorije if x.oznaka == oznaka)
+                if prostorija.lokacija != "Кнез Милетина 8":
+                    troskovi.append(3 * koristi)
     model.minimize(sum(troskovi))
     _dodaj_hintove(model, ulaz, jedinice_zahteva, promenljive, hintovi)
     return model, jedinice, promenljive
@@ -540,9 +808,16 @@ def _dodaj_hintove(
             cas = redovi[izabran[0]]
             p = promenljive[jedinica.indeks]
             dan = DANI.index(cas.dan)
+            start_hinta = dan * KORAK_DANA + cas.blok
+            domen = tuple(p.start.proto.domain)
+            if not any(
+                donja <= start_hinta <= gornja
+                for donja, gornja in zip(domen[::2], domen[1::2])
+            ):
+                continue
             model.add_hint(p.dan, dan)
             model.add_hint(p.blok, cas.blok)
-            model.add_hint(p.start, dan * KORAK_DANA + cas.blok)
+            model.add_hint(p.start, start_hinta)
             kanonska_prostorija = next(
                 (
                     oznaka for oznaka in p.prostorije
@@ -565,37 +840,26 @@ def _status_tekst(status: cp_model.CpSolverStatus) -> str:
     }.get(status, str(status))
 
 
-def resi_nedelju(
+def _izvuci_casove(
+    solver: cp_model.CpSolver,
     ulaz: Ulaz,
-    prostorije: Sequence[Prostorija],
-    nedostupnosti: Sequence[Nedostupnost],
-    jutarnja_smena: Smena,
-    vremensko_ogranicenje: float = 300,
-    broj_radnika: int = 8,
-    seme: int = 1,
-    hintovi: Sequence[Cas] = (),
-) -> Rezultat:
-    """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
-
-    model, jedinice, promenljive = napravi_model(
-        ulaz, prostorije, nedostupnosti, jutarnja_smena, hintovi
-    )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
-    solver.parameters.num_search_workers = broj_radnika
-    solver.parameters.random_seed = seme
-    status = solver.solve(model)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return Rezultat(_status_tekst(status), (), None, None)
-
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> tuple[Cas, ...]:
     redovi: list[Cas] = []
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
         p = promenljive[jedinica.indeks]
-        dan = solver.value(p.dan)
-        blok = solver.value(p.blok)
+        dan_var = p.dan_b if nedelja_b else p.dan
+        blok_var = p.blok_b if nedelja_b else p.blok
+        prostorije_var = p.prostorije_b if nedelja_b else p.prostorije
+        assert dan_var is not None and blok_var is not None
+        assert prostorije_var is not None
+        dan = solver.value(dan_var)
+        blok = solver.value(blok_var)
         prostorija = next(
-            oznaka for oznaka, koristi in p.prostorije.items()
+            oznaka for oznaka, koristi in prostorije_var.items()
             if solver.boolean_value(koristi)
         )
         for pomeraj in range(jedinica.trajanje):
@@ -614,7 +878,39 @@ def resi_nedelju(
                 )
             )
     redovi.sort(key=lambda c: (DANI.index(c.dan), c.blok, c.prostorija, c.predmet))
-    casovi = tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
+    return tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
+
+
+def resi_nedelju(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    jutarnja_smena: Smena,
+    vremensko_ogranicenje: float = 300,
+    broj_radnika: int = 8,
+    seme: int = 1,
+    hintovi: Sequence[Cas] = (),
+    sa_nedeljom_b: bool = False,
+) -> Rezultat:
+    """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
+
+    model, jedinice, promenljive = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        jutarnja_smena,
+        hintovi,
+        sa_nedeljom_b,
+    )
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
+    solver.parameters.num_search_workers = broj_radnika
+    solver.parameters.random_seed = seme
+    status = solver.solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return Rezultat(_status_tekst(status), (), None, None)
+
+    casovi = _izvuci_casove(solver, ulaz, jedinice, promenljive)
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
     return Rezultat(_status_tekst(status), casovi, izvestaj, solver.objective_value)
 
@@ -622,15 +918,56 @@ def resi_nedelju(
 def replace_red(cas: Cas, red: int) -> Cas:
     """Napravi isti čas sa brojem reda koji će imati u izlaznom CSV-u."""
 
-    return Cas(
-        dan=cas.dan,
-        blok=cas.blok,
-        predmet=cas.predmet,
-        odeljenja=cas.odeljenja,
-        nastavnik=cas.nastavnik,
-        korepetitor=cas.korepetitor,
-        prostorija=cas.prostorija,
-        red=red,
+    return replace(cas, red=red)
+
+
+def resi_obe_nedelje(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    vremensko_ogranicenje: float = 300,
+    broj_radnika: int = 8,
+    seme: int = 1,
+    hintovi: Sequence[Cas] = (),
+) -> tuple[Rezultat, Rezultat]:
+    """Reši obe nedelje zajedno, sa inverznom smenom osnovne u B."""
+
+    model, jedinice, promenljive = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        Smena.CRVENA,
+        hintovi,
+        sa_nedeljom_b=True,
+    )
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
+    solver.parameters.num_search_workers = broj_radnika
+    solver.parameters.random_seed = seme
+    status = solver.solve(model)
+    status_tekst = _status_tekst(status)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        prazan = Rezultat(status_tekst, (), None, None)
+        return prazan, prazan
+
+    casovi_a = _izvuci_casove(solver, ulaz, jedinice, promenljive)
+    casovi_b = _izvuci_casove(
+        solver, ulaz, jedinice, promenljive, nedelja_b=True
+    )
+    cilj = solver.objective_value
+    return (
+        Rezultat(
+            status_tekst,
+            casovi_a,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+            cilj,
+        ),
+        Rezultat(
+            status_tekst,
+            casovi_b,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+            cilj,
+        ),
     )
 
 
@@ -691,23 +1028,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     argumenti = parser.parse_args(argv)
 
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze(argumenti.ulazi)
-    nedelje = (("nedelja_a.csv", Smena.CRVENA), ("nedelja_b.csv", Smena.PLAVA))
+    hintovi: tuple[Cas, ...] = ()
+    putanja_hinta = Path("radne_verzije/2026-27/nedelja_a.csv")
+    if not argumenti.bez_hintova and putanja_hinta.exists():
+        hintovi = ucitaj_resenje(putanja_hinta)
+    rezultat_a, rezultat_b = resi_obe_nedelje(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        vremensko_ogranicenje=argumenti.vremensko_ogranicenje,
+        broj_radnika=argumenti.broj_radnika,
+        seme=argumenti.seme,
+        hintovi=hintovi,
+    )
     izlazni_status = 0
-    for pomeraj, (ime, jutarnja) in enumerate(nedelje):
-        hintovi: tuple[Cas, ...] = ()
-        putanja_hinta = Path("radne_verzije/2026-27") / ime
-        if not argumenti.bez_hintova and putanja_hinta.exists():
-            hintovi = ucitaj_resenje(putanja_hinta)
-        rezultat = resi_nedelju(
-            ulaz,
-            prostorije,
-            nedostupnosti,
-            jutarnja,
-            vremensko_ogranicenje=argumenti.vremensko_ogranicenje,
-            broj_radnika=argumenti.broj_radnika,
-            seme=argumenti.seme + pomeraj,
-            hintovi=hintovi,
-        )
+    for ime, rezultat in (
+        ("nedelja_a.csv", rezultat_a),
+        ("nedelja_b.csv", rezultat_b),
+    ):
         print(f"{ime}: {rezultat.status}")
         if not rezultat.pronadjen:
             izlazni_status = 1

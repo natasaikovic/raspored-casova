@@ -35,8 +35,9 @@ se u `primeri/format-resenja.csv`.
 
 ## Automatsko rešavanje
 
-Prva CP-SAT verzija rešavača pravi obe nedelje i svaki rezultat odmah šalje
-nezavisnom proveravaču:
+Prva CP-SAT verzija rešavača modelira obe nedelje zajedno. Osnovna škola u B
+koristi inverzne smene iz A, dok srednja i stalne smene ostaju identične. Svaki
+rezultat se odmah šalje nezavisnom proveravaču:
 
 ```bash
 python -m src.resavac --izlaz resenja/2026-27
