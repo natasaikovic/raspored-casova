@@ -25,10 +25,18 @@ Raspored časova za baletsku školu — osnovnu i srednju. Krajnji korisnik je
 
 ## Domenske odluke (ne menjati bez dogovora)
 
-- Jedinica rasporeda je ODELJENJE, ne pojedinačni učenik.
+- Jedinica rasporeda je ODELJENJE, ne pojedinačni učenik. Polugrupe (`I5А`,
+  `I5Б`) su polovine celog odeljenja (`I5`) — ista deca, pa se polugrupa i celo
+  odeljenje ne smeju preklapati u vremenu.
+- Obe škole su JEDNA ustanova: dele nastavnike, korepetitore i prostorije, pa
+  se sva tri ulazna fajla učitavaju zajedno (`ucitaj_vise`) i rešavaju kao
+  jedan problem. Norma je 20 časova nedeljno, zbirno kroz obe škole.
 - `Predmet.igracki` se IZVODI iz toga da li predmet ima korepetitora; ne
-  konfiguriše se ručno. Igrački predmeti traže salu, opšti učionicu.
-- Smena je ULAZNI PODATAK, ne odluka solvera.
+  konfiguriše se ručno. `trazi_salu` je posebno polje: igrački predmeti traže
+  salu, ali i Репертоар савремене игре i Игре XX века (bez korepetitora —
+  spisak `SALA_BEZ_KOREPETITORA` u loaderu). Ostali predmeti traže učionicu.
+- Smena je ULAZNI PODATAK, ne odluka solvera. Srednja škola nema smene —
+  `цео дан` — i sme da koristi bilo koji blok.
 - Subota je nastavni dan. Nedeljni raspored ima 6 dana. Bez subote instanca
   nije rešiva: šest nastavnika ima tačno 20 časova, a jutarnja smena ima 4
   bloka × 5 dana = 20, dakle nula rezerve.
