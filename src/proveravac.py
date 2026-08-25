@@ -408,7 +408,7 @@ def _proveri_fondove(
         if not zahtevi:
             continue
         prvi = zahtevi[0]
-        skola = ulaz.odeljenja[cas.odeljenja[0]].skola
+        skola = ulaz.odeljenja[prvi.odeljenja[0]].skola
         stvarne_sesije[(cas.predmet, cas.nastavnik, prvi.razred, skola)] += 1
     for kljuc in sorted(set(cilj_sesija) | set(stvarne_sesije), key=str):
         if cilj_sesija[kljuc] != stvarne_sesije[kljuc]:
@@ -517,7 +517,11 @@ def _rasporedi_po_ucenickoj_grupi(
             polugrupe[odeljenje.roditelj].append(odeljenje.oznaka)
     rezultat: dict[str, list[Cas]] = defaultdict(list)
     for cas in casovi:
+        if cas.predmet not in ulaz.predmeti:
+            continue
         for oznaka in cas.odeljenja:
+            if oznaka not in ulaz.odeljenja:
+                continue
             for token in polugrupe.get(oznaka, [oznaka]):
                 rezultat[token].append(cas)
     return rezultat
@@ -587,6 +591,11 @@ def _proveri_dnevni_raspored(
                         izvestaj.greske.append(
                             f"{grupa} мења локацију без слободног блока: {dan}, "
                             f"блокови {prethodni}–{sledeci}"
+                        )
+                    elif razmak > 2:
+                        izvestaj.greske.append(
+                            f"{grupa} мења локацију са паузом дужом од једног "
+                            f"блока: {dan}, блокови {prethodni}–{sledeci}"
                         )
                 elif razmak > 1:
                     izvestaj.greske.append(
