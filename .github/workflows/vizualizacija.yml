@@ -1,0 +1,59 @@
+name: Vizuelizacija rasporeda
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "radne_verzije/**/*.csv"
+      - "src/vizualizacija.py"
+      - ".github/workflows/vizualizacija.yml"
+  pull_request:
+    paths:
+      - "radne_verzije/**/*.csv"
+      - "src/vizualizacija.py"
+      - ".github/workflows/vizualizacija.yml"
+
+jobs:
+  napravi-pregled:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Preuzmi repozitorijum
+        uses: actions/checkout@v4
+
+      - name: Proveri nedelju A
+        continue-on-error: true
+        run: |
+          python -m src.proveravac radne_verzije/2026-27/nedelja_a.csv --jutarnja-smena crvena
+
+      - name: Proveri nedelju B
+        continue-on-error: true
+        run: |
+          python -m src.proveravac radne_verzije/2026-27/nedelja_b.csv --jutarnja-smena plava
+
+      - name: Napravi HTML pregled
+        run: |
+          python -m src.vizualizacija \
+            radne_verzije/2026-27/nedelja_a.csv \
+            radne_verzije/2026-27/nedelja_b.csv \
+            --izlaz artifact/raspored.html
+
+      - name: Dodaj u rezime
+        run: |
+          {
+            echo "## Vizuelizacija rasporeda"
+            echo
+            echo "Preuzmite artifact **raspored-html** ispod rezimea ovog workflow run-a."
+            echo "U ZIP datoteci se nalazi samostalni fajl **raspored.html**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sacuvaj HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raspored-html
+          path: artifact/raspored.html
+          retention-days: 30
+          if-no-files-found: error
