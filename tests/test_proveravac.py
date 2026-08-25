@@ -250,6 +250,40 @@ def test_prazan_cas_bez_promene_lokacije_je_greska():
     assert any("има празан час без промене локације" in g for g in izvestaj.greske)
 
 
+def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
+    z1 = zahtev("Историја", ["11"], 1, "Ана")
+    z2 = zahtev("Солфеђо", ["11"], 1, "Ива", red=3)
+    ulaz = napravi_ulaz([z1, z2])
+    prostorije = (
+        Prostorija("U1", "Прва локација", TipProstorije.UCIONICA, None, ""),
+        Prostorija("U3", "Друга локација", TipProstorije.UCIONICA, None, ""),
+    )
+    casovi = (
+        Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
+        Cas("понедељак", 4, z2.predmet, ("11",), "Ива", None, "U3", 3),
+    )
+
+    izvestaj = proveri(ulaz, prostorije, (), casovi)
+
+    assert any(
+        "мења локацију са паузом дужом од једног блока" in g
+        for g in izvestaj.greske
+    )
+
+
+def test_nepoznato_prvo_odeljenje_ne_obara_proveravac():
+    z = zahtev("Историја", ["I1"], 1, "Ана", razred="I", smena=Smena.CEO_DAN)
+    ulaz = napravi_ulaz([z])
+    casovi = (
+        Cas("понедељак", 1, z.predmet, ("XX", "I1"), "Ана", None, "U1", 2),
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert not izvestaj.ispravan
+    assert any("непознато одељење XX" in g for g in izvestaj.greske)
+
+
 def test_p1_koristi_vidljivu_privremenu_pretpostavku():
     z = zahtev(
         "Класичан балет",
