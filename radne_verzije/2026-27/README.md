@@ -29,7 +29,6 @@ promene lokacije bez tacno jednog slobodnog bloka, kao i previse promena
 lokacije u istom danu. Upozorenja se uglavnom odnose na pauze nastavnika i
 privremenu pretpostavku za odeljenje P1.
 
-Potpuni izvestaji su u `provera_nedelja_a.txt` i `provera_nedelja_b.txt`.
 Provera se ponavlja komandama:
 
 ```bash
