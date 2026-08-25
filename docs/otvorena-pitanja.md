@@ -26,36 +26,21 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
   Odgovor upisati u: `ulazi/nedostupnost.csv`.
 
 - **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
-  prazna. Dovoljno je 1 (najbolja) do 3 po sali.
+  delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
+  još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj
+  gimnaziji. Treba proveriti i da li je jedan broj 1–3 dovoljan pored
+  prioriteta koji zavisi od predmeta.
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
-- **„Dodatna sala koju ne treba koristiti“.** Koja je to sala u Knez
-  Miletinoj? U prošlogodišnjem rasporedu ne postoji `KM-7`, a `KM-8` se
-  koristila skoro samo za Primere i gimnastiku osnovne. Da li je `KM-7` ta
-  zabranjena sala?
-
-  Odgovor upisati u: `ulazi/prostorije.csv`.
-
-- **Odeljenje П1.** Smena mu je slobodan tekst: „стално од 18,30 часова
-  понедељком средом петком“. Da li to znači tačno blok 13 (18:30–19:15) i
-  tačno ta tri dana?
+- **Fond odeljenja П1.** Potvrđeno je da se nastava održava tačno
+  ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15). U ulazu je, međutim,
+  nedeljni fond 6 časova, a tri potvrđena termina daju samo 3 časa. Da li fond
+  treba promeniti na 3 ili jedan termin obuhvata još jedan blok?
 
   Odgovor upisati u: `ulazi/osnovna_baletska_skola.csv`.
 
 ## Pravila koja treba raščistiti
-
-- **Mirror ne izlazi tačno.** Smenjujuća odeljenja osnovne se uparuju 6:7 —
-  odeljenje 14 (plava) nema crvenog parnjaka. Kako se to rešava u praksi?
-
-  Odgovor upisati u:
-  [pravila-rasporeda.md](pravila-rasporeda.md).
-
-- **Biblioteke.** Dve biblioteke u Knez Miletinoj — smeju li da se koriste kao
-  obične učionice? Prošle godine se u njima držala samo verska nastava.
-
-  Odgovor upisati u: `ulazi/prostorije.csv` i, ako predstavlja opšte pravilo,
-  u [pravila-rasporeda.md](pravila-rasporeda.md).
 
 - **Kadrovske rupe.** Korepetitor za 21 čas (osnovna
   `корепетитор br.1` 13 časova + srednja `?` 8 časova) još nije zaposlen;

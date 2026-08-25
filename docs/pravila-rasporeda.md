@@ -94,7 +94,13 @@ Organizacija smena po razredima:
 - u trećem razredu odeljenje 33 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
 - četvrti razred nema odeljenje koje je uvek u popodnevnoj smeni.
 
+Pripremno odeljenje `П1` ima posebno vreme: nastava se održava ponedeljkom,
+sredom i petkom u bloku 13 (18:30–19:15). Nedeljni fond od 6 časova još treba
+uskladiti sa ova tri potvrđena termina.
+
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
+Odeljenje 14 nema parnjaka u suprotnoj smeni, ali i dalje redovno menja smene
+iz nedelje u nedelju; zahtev za simetriju na njega se ne primenjuje.
 
 ## Učionice, sale i lokacije
 
@@ -104,10 +110,13 @@ popunjena.
 
 ### Knez Miletina
 
-- šest sala koje se koriste;
-- jedna dodatna sala koju ne treba koristiti;
+- šest redovnih sala;
+- sala br. 8, koja se obavezno koristi za **Primenjenu gimnastiku**, a za
+  druge predmete samo u nuždi;
 - četiri učionice;
-- dve biblioteke.
+- jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
+  samo u nuždi;
+- jedna videoteka, koja se koristi isključivo za predmet **Gluma**.
 
 ### Sportska gimnazija
 
@@ -123,6 +132,15 @@ popunjena.
 ### Posebne prostorije i prioriteti
 
 - Informatika se održava u specijalnoj učionici.
+- Gluma se održava isključivo u videoteci.
+- Primenjena gimnastika se održava u sali br. 8; sala br. 8 za ostale
+  predmete ima najniži prioritet.
+- Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
+  glavni predmet**.
+- Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
+- Sala br. 2 prioritetno se koristi za **Karakterne igre**.
+- Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
+  savremene igre** i **Improvizacije**.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
@@ -172,7 +190,6 @@ popunjena.
 ## Napomene za dalju razradu
 
 Otvorena pitanja su izdvojena u [otvorena-pitanja.md](otvorena-pitanja.md).
-Od prvobitnog spiska ostalo je: prioriteti sala, koja je „dodatna sala koju ne
-treba koristiti" u Knez Miletinoj, i dostupnost nastavnika po danima.
+Od prvobitnog spiska ostali su prioriteti sala i dostupnost nastavnika po danima.
 Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
 odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
