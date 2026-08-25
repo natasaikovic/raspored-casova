@@ -1,9 +1,20 @@
 import pytest
 
-from src.loader import UlazGreska, ucitaj
+from src.loader import (
+    UlazGreska,
+    ucitaj,
+    ucitaj_nedostupnost,
+    ucitaj_prostorije,
+    ucitaj_vise,
+)
 from src.model import Skola, Smena, kapacitet_smene
 
 OBS = "ulazi/osnovna_baletska_skola.csv"
+SVI_ULAZI = (
+    OBS,
+    "ulazi/srednja_baletska_skola.csv",
+    "ulazi/ostali_casovi.csv",
+)
 
 ZAGLAVLJE = (
     "предмет,разред,одељење,недељни фонд часова,часови корепетиције,"
@@ -131,7 +142,7 @@ class TestValidacija:
             "Класичан балет,први,11,4,4,Ана,Маја,црвена смена",
         )
 
-        with pytest.raises(UlazGreska, match="већ постоји у реду"):
+        with pytest.raises(UlazGreska, match="већ постоји"):
             ucitaj(putanja)
 
     def test_odbija_korepeticiju_bez_korepetitora(self, tmp_path):
@@ -167,3 +178,124 @@ class TestZajednickiCasovi:
         assert zahtev.zajednicki
         assert ulaz.skola is Skola.SREDNJA
         assert ulaz.opterecenje_odeljenja() == {"I1": 3, "I2": 3, "I3": 3}
+
+
+class TestCelaInstitucija:
+    """Both schools are one institution and load as one problem."""
+
+    def test_ucitava_sva_tri_ulaza_zajedno(self):
+        ulaz = ucitaj_vise(SVI_ULAZI)
+
+        assert ulaz.skola is None
+        assert len(ulaz.zahtevi) == 244
+        assert ulaz.ukupno_casova == 866
+        assert len(ulaz.odeljenja) == 45
+
+    def test_srednja_radi_ceo_dan(self):
+        ulaz = ucitaj_vise(SVI_ULAZI)
+
+        assert ulaz.odeljenja["I1"].smena is Smena.CEO_DAN
+        assert kapacitet_smene(Smena.CEO_DAN, broj_dana=6) == 84
+
+    def test_polugrupe_pokazuju_na_celo_odeljenje(self):
+        odeljenja = ucitaj_vise(SVI_ULAZI).odeljenja
+
+        assert odeljenja["I5А"].roditelj == "I5"
+        assert odeljenja["IV5Б"].roditelj == "IV5"
+        assert odeljenja["I5"].roditelj is None
+        assert odeljenja["11"].roditelj is None
+
+    def test_sala_se_ne_izvodi_samo_iz_korepetitora(self):
+        """Репертоар савремене игре needs a sala although nobody plays on it."""
+        predmeti = ucitaj_vise(SVI_ULAZI).predmeti
+
+        rsi = predmeti["Репертоар савремене игре"]
+        assert rsi.trazi_salu and not rsi.igracki
+        srp = predmeti["Српски језик и књижевност"]
+        assert not srp.trazi_salu and not srp.igracki
+
+    def test_opterecenje_se_sabira_kroz_obe_skole(self):
+        ulaz = ucitaj_vise(SVI_ULAZI)
+
+        # Ђорђина Убовић plays 22h in osnovna and teaches Солфеђо in srednja.
+        assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 22
+        assert ulaz.opterecenje_nastavnika()["Ђорђина Убовић"] == 5
+        # Лана Јеленковић reaches the 20h norm only across the two schools.
+        assert ulaz.opterecenje_korepetitora()["Лана Јеленковић"] == 20
+        # One person, once spelled Илевска in osnovna: 10h + 14h.
+        assert ulaz.opterecenje_nastavnika()["Ива Илиевска"] == 24
+        assert "Ива Илевска" not in ulaz.nastavnici
+
+    def test_greske_nose_ime_datoteke(self, tmp_path):
+        prva = napravi(tmp_path, "Класичан балет,први,11,10,10,Ана,Маја,црвена смена")
+        druga = tmp_path / "drugi.csv"
+        druga.write_text(
+            ZAGLAVLJE + "Класичан балет,први,11,10,10,Ана,Маја,плава смена\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska) as greska:
+            ucitaj_vise([prva, druga])
+
+        poruka = str(greska.value)
+        assert "drugi.csv, ред 2" in poruka
+        assert "одељење 11 је у смени" in poruka
+
+
+class TestProstorije:
+    def test_ucitava_stvarni_spisak(self):
+        prostorije = ucitaj_prostorije("ulazi/prostorije.csv")
+
+        assert len(prostorije) == 18
+        po_oznaci = {p.oznaka: p for p in prostorije}
+        assert po_oznaci["KM-1"].tip.value == "сала"
+        assert po_oznaci["KM-уч1"].tip.value == "учионица"
+        assert po_oznaci["NP-сала"].lokacija == "Народно позориште"
+
+    def test_odbija_nepoznat_tip_i_duplikat(self, tmp_path):
+        putanja = tmp_path / "prostorije.csv"
+        putanja.write_text(
+            "ознака,локација,тип,приоритет,напомена\n"
+            "KM-1,Кнез Милетина 8,сала,1,\n"
+            "KM-1,Кнез Милетина 8,шупа,,\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska) as greska:
+            ucitaj_prostorije(putanja)
+
+        assert len(greska.value.greske) == 2
+        assert "непознат тип „шупа“" in str(greska.value)
+        assert "већ постоји" in str(greska.value)
+
+
+class TestNedostupnost:
+    def test_prazna_datoteka_znaci_svi_dostupni(self):
+        assert ucitaj_nedostupnost("ulazi/nedostupnost.csv") == ()
+
+    def test_ucitava_opseg_blokova(self, tmp_path):
+        putanja = tmp_path / "nedostupnost.csv"
+        putanja.write_text(
+            "наставник,дан,од блока,до блока,напомена\n"
+            "Ана,петак,1,14,ради у другој школи\n",
+            encoding="utf-8",
+        )
+
+        (stavka,) = ucitaj_nedostupnost(putanja)
+
+        assert stavka.nastavnik == "Ана"
+        assert (stavka.od_bloka, stavka.do_bloka) == (1, 14)
+
+    def test_odbija_los_dan_i_opseg(self, tmp_path):
+        putanja = tmp_path / "nedostupnost.csv"
+        putanja.write_text(
+            "наставник,дан,од блока,до блока,напомена\n"
+            "Ана,недеља,9,3,\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska) as greska:
+            ucitaj_nedostupnost(putanja)
+
+        assert "непознат дан „недеља“" in str(greska.value)
+        assert "нису растући опсег" in str(greska.value)
