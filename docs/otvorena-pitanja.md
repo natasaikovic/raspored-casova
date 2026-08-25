@@ -46,12 +46,6 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 ## Pravila koja treba raščistiti
 
-- **Biblioteke.** Dve biblioteke u Knez Miletinoj — smeju li da se koriste kao
-  obične učionice? Prošle godine se u njima držala samo verska nastava.
-
-  Odgovor upisati u: `ulazi/prostorije.csv` i, ako predstavlja opšte pravilo,
-  u [pravila-rasporeda.md](pravila-rasporeda.md).
-
 - **Kadrovske rupe.** Korepetitor za 21 čas (osnovna
   `корепетитор br.1` 13 časova + srednja `?` 8 časova) još nije zaposlen;
   Dijani Jovanović (18 časova) sme da se doda. U referenci je nerazrešen par

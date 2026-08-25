@@ -113,7 +113,9 @@ popunjena.
 - šest sala koje se koriste;
 - jedna dodatna sala koju ne treba koristiti;
 - četiri učionice;
-- dve biblioteke.
+- jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
+  samo u nuždi;
+- jedna videoteka, koja se koristi isključivo za predmet **Gluma**.
 
 ### Sportska gimnazija
 
@@ -129,6 +131,7 @@ popunjena.
 ### Posebne prostorije i prioriteti
 
 - Informatika se održava u specijalnoj učionici.
+- Gluma se održava isključivo u videoteci.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
