@@ -13,7 +13,21 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from .model import Odeljenje, Predmet, Skola, Smena, Ulaz, Zahtev
+from dataclasses import replace
+
+from .model import (
+    BLOKOVI,
+    DANI,
+    Nedostupnost,
+    Odeljenje,
+    Predmet,
+    Prostorija,
+    Skola,
+    Smena,
+    TipProstorije,
+    Ulaz,
+    Zahtev,
+)
 
 KOLONE = (
     "предмет",
@@ -33,7 +47,14 @@ SMENE = {
     "црвена смена": Smena.CRVENA,
     "плава смена": Smena.PLAVA,
     "стално послеподне": Smena.STALNO_POPODNE,
+    "цео дан": Smena.CEO_DAN,
 }
+
+#: Subjects that need a sala although no korepetitor plays on them.
+SALA_BEZ_KOREPETITORA = frozenset({"Репертоар савремене игре", "Игре XX века"})
+
+#: Half-group suffixes: ``I5А`` and ``I5Б`` are halves of ``I5``.
+POLUGRUPA_SUFIKSI = ("А", "Б")
 
 #: Free-text shift descriptions start with this and need a hand-written rule.
 POSEBNA_SMENA_PREFIKS = "стално од"
@@ -49,34 +70,38 @@ class UlazGreska(ValueError):
 
 
 def ucitaj(putanja: str | Path, skola: Skola | None = None) -> Ulaz:
-    """Parse an input CSV into a validated :class:`Ulaz`.
+    """Parse one input CSV into a validated :class:`Ulaz`.
 
     Raises :class:`UlazGreska` listing every problem when the file is unusable.
     """
-    putanja = Path(putanja)
-    # utf-8-sig: spreadsheet tools and assistants routinely prepend a BOM.
-    with putanja.open(encoding="utf-8-sig", newline="") as datoteka:
-        citac = csv.DictReader(datoteka)
-        zaglavlje = [(ime or "").strip() for ime in (citac.fieldnames or [])]
-        nedostaju = [kolona for kolona in KOLONE if kolona not in zaglavlje]
-        if nedostaju:
-            raise UlazGreska(
-                [f"недостаје колона „{kolona}“" for kolona in nedostaju]
-            )
-        redovi = [
-            {(k or "").strip(): (v or "").strip() for k, v in red.items() if k}
-            for red in citac
-        ]
+    return ucitaj_vise([putanja], skola)
 
-    if not redovi:
-        raise UlazGreska(["датотека нема ниједан ред са подацима"])
 
+def ucitaj_vise(putanje: Iterable[str | Path], skola: Skola | None = None) -> Ulaz:
+    """Parse several input CSVs into one validated :class:`Ulaz`.
+
+    The whole institution is one scheduling problem — the two schools share
+    teachers, korepetitori and rooms — so the files are merged and validated
+    together. With more than one file, error messages carry the file name.
+    """
+    putanje = [Path(putanja) for putanja in putanje]
+    vise = len(putanje) > 1
     greske: list[str] = []
     zahtevi: list[Zahtev] = []
-    for pomeraj, red in enumerate(redovi, start=2):
-        zahtev = _procitaj_red(red, pomeraj, greske)
-        if zahtev:
-            zahtevi.append(zahtev)
+    for putanja in putanje:
+        oznaka = putanja.name if vise else ""
+        prefiks = f"{oznaka}: " if oznaka else ""
+        try:
+            redovi = _procitaj_redove(putanja)
+        except UlazGreska as greska:
+            greske.extend(prefiks + poruka for poruka in greska.greske)
+            continue
+        lokalne: list[str] = []
+        for pomeraj, red in enumerate(redovi, start=2):
+            zahtev = _procitaj_red(red, pomeraj, lokalne)
+            if zahtev:
+                zahtevi.append(replace(zahtev, datoteka=oznaka))
+        greske.extend(prefiks + poruka for poruka in lokalne)
 
     odeljenja = _sastavi_odeljenja(zahtevi, skola, greske)
     predmeti = _sastavi_predmete(zahtevi, greske)
@@ -91,6 +116,26 @@ def ucitaj(putanja: str | Path, skola: Skola | None = None) -> Ulaz:
         predmeti=predmeti,
         skola=skola or _pogodi_skolu(zahtevi),
     )
+
+
+def _procitaj_redove(putanja: Path, kolone: tuple[str, ...] = KOLONE) -> list[dict]:
+    """Read one CSV, check the header, and return stripped rows."""
+    # utf-8-sig: spreadsheet tools and assistants routinely prepend a BOM.
+    with putanja.open(encoding="utf-8-sig", newline="") as datoteka:
+        citac = csv.DictReader(datoteka)
+        zaglavlje = [(ime or "").strip() for ime in (citac.fieldnames or [])]
+        nedostaju = [kolona for kolona in kolone if kolona not in zaglavlje]
+        if nedostaju:
+            raise UlazGreska(
+                [f"недостаје колона „{kolona}“" for kolona in nedostaju]
+            )
+        redovi = [
+            {(k or "").strip(): (v or "").strip() for k, v in red.items() if k}
+            for red in citac
+        ]
+    if not redovi:
+        raise UlazGreska(["датотека нема ниједан ред са подацима"])
+    return redovi
 
 
 def _procitaj_red(
@@ -214,64 +259,89 @@ def _sastavi_odeljenja(
             ranije_smena = smene.get(oznaka)
             if ranije_smena and ranije_smena[0] is not zahtev.smena:
                 greske.append(
-                    f"ред {zahtev.red}: одељење {oznaka} је у смени "
-                    f"„{zahtev.smena.value}“, а у реду {ranije_smena[1]} "
+                    f"{zahtev.gde}: одељење {oznaka} је у смени "
+                    f"„{zahtev.smena.value}“, а у {ranije_smena[1]} "
                     f"у „{ranije_smena[0].value}“"
                 )
             else:
-                smene.setdefault(oznaka, (zahtev.smena, zahtev.red))
+                smene.setdefault(oznaka, (zahtev.smena, zahtev.gde))
             ranije_razred = razredi.get(oznaka)
             if ranije_razred and ranije_razred[0] != zahtev.razred:
                 greske.append(
-                    f"ред {zahtev.red}: одељење {oznaka} је у разреду "
-                    f"„{zahtev.razred}“, а у реду {ranije_razred[1]} "
+                    f"{zahtev.gde}: одељење {oznaka} је у разреду "
+                    f"„{zahtev.razred}“, а у {ranije_razred[1]} "
                     f"у „{ranije_razred[0]}“"
                 )
             else:
-                razredi.setdefault(oznaka, (zahtev.razred, zahtev.red))
+                razredi.setdefault(oznaka, (zahtev.razred, zahtev.gde))
             odeljenja[oznaka] = Odeljenje(
                 oznaka=oznaka,
                 razred=razredi[oznaka][0],
                 smena=smene[oznaka][0],
                 skola=skola or _skola_za_razred(zahtev.razred),
             )
-    return dict(sorted(odeljenja.items()))
+    return _povezi_polugrupe(dict(sorted(odeljenja.items())), greske)
+
+
+def _povezi_polugrupe(
+    odeljenja: dict[str, Odeljenje], greske: list[str]
+) -> dict[str, Odeljenje]:
+    """Link ``I5А``/``I5Б`` to ``I5`` and check the halves match the whole."""
+    for oznaka, odeljenje in odeljenja.items():
+        if not oznaka.endswith(POLUGRUPA_SUFIKSI):
+            continue
+        cela = odeljenja.get(oznaka[:-1])
+        if cela is None:
+            continue
+        if cela.razred != odeljenje.razred or cela.smena is not odeljenje.smena:
+            greske.append(
+                f"полугрупа {oznaka} се не слаже са одељењем {cela.oznaka} "
+                f"(разред „{odeljenje.razred}“/„{cela.razred}“, смена "
+                f"„{odeljenje.smena.value}“/„{cela.smena.value}“)"
+            )
+        odeljenja[oznaka] = replace(odeljenje, roditelj=cela.oznaka)
+    return odeljenja
 
 
 def _sastavi_predmete(zahtevi: list[Zahtev], greske: list[str]) -> dict[str, Predmet]:
     """Derive igrački/opšti per subject and flag subjects that mix the two."""
-    sa_korepetitorom: dict[str, list[int]] = defaultdict(list)
-    bez_korepetitora: dict[str, list[int]] = defaultdict(list)
+    sa_korepetitorom: dict[str, list[str]] = defaultdict(list)
+    bez_korepetitora: dict[str, list[str]] = defaultdict(list)
     for zahtev in zahtevi:
         cilj = sa_korepetitorom if zahtev.korepetitor else bez_korepetitora
-        cilj[zahtev.predmet].append(zahtev.red)
+        cilj[zahtev.predmet].append(zahtev.gde)
 
     predmeti: dict[str, Predmet] = {}
     for naziv in sorted({z.predmet for z in zahtevi}):
         sa = sa_korepetitorom.get(naziv, [])
         bez = bez_korepetitora.get(naziv, [])
-        if sa and bez:
+        if sa and bez and naziv not in SALA_BEZ_KOREPETITORA:
             greske.append(
-                f"предмет „{naziv}“ негде има корепетитора (редови "
-                f"{_spisak(sa)}), а негде нема (редови {_spisak(bez)})"
+                f"предмет „{naziv}“ негде има корепетитора ({_spisak(sa)}), "
+                f"а негде нема ({_spisak(bez)})"
             )
-        predmeti[naziv] = Predmet(naziv=naziv, igracki=bool(sa))
+        igracki = bool(sa)
+        predmeti[naziv] = Predmet(
+            naziv=naziv,
+            igracki=igracki,
+            trazi_salu=igracki or naziv in SALA_BEZ_KOREPETITORA,
+        )
     return predmeti
 
 
 def _proveri_duplikate(zahtevi: list[Zahtev], greske: list[str]) -> None:
     """A group should appear at most once per subject."""
-    vidjeno: dict[tuple[str, str], int] = {}
+    vidjeno: dict[tuple[str, str], str] = {}
     for zahtev in zahtevi:
         for oznaka in zahtev.odeljenja:
             kljuc = (zahtev.predmet, oznaka)
             if kljuc in vidjeno:
                 greske.append(
-                    f"ред {zahtev.red}: предмет „{zahtev.predmet}“ за одељење "
-                    f"{oznaka} већ постоји у реду {vidjeno[kljuc]}"
+                    f"{zahtev.gde}: предмет „{zahtev.predmet}“ за одељење "
+                    f"{oznaka} већ постоји ({vidjeno[kljuc]})"
                 )
             else:
-                vidjeno[kljuc] = zahtev.red
+                vidjeno[kljuc] = zahtev.gde
 
 
 def _oblik_greske(broj: int) -> str:
@@ -285,14 +355,117 @@ def _oblik_greske(broj: int) -> str:
     return f"{broj} грешака"
 
 
-def _spisak(redovi: list[int]) -> str:
-    return ", ".join(str(broj) for broj in sorted(redovi))
+def _spisak(mesta: list[str]) -> str:
+    return ", ".join(mesta)
 
 
 def _skola_za_razred(razred: str) -> Skola:
     return Skola.SREDNJA if razred in SREDNJI_RAZREDI else Skola.OSNOVNA
 
 
-def _pogodi_skolu(zahtevi: list[Zahtev]) -> Skola:
+def _pogodi_skolu(zahtevi: list[Zahtev]) -> Skola | None:
     razredi = {zahtev.razred for zahtev in zahtevi}
-    return Skola.SREDNJA if razredi <= SREDNJI_RAZREDI else Skola.OSNOVNA
+    if razredi <= SREDNJI_RAZREDI:
+        return Skola.SREDNJA
+    if razredi <= OSNOVNI_RAZREDI:
+        return Skola.OSNOVNA
+    return None
+
+
+KOLONE_PROSTORIJA = ("ознака", "локација", "тип", "приоритет", "напомена")
+
+
+def ucitaj_prostorije(putanja: str | Path) -> tuple[Prostorija, ...]:
+    """Parse the room list, or raise :class:`UlazGreska` with every problem."""
+    redovi = _procitaj_redove(Path(putanja), KOLONE_PROSTORIJA)
+    greske: list[str] = []
+    prostorije: list[Prostorija] = []
+    vidjeno: dict[str, int] = {}
+    tipovi = {tip.value: tip for tip in TipProstorije}
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        oznaka = red["ознака"]
+        if not oznaka:
+            greske.append(f"ред {broj_reda}: „ознака“ не сме бити празно")
+        elif oznaka in vidjeno:
+            greske.append(
+                f"ред {broj_reda}: просторија {oznaka} већ постоји "
+                f"у реду {vidjeno[oznaka]}"
+            )
+        else:
+            vidjeno[oznaka] = broj_reda
+        tip = tipovi.get(red["тип"])
+        if tip is None:
+            dozvoljeni = ", ".join(f"„{ime}“" for ime in tipovi)
+            greske.append(
+                f"ред {broj_reda}: непознат тип „{red['тип']}“; "
+                f"дозвољено је {dozvoljeni}"
+            )
+        prioritet = None
+        if red["приоритет"]:
+            prioritet = _ceo_broj(red["приоритет"], "приоритет", broj_reda, greske)
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        prostorije.append(
+            Prostorija(
+                oznaka=oznaka,
+                lokacija=red["локација"],
+                tip=tip,
+                prioritet=prioritet,
+                napomena=red["напомена"],
+            )
+        )
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(prostorije)
+
+
+KOLONE_NEDOSTUPNOSTI = ("наставник", "дан", "од блока", "до блока", "напомена")
+
+
+def ucitaj_nedostupnost(putanja: str | Path) -> tuple[Nedostupnost, ...]:
+    """Parse teacher unavailability; an empty file means everyone is available."""
+    putanja = Path(putanja)
+    try:
+        redovi = _procitaj_redove(putanja, KOLONE_NEDOSTUPNOSTI)
+    except UlazGreska as greska:
+        if greska.greske == ["датотека нема ниједан ред са подацима"]:
+            return ()
+        raise
+    greske: list[str] = []
+    stavke: list[Nedostupnost] = []
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        nastavnik = red["наставник"]
+        if not nastavnik:
+            greske.append(f"ред {broj_reda}: „наставник“ не сме бити празно")
+        dan = red["дан"]
+        if dan not in DANI:
+            dozvoljeni = ", ".join(DANI)
+            greske.append(
+                f"ред {broj_reda}: непознат дан „{dan}“; дозвољено је {dozvoljeni}"
+            )
+        od_bloka = _ceo_broj(red["од блока"], "од блока", broj_reda, greske,
+                             obavezan=True)
+        do_bloka = _ceo_broj(red["до блока"], "до блока", broj_reda, greske,
+                             obavezan=True)
+        if od_bloka and do_bloka:
+            if not (1 <= od_bloka <= do_bloka <= len(BLOKOVI)):
+                greske.append(
+                    f"ред {broj_reda}: блокови {od_bloka}–{do_bloka} нису "
+                    f"растући опсег између 1 и {len(BLOKOVI)}"
+                )
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        stavke.append(
+            Nedostupnost(
+                nastavnik=nastavnik,
+                dan=dan,
+                od_bloka=od_bloka,
+                do_bloka=do_bloka,
+                napomena=red["напомена"],
+            )
+        )
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(stavke)
