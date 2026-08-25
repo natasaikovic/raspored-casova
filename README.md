@@ -33,10 +33,22 @@ Format rešenja i spisak provera opisani su u dokumentu
 [docs/format-resenja.md](docs/format-resenja.md). Kratak, nepotpun primer nalazi
 se u `primeri/format-resenja.csv`.
 
+## Automatsko rešavanje
+
+Prva CP-SAT verzija rešavača pravi obe nedelje i svaki rezultat odmah šalje
+nezavisnom proveravaču:
+
+```bash
+python -m src.resavac --izlaz resenja/2026-27
+```
+
+Čvrsta ograničenja, optimizacija, hintovi i opcije komandne linije opisani su u
+[docs/resavac.md](docs/resavac.md).
+
 ## Trenutno stanje
 
-Učitavanje, validacija ulaza, domenski model i nezavisna provera predloženog
-rasporeda postoje. Automatski rešavač za pravljenje rasporeda još ne postoji.
+Učitavanje, validacija ulaza, domenski model, nezavisna provera i prva CP-SAT
+verzija automatskog rešavača postoje.
 
 ## Testovi
 

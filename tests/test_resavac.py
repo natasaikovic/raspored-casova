@@ -1,0 +1,124 @@
+from pathlib import Path
+
+from src.model import (
+    Odeljenje,
+    Predmet,
+    Prostorija,
+    Skola,
+    Smena,
+    TipProstorije,
+    Ulaz,
+    Zahtev,
+)
+from src.proveravac import ucitaj_resenje
+from src.resavac import resi_nedelju, sacuvaj_csv
+
+
+SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
+UCIONICA = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
+
+
+def zahtev(predmet, odeljenje, fond, nastavnik, korepetitor=None):
+    return Zahtev(
+        predmet=predmet,
+        razred="први",
+        odeljenja=(odeljenje,),
+        fond=fond,
+        fond_korepeticije=fond if korepetitor else 0,
+        nastavnik=nastavnik,
+        korepetitor=korepetitor,
+        smena=Smena.CRVENA,
+        smena_opis=Smena.CRVENA.value,
+        red=2,
+    )
+
+
+def ulaz(zahtevi):
+    oznake = {o for z in zahtevi for o in z.odeljenja}
+    odeljenja = {
+        o: Odeljenje(o, "први", Smena.CRVENA, Skola.OSNOVNA) for o in oznake
+    }
+    predmeti = {}
+    for z in zahtevi:
+        igracki = bool(z.korepetitor)
+        predmeti[z.predmet] = Predmet(z.predmet, igracki, igracki)
+    return Ulaz(tuple(zahtevi), odeljenja, predmeti, Skola.OSNOVNA)
+
+
+def test_resava_i_odmah_proverava_mali_raspored():
+    z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
+
+    rezultat = resi_nedelju(
+        ulaz([z]), (SALA, UCIONICA), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    assert len(rezultat.casovi) == 2
+    assert rezultat.casovi[0].blok + 1 == rezultat.casovi[1].blok
+    assert rezultat.izvestaj is not None
+    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+
+
+def test_isti_nastavnik_ne_moze_u_dva_odeljenja_istovremeno():
+    z1 = zahtev("Теорија 1", "11", 1, "Мила")
+    z2 = zahtev("Теорија 2", "12", 1, "Мила")
+
+    rezultat = resi_nedelju(
+        ulaz([z1, z2]), (SALA, UCIONICA), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    assert len({cas.termin for cas in rezultat.casovi}) == 2
+    assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
+
+
+def test_csv_izlaz_je_na_latinici(tmp_path: Path):
+    z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
+    rezultat = resi_nedelju(
+        ulaz([z]), (SALA, UCIONICA), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+    putanja = tmp_path / "nedelja.csv"
+
+    sacuvaj_csv(putanja, rezultat.casovi)
+
+    tekst = putanja.read_text(encoding="utf-8")
+    assert tekst.startswith("dan,blok,predmet,odeljenja,nastavnik,korepetitor,prostorija")
+    assert "Klasičan balet" in tekst
+    assert len(ucitaj_resenje(putanja)) == 2
+
+
+def test_srednjoskolski_dvocasi_istog_predmeta_su_razlicitim_danima():
+    z = Zahtev(
+        predmet="Класичан балет",
+        razred="I",
+        odeljenja=("I1",),
+        fond=6,
+        fond_korepeticije=6,
+        nastavnik="Мила",
+        korepetitor="Ива",
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+        red=2,
+    )
+    u = Ulaz(
+        (z,),
+        {"I1": Odeljenje("I1", "I", Smena.CEO_DAN, Skola.SREDNJA)},
+        {z.predmet: Predmet(z.predmet, True, True)},
+        Skola.SREDNJA,
+    )
+
+    rezultat = resi_nedelju(
+        u, (SALA,), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    po_danu = {}
+    for cas in rezultat.casovi:
+        po_danu.setdefault(cas.dan, []).append(cas.blok)
+    assert len(po_danu) == 3
+    assert all(sorted(blokovi)[1] == sorted(blokovi)[0] + 1 for blokovi in po_danu.values())
+    assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
