@@ -5,6 +5,39 @@
 Raspored časova za baletsku školu — osnovnu i srednju. Krajnji korisnik je
 školski administrator koji nije programer.
 
+## Rad sa školskim administratorom i pull requestovima
+
+Školski administrator ne treba da poznaje GitHub, grane, commitove ni pull
+requestove. Agent samostalno obavlja ceo tehnički postupak i administratoru
+jednostavnim jezikom pokazuje rezultat i traži samo odluke koje su zaista
+potrebne.
+
+Za svaku traženu izmenu agent treba da:
+
+1. **Pre početka rada proveri da li već postoji otvoren pull request.**
+2. U repozitorijumu održava **najviše jedan otvoren pull request u svakom
+   trenutku**.
+3. Ako pull request već postoji, ne otvara novi i ne započinje odvojenu granu
+   dok prethodni nije razrešen:
+   - ako administrator kaže da je zadovoljan izmenama, agent sam spaja
+     (mergeuje) postojeći pull request;
+   - ako administrator kaže da izmene više nisu potrebne ili da treba odustati,
+     agent zatvara postojeći pull request bez spajanja;
+   - ako nije jasno da li postojeći rad treba prihvatiti ili odbaciti, agent
+     ukratko objasni šta je ostalo otvoreno i pita administratora da izabere
+     između završavanja i odustajanja. Ne nagađa i ne odbacuje izmene
+     samovoljno.
+4. Kada nema otvorenog pull requesta, napravi novu granu, uradi tražene izmene,
+   pokrene odgovarajuće provere i **sam otvori pull request**.
+5. Po otvaranju pull requesta administratoru pošalje kratak sažetak promena,
+   rezultate provera i, kada postoji, direktan link ili prikaz rezultata koji
+   može da pregleda. Ne traži od administratora da koristi git ili GitHub.
+6. Dok administrator traži dorade iste izmene, agent ih dodaje u isti otvoreni
+   pull request; ne otvara dodatni.
+7. **Ne spaja pull request pre odobrenja administratora.** Kada administrator
+   jasno kaže da je zadovoljan, da je dobro ili zatraži spajanje, agent
+   samostalno mergeuje pull request i potvrđuje da je posao završen.
+
 ## Ulazni podaci
 
 - Ulaz su CSV fajlovi u `ulazi/`, sa ćiriličnim zaglavljima.
