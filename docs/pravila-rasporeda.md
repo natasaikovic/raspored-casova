@@ -2,7 +2,45 @@
 
 Ovaj dokument sadrži početna pravila i poželjne osobine rasporeda časova. Pravila će se dopunjavati i precizirati tokom razvoja.
 
+## Ustanova
+
+Osnovna i srednja baletska škola su **jedna ustanova**: dele nastavnike,
+korepetitore i prostorije, pa se raspored rešava kao jedan problem (sva tri
+ulazna CSV fajla zajedno). Norma nastavnika i korepetitora je **20 časova
+nedeljno u idealnom slučaju**, sabrano kroz obe škole; nekoliko ljudi je iznad
+(22–24) i to je dozvoljeno.
+
 ## Srednja škola
+
+### Smene i dnevno opterećenje
+
+Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
+(u praksi 08:00–16:00, ređe kasnije). Dnevno odeljenje sme da ima najviše
+**4 igračka i 4 opšta časa**.
+
+### Dvočasi
+
+- **Glavni predmet** (Klasičan balet 12č, Savremena igra 10č, Narodna igra 10č)
+  je **uvek dvočas, tačno jedan dnevno, nikad dva u istom danu**. Iz toga sledi
+  da odseci sa 12 časova glavnog predmeta imaju čas i **subotom** (6 dvočasa).
+- Ostali igrački predmeti sa neparnim fondom: dvočas + samostalan čas (3 = 2+1).
+- **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
+- Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
+
+### Polugrupe
+
+Odeljenja narodnog odseka se za deo predmeta dele na polugrupe `А` i `Б`
+(`I5А`, `I5Б`); to su **ista deca** kao `I5`, pa se polugrupa i celo odeljenje
+ne smeju preklapati u vremenu. Istovremeni čas obe polugrupe nije obavezan.
+
+### Opšti predmeti
+
+- Jedan čas sme da pokrije **najviše 3 odeljenja**; grupisanje nije fiksno —
+  solver sme da bira (u ulazu je zapisano prošlogodišnje grupisanje).
+- **Verska nastava i Građansko vaspitanje** istog razreda drže se
+  **istovremeno** (učenici pohađaju jedno od ta dva).
+- Repertoar savremene igre i Igre XX veka **traže salu iako nemaju
+  korepetitora** (spisak `SALA_BEZ_KOREPETITORA` u loaderu).
 
 ### Igrački predmeti
 
@@ -60,6 +98,10 @@ Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
 ## Učionice, sale i lokacije
 
+Spisak prostorija je u `ulazi/prostorije.csv` (18 prostorija, izvučene iz
+prošlogodišnjeg rasporeda — nisu se menjale). Kolona `приоритет` još nije
+popunjena.
+
 ### Knez Miletina
 
 - šest sala koje se koriste;
@@ -87,8 +129,16 @@ Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
 ## Nastavnici
 
-- Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom).
+- Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom);
+  nastavnici opštih predmeta često rade i u drugim školama.
+- Nedostupnost se beleži u `ulazi/nedostupnost.csv`
+  (`наставник,дан,од блока,до блока,напомена`); prazan fajl = svi dostupni.
+  **Ovo je najvažniji podatak koji trenutno fali**: šest nastavnika osnovne ima
+  tačno 20 časova, a jutarnja smena ima 4 bloka × 5 dana = 20, pa svaki
+  nepoznati slobodan dan obara rešivost.
 - Nastavnici mogu imati pauzu između časova, ali je poželjno da je nemaju.
+- `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
+  osoba** — zajedno 21č, u okviru norme.
 
 ## Vremenski blokovi
 
@@ -111,7 +161,8 @@ Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
 ## Redosled i poželjne osobine rasporeda
 
-- Predmeti se uglavnom održavaju kao dvočasi.
+- Predmeti se uglavnom održavaju kao dvočasi (za srednju vidi tačna pravila
+  gore; za osnovnu iz prošlogodišnjeg rasporeda sledi isto — igrački dvočasi).
 - Prvo treba rasporediti osnovnu školu, a zatim srednju školu.
 - Učenici ne smeju imati prazne časove.
 - Izuzetak je promena lokacije, kada učenici moraju imati pauzu od jednog časovnog bloka.
@@ -120,12 +171,8 @@ Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 
 ## Napomene za dalju razradu
 
-Potrebno je naknadno precizirati:
-
-- koja odeljenja menjaju smene i kojim redosledom;
-- koje odeljenje je uvek u popodnevnoj smeni;
-- nazive, kapacitete i prioritete svih sala i učionica;
-- koja od dodatnih prostorija može da se koristi i pod kojim uslovima;
-- tačnu specijalnu učionicu za Informatiku;
-- dostupnost svakog nastavnika i korepetitora po danima i vremenskim blokovima;
-- koji predmeti su dvočasi, a koji se održavaju kao pojedinačni časovi.
+Otvorena pitanja su izdvojena u [otvorena-pitanja.md](otvorena-pitanja.md).
+Od prvobitnog spiska ostalo je: prioriteti sala, koja je „dodatna sala koju ne
+treba koristiti" u Knez Miletinoj, i dostupnost nastavnika po danima.
+Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
+odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
