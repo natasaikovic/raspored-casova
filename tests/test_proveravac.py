@@ -119,6 +119,26 @@ def test_ispravan_dvocas_osnovne_skole():
     assert izvestaj.greske == []
 
 
+def test_latinicno_resenje_se_povezuje_sa_cirilicnim_ulazom():
+    z = zahtev(
+        "Класичан балет",
+        ["11"],
+        2,
+        "Мила",
+        korepetitor="Ива",
+        fond_korepeticije=2,
+    )
+    ulaz = napravi_ulaz([z], igracki={z.predmet})
+    casovi = (
+        Cas("ponedeljak", 1, "Klasičan balet", ("11",), "Mila", "Iva", "S1", 2),
+        Cas("ponedeljak", 2, "Klasičan balet", ("11",), "Mila", "Iva", "S1", 3),
+    )
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert izvestaj.ispravan, izvestaj.tekst(latinica=True)
+
+
 def test_prijavljuje_sudar_nastavnika():
     z1 = zahtev("Класичан балет", ["11"], 1, "Мила", red=2)
     z2 = zahtev("Класичан балет", ["12"], 1, "Мила", red=3)

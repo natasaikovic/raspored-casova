@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -33,6 +33,7 @@ from .model import (
     Ulaz,
     Zahtev,
 )
+from .pismo import kljuc_pisma, u_latinicu
 
 
 KOLONE_RESENJA = (
@@ -43,6 +44,16 @@ KOLONE_RESENJA = (
     "наставник",
     "корепетитор",
     "просторија",
+)
+
+KOLONE_RESENJA_LATINICA = (
+    "dan",
+    "blok",
+    "predmet",
+    "odeljenja",
+    "nastavnik",
+    "korepetitor",
+    "prostorija",
 )
 
 VERSKA = "Верска настава"
@@ -85,7 +96,7 @@ class Izvestaj:
     def ispravan(self) -> bool:
         return not self.greske
 
-    def tekst(self) -> str:
+    def tekst(self, latinica: bool = False) -> str:
         delovi: list[str] = []
         if self.greske:
             delovi.append(f"Распоред није исправан ({len(self.greske)} грешака):")
@@ -95,7 +106,8 @@ class Izvestaj:
         if self.upozorenja:
             delovi.append(f"Упозорења ({len(self.upozorenja)}):")
             delovi.extend(f"  - {poruka}" for poruka in self.upozorenja)
-        return "\n".join(delovi)
+        rezultat = "\n".join(delovi)
+        return u_latinicu(rezultat) if latinica else rezultat
 
 
 class ResenjeGreska(ValueError):
@@ -116,8 +128,10 @@ def ucitaj_resenje(putanja: str | Path) -> tuple[Cas, ...]:
         with putanja.open(encoding="utf-8-sig", newline="") as datoteka:
             citac = csv.DictReader(datoteka)
             zaglavlje = tuple((ime or "").strip() for ime in (citac.fieldnames or ()))
-            nedostaju = [kolona for kolona in KOLONE_RESENJA if kolona not in zaglavlje]
-            visak = [kolona for kolona in zaglavlje if kolona not in KOLONE_RESENJA]
+            latinica = bool(set(zaglavlje) & set(KOLONE_RESENJA_LATINICA))
+            kolone = KOLONE_RESENJA_LATINICA if latinica else KOLONE_RESENJA
+            nedostaju = [kolona for kolona in kolone if kolona not in zaglavlje]
+            visak = [kolona for kolona in zaglavlje if kolona not in kolone]
             greske.extend(f"недостаје колона „{kolona}“" for kolona in nedostaju)
             greske.extend(f"непозната колона „{kolona}“" for kolona in visak)
             if nedostaju:
@@ -139,11 +153,12 @@ def ucitaj_resenje(putanja: str | Path) -> tuple[Cas, ...]:
                         )
                     return vrednost
 
-                dan = obavezno("дан")
-                predmet = obavezno("предмет")
-                nastavnik = obavezno("наставник")
-                prostorija = obavezno("просторија")
-                sirova_odeljenja = obavezno("одељења")
+                nazivi = dict(zip(KOLONE_RESENJA, kolone))
+                dan = obavezno(nazivi["дан"])
+                predmet = obavezno(nazivi["предмет"])
+                nastavnik = obavezno(nazivi["наставник"])
+                prostorija = obavezno(nazivi["просторија"])
+                sirova_odeljenja = obavezno(nazivi["одељења"])
                 odeljenja = tuple(
                     deo.strip() for deo in sirova_odeljenja.split(";") if deo.strip()
                 )
@@ -155,7 +170,7 @@ def ucitaj_resenje(putanja: str | Path) -> tuple[Cas, ...]:
                     )
 
                 blok: int | None = None
-                sirovi_blok = obavezno("блок")
+                sirovi_blok = obavezno(nazivi["блок"])
                 if sirovi_blok:
                     try:
                         blok = int(sirovi_blok)
@@ -178,7 +193,7 @@ def ucitaj_resenje(putanja: str | Path) -> tuple[Cas, ...]:
                             predmet=predmet,
                             odeljenja=odeljenja,
                             nastavnik=nastavnik,
-                            korepetitor=red.get("корепетитор", "") or None,
+                            korepetitor=red.get(nazivi["корепетитор"], "") or None,
                             prostorija=prostorija,
                             red=broj_reda,
                         )
@@ -204,6 +219,7 @@ def proveri(
     if jutarnja_smena not in (Smena.CRVENA, Smena.PLAVA):
         raise ValueError("Јутарња смена мора бити црвена или плава")
 
+    casovi = _kanonizuj_casove(ulaz, prostorije, casovi)
     prostorije_po_oznaci = {p.oznaka: p for p in prostorije}
     zahtevi_po_odeljenju = {
         (zahtev.predmet, odeljenje): zahtev
@@ -232,6 +248,42 @@ def proveri(
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
     _upozori_na_pauze_nastavnika(casovi, izvestaj)
     return izvestaj
+
+
+def _kanonizuj_casove(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    casovi: Sequence[Cas],
+) -> tuple[Cas, ...]:
+    """Poveži latinične izlazne vrednosti sa kanonskim vrednostima iz ulaza."""
+
+    def mapa(vrednosti: Iterable[str]) -> dict[str, str]:
+        return {kljuc_pisma(vrednost): vrednost for vrednost in vrednosti}
+
+    dani = mapa(DANI)
+    predmeti = mapa(ulaz.predmeti)
+    odeljenja = mapa(ulaz.odeljenja)
+    nastavnici = mapa(ulaz.nastavnici)
+    korepetitori = mapa(ulaz.korepetitori)
+    oznake_prostorija = mapa(p.oznaka for p in prostorije)
+
+    def nadji(vrednost: str, vrednosti: dict[str, str]) -> str:
+        return vrednosti.get(kljuc_pisma(vrednost), vrednost)
+
+    return tuple(
+        replace(
+            cas,
+            dan=nadji(cas.dan, dani),
+            predmet=nadji(cas.predmet, predmeti),
+            odeljenja=tuple(nadji(o, odeljenja) for o in cas.odeljenja),
+            nastavnik=nadji(cas.nastavnik, nastavnici),
+            korepetitor=(
+                nadji(cas.korepetitor, korepetitori) if cas.korepetitor else None
+            ),
+            prostorija=nadji(cas.prostorija, oznake_prostorija),
+        )
+        for cas in casovi
+    )
 
 
 def _proveri_red(
@@ -747,7 +799,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     argumenti = parser.parse_args(argv)
     jutarnja = Smena.CRVENA if argumenti.jutarnja_smena == "crvena" else Smena.PLAVA
     izvestaj = proveri_datoteku(argumenti.resenje, argumenti.ulazi, jutarnja)
-    print(izvestaj.tekst())
+    print(izvestaj.tekst(latinica=True))
     return 0 if izvestaj.ispravan else 1
 
 
