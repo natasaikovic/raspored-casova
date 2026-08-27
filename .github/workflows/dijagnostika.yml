@@ -20,36 +20,72 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - name: Privremeno razdvoji OO od strucnih neigrackih predmeta
+      - name: Privremeno ispravi klasifikaciju i pravila subote
         run: |
           python - <<'PY'
           from pathlib import Path
 
           p = Path('src/resavac.py')
           tekst = p.read_text(encoding='utf-8')
-          stara = """                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti\n                    cilj.append(\n"""
-          nova = """                    if ulaz.predmeti[zahtev.predmet].igracki:\n                        cilj = igracki\n                    elif zahtev.predmet in OPSTI_PREDMETI:\n                        cilj = opsti\n                    else:\n                        continue\n                    cilj.append(\n"""
-          if stara not in tekst:
-              raise SystemExit('Nije pronadjeno mesto za klasifikaciju predmeta')
+
           konstanta = '''\nOPSTI_PREDMETI = frozenset({\n    "Српски језик и књижевност",\n    "Француски језик",\n    "Енглески језик",\n    "Историја",\n    "Рачунарство и информатика",\n    "Математика",\n    "Биологија",\n    "Психологија",\n    "Социологија",\n    "Филозофија",\n    "Верска настава",\n    "Грађанско васпитање",\n})\n'''
           marker = 'NEPOZNATI_KOREPETITOR = "?"\n'
-          tekst = tekst.replace(marker, marker + konstanta, 1).replace(stara, nova, 1)
+          if 'OPSTI_PREDMETI = frozenset' not in tekst:
+              tekst = tekst.replace(marker, marker + konstanta, 1)
+
+          stara_klasifikacija = """                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti\n                    cilj.append(\n"""
+          nova_klasifikacija = """                    if ulaz.predmeti[zahtev.predmet].igracki:\n                        cilj = igracki\n                    elif zahtev.predmet in OPSTI_PREDMETI:\n                        cilj = opsti\n                    else:\n                        continue\n                    cilj.append(\n"""
+          if stara_klasifikacija not in tekst:
+              raise SystemExit('Nije pronadjeno mesto za klasifikaciju predmeta')
+          tekst = tekst.replace(stara_klasifikacija, nova_klasifikacija, 1)
+
+          # Posle formiranja bool promenljivih po danu, eksplicitno zabrani subotu
+          # svemu osim igrackim predmetima SBŠ KB/SI (indeksi 1-4).
+          stara_subota = """        model.add_exactly_one(po_danu)\n        po_danu_b: tuple[cp_model.BoolVar, ...] | None = None\n"""
+          nova_subota = """        model.add_exactly_one(po_danu)\n        predmet_jedinice = ulaz.predmeti[zahtev.predmet]\n        odeljenja_jedinice = [ulaz.odeljenja[o] for o in zahtev.odeljenja]\n        dozvoljena_subota = (\n            bool(odeljenja_jedinice)\n            and all(o.skola is Skola.SREDNJA for o in odeljenja_jedinice)\n            and predmet_jedinice.igracki\n            and all(o.oznaka.rstrip('АБ')[-1] in '1234' for o in odeljenja_jedinice)\n        )\n        if not dozvoljena_subota:\n            model.add(po_danu[len(DANI) - 1] == 0)\n        po_danu_b: tuple[cp_model.BoolVar, ...] | None = None\n"""
+          if stara_subota not in tekst:
+              raise SystemExit('Nije pronadjeno mesto za pravilo subote')
+          tekst = tekst.replace(stara_subota, nova_subota, 1)
+
+          # Dodaj i stvarni maksimum od 8 ukupno dnevno po učeniku.
+          stara_limit = """                model.add(sum(igracki) <= 4)\n                model.add(sum(opsti) <= 4)\n"""
+          nova_limit = """                model.add(sum(igracki) <= 4)\n                model.add(sum(opsti) <= 4)\n                model.add(\n                    sum(\n                        jedinica.trajanje\n                        * promenljive[jedinica.indeks].po_danu[indeks_dana]\n                        for jedinica in stavke\n                    ) <= 8\n                )\n"""
+          if stara_limit not in tekst:
+              raise SystemExit('Nije pronadjeno mesto za dnevni limit')
+          tekst = tekst.replace(stara_limit, nova_limit, 1)
+
           p.write_text(tekst, encoding='utf-8')
           PY
-      - name: Pokreni solver sa ispravljenom klasifikacijom
+      - name: Proveri samo izvodljivost
         run: |
           python - <<'PY'
-          from src.resavac import ucitaj_standardne_ulaze, resi_obe_nedelje
+          from ortools.sat.python import cp_model
+          from src.model import Smena
+          from src.resavac import napravi_model, ucitaj_standardne_ulaze
+
           ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze('ulazi')
-          a, b = resi_obe_nedelje(
-              ulaz, prostorije, nedostupnosti,
-              vremensko_ogranicenje=180,
-              broj_radnika=8,
-              seme=1,
+          model, jedinice, promenljive = napravi_model(
+              ulaz,
+              prostorije,
+              nedostupnosti,
+              Smena.CRVENA,
               hintovi=(),
+              sa_nedeljom_b=True,
           )
-          print(f'ISPRAVLJENA KLASIFIKACIJA: A={a.status}; B={b.status}; casoviA={len(a.casovi)}; casoviB={len(b.casovi)}')
-          if a.izvestaj:
-              print('GRESKE A:', len(a.izvestaj.greske))
-              print('UPOZORENJA A:', len(a.izvestaj.upozorenja))
+          # Dijagnostika traži bilo koje dopustivo rešenje, ne optimum.
+          model.clear_objective()
+          solver = cp_model.CpSolver()
+          solver.parameters.max_time_in_seconds = 300
+          solver.parameters.num_search_workers = 8
+          solver.parameters.random_seed = 1
+          solver.parameters.stop_after_first_solution = True
+          status = solver.solve(model)
+          print('STATUS IZVODLJIVOSTI:', solver.status_name(status))
+          print('JEDINICA:', len(jedinice))
+          if status in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+              print('PRONADJENO OSNOVNO RESENJE: DA')
+          elif status == cp_model.INFEASIBLE:
+              print('PRONADJENO OSNOVNO RESENJE: NE - DOKAZANO INFEASIBLE')
+          else:
+              print('PRONADJENO OSNOVNO RESENJE: NIJE UTVRDJENO U LIMITU')
           PY
