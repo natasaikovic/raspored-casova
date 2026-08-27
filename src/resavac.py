@@ -41,6 +41,21 @@ NP_SALA = "NP-сала"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
+OPSTI_PREDMETI = frozenset({
+    "Српски језик и књижевност",
+    "Француски језик",
+    "Енглески језик",
+    "Историја",
+    "Рачунарство и информатика",
+    "Математика",
+    "Биологија",
+    "Психологија",
+    "Социологија",
+    "Филозофија",
+    "Верска настава",
+    "Грађанско васпитање",
+})
+
 # Razmak između dana sprečava interval dužine dva da pređe u sledeći dan.
 KORAK_DANA = 20
 
@@ -191,6 +206,19 @@ def _moguce_prostorije(
     return tuple(p for p in prostorije if p.tip is tip and p.oznaka != NP_SALA)
 
 
+def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
+    """Subotom nastavu imaju samo igracki predmeti SBŠ odseka KB i SI."""
+
+    predmet = ulaz.predmeti[zahtev.predmet]
+    odeljenja = [ulaz.odeljenja[o] for o in zahtev.odeljenja]
+    return (
+        bool(odeljenja)
+        and all(o.skola is Skola.SREDNJA for o in odeljenja)
+        and predmet.igracki
+        and all(o.oznaka.rstrip("АБ")[-1] in "1234" for o in odeljenja)
+    )
+
+
 def _resurs_korepetitora(ime: str) -> str:
     if ime in (KOREPETITOR_BR_1, NEPOZNATI_KOREPETITOR):
         return "будући корепетитор"
@@ -324,6 +352,9 @@ def napravi_model(
             model.add(dan != indeks_dana).only_enforce_if(~prisutan)
             po_danu.append(prisutan)
         model.add_exactly_one(po_danu)
+        dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)
+        if not dozvoljena_subota:
+            model.add(po_danu[len(DANI) - 1] == 0)
         po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
@@ -336,6 +367,8 @@ def napravi_model(
                     b_dani.append(prisutan_b)
                 model.add_exactly_one(b_dani)
                 po_danu_b = tuple(b_dani)
+                if not dozvoljena_subota:
+                    model.add(b_dani[len(DANI) - 1] == 0)
             else:
                 po_danu_b = tuple(po_danu)
 
@@ -611,15 +644,21 @@ def napravi_model(
             if odeljenje.skola is Skola.SREDNJA:
                 igracki = []
                 opsti = []
+                ukupno = []
                 for jedinica in stavke:
                     zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
-                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti
-                    cilj.append(
+                    prisustvo = (
                         jedinica.trajanje
                         * promenljive[jedinica.indeks].po_danu[indeks_dana]
                     )
+                    ukupno.append(prisustvo)
+                    if ulaz.predmeti[zahtev.predmet].igracki:
+                        igracki.append(prisustvo)
+                    elif zahtev.predmet in OPSTI_PREDMETI:
+                        opsti.append(prisustvo)
                 model.add(sum(igracki) <= 4)
                 model.add(sum(opsti) <= 4)
+                model.add(sum(ukupno) <= 8)
 
     # Naizmenična odeljenja imaju zaseban raspored u B, pa isti približni cilj
     # kvaliteta primenjujemo i na njihove B promenljive.
