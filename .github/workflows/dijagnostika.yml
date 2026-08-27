@@ -47,24 +47,30 @@ jobs:
           from src.model import Smena
           from src.resavac import napravi_model, ucitaj_standardne_ulaze
 
-          mapa = {
-              'ponedeljak': 'понедељак',
-              'utorak': 'уторак',
-              'sreda': 'среда',
-              'cetvrtak': 'четвртак',
-              'petak': 'петак',
-              'subota': 'субота',
+          mapa_scenarija = {
+              'samo-ponedeljak': ('samo', 'понедељак'),
+              'samo-utorak': ('samo', 'уторак'),
+              'samo-sreda': ('samo', 'среда'),
+              'samo-cetvrtak': ('samo', 'четвртак'),
+              'samo-petak': ('samo', 'петак'),
+              'samo-subota': ('samo', 'субота'),
+              'bez-ponedeljka': ('bez', 'понедељак'),
+              'bez-utorka': ('bez', 'уторак'),
+              'bez-srede': ('bez', 'среда'),
+              'bez-cetvrtka': ('bez', 'четвртак'),
+              'bez-petka': ('bez', 'петак'),
+              'bez-subote': ('bez', 'субота'),
           }
           ulaz, prostorije, sve = ucitaj_standardne_ulaze('ulazi')
           scenario = os.environ['SCENARIO']
           if scenario == 'sve':
               nd = sve
-          elif scenario.startswith('samo-'):
-              dan = mapa[scenario.removeprefix('samo-')]
-              nd = tuple(x for x in sve if x.dan == dan)
           else:
-              dan = mapa[scenario.removeprefix('bez-')]
-              nd = tuple(x for x in sve if x.dan != dan)
+              rezim, dan = mapa_scenarija[scenario]
+              if rezim == 'samo':
+                  nd = tuple(x for x in sve if x.dan == dan)
+              else:
+                  nd = tuple(x for x in sve if x.dan != dan)
 
           model, _, _ = napravi_model(
               ulaz, prostorije, nd, Smena.CRVENA, (), sa_nedeljom_b=False
