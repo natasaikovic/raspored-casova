@@ -24,13 +24,17 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - name: Izoluj nedostupnosti
+      - name: Izoluj subotnja ogranicenja
         run: |
           python - <<'PY'
           from collections import defaultdict
           from src.resavac import ucitaj_standardne_ulaze, resi_obe_nedelje
+          from src.model import Skola
 
           ulaz, prostorije, sve = ucitaj_standardne_ulaze('ulazi')
+          subota = tuple(x for x in sve if x.dan == 'субота')
+          radni = tuple(x for x in sve if x.dan != 'субота')
+          subota_osobe = sorted({x.nastavnik for x in subota})
 
           def status(label, nedostupnosti, limit=45):
               a, b = resi_obe_nedelje(
@@ -43,32 +47,41 @@ jobs:
               print(f'{label}: A={a.status}; B={b.status}; n={len(nedostupnosti)}', flush=True)
               return a.status
 
-          status('BEZ NEDOSTUPNOSTI', ())
-          status('SVE NEDOSTUPNOSTI', sve)
+          print('SUBOTOM NEDOSTUPNI (' + str(len(subota_osobe)) + '): ' + ', '.join(subota_osobe), flush=True)
 
-          subota = tuple(x for x in sve if x.dan == 'субота')
-          radni = tuple(x for x in sve if x.dan != 'субота')
+          # Koliko igracke nastave srednje skole nosi svaka subotom nedostupna osoba.
+          # Odeljenja sa indeksom 1-4 su KB/SI; indeks 5 je NI i po pravilima ne ide subotom.
+          fond_kb_si = defaultdict(int)
+          detalji = defaultdict(list)
+          for z in ulaz.zahtevi:
+              if not ulaz.predmeti[z.predmet].igracki:
+                  continue
+              odeljenja = [ulaz.odeljenja[o] for o in z.odeljenja]
+              if not odeljenja or any(o.skola is not Skola.SREDNJA for o in odeljenja):
+                  continue
+              if not any(o.oznaka.rstrip('АБ')[-1] in '1234' for o in odeljenja):
+                  continue
+              if z.nastavnik in subota_osobe:
+                  fond_kb_si[z.nastavnik] += z.fond
+                  detalji[z.nastavnik].append(f'{z.predmet}/{"+".join(z.odeljenja)}={z.fond}')
+
+          kandidati = sorted(fond_kb_si, key=lambda ime: (-fond_kb_si[ime], ime))
+          print('SUBOTNJI KANDIDATI PO FONDU KB/SI:', flush=True)
+          for ime in kandidati:
+              print(f'  {ime}: {fond_kb_si[ime]} :: ' + '; '.join(detalji[ime]), flush=True)
+
+          status('SVE NEDOSTUPNOSTI', sve)
           status('SAMO SUBOTA', subota)
           status('SAMO PON-PET', radni)
 
-          po_osobi = defaultdict(list)
-          for x in sve:
-              po_osobi[x.nastavnik].append(x)
+          # Proveri da li jedna osoba sama otkljucava model kada joj se dozvoli subota.
+          for ime in kandidati[:12]:
+              nd = tuple(x for x in sve if not (x.dan == 'субота' and x.nastavnik == ime))
+              status('OSLOBODI SUBOTU: ' + ime, nd, limit=35)
 
-          aktivne_osobe = sorted(po_osobi)
-          print('BROJ OSOBA SA OGRANICENJIMA:', len(aktivne_osobe), flush=True)
-
-          # Podela na dve polovine daje brz binarni trag ka konfliktu.
-          pola = len(aktivne_osobe) // 2
-          for label, osobe in [('PRVA POLOVINA', aktivne_osobe[:pola]), ('DRUGA POLOVINA', aktivne_osobe[pola:])]:
-              skup = set(osobe)
-              nd = tuple(x for x in sve if x.nastavnik in skup)
-              status(label, nd)
-
-          # Brza pojedinačna provera osoba sa nesubotnjim ograničenjima.
-          kandidati = [ime for ime in aktivne_osobe if any(x.dan != 'субота' for x in po_osobi[ime])]
-          print('KANDIDATI SA OGRANICENJIMA PON-PET:', ', '.join(kandidati), flush=True)
-          for ime in kandidati:
-              nd = tuple(po_osobi[ime])
-              status('SAMO ' + ime, nd, limit=20)
+          # Ako nije dovoljna jedna osoba, probaj kumulativno najopterecenije.
+          for broj in (2, 4, 6, 8, 12):
+              oslobodi = set(kandidati[:broj])
+              nd = tuple(x for x in sve if not (x.dan == 'субота' and x.nastavnik in oslobodi))
+              status('OSLOBODI TOP ' + str(broj), nd, limit=45)
           PY
