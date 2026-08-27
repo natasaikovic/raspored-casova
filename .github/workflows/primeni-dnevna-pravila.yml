@@ -1,0 +1,103 @@
+name: Primeni dnevna pravila
+
+on:
+  push:
+    branches:
+      - sync-google-sheet-2026-08-25
+    paths:
+      - ".github/workflows/primeni-dnevna-pravila.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  primeni:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Uskladi validator i poostri dnevni raspored
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/proveravac.py')
+          t = p.read_text(encoding='utf-8')
+          marker = 'REPERTOAR_KLASICNOG = "Репертоар класичног балета"\n'
+          konst = '''\nOPSTI_PREDMETI = frozenset({\n    "Српски језик и књижевност",\n    "Француски језик",\n    "Енглески језик",\n    "Историја",\n    "Рачунарство и информатика",\n    "Математика",\n    "Биологија",\n    "Психологија",\n    "Социологија",\n    "Филозофија",\n    "Верска настава",\n    "Грађанско васпитање",\n})\n'''
+          if 'OPSTI_PREDMETI = frozenset' not in t:
+              t = t.replace(marker, marker + konst, 1)
+
+          old = '''                opsti = sum(\n                    1\n                    for blok in blokovi\n                    if all(not ulaz.predmeti[c.predmet].igracki for c in po_bloku[blok])\n                )\n'''
+          new = '''                opsti = sum(\n                    1\n                    for blok in blokovi\n                    if any(c.predmet in OPSTI_PREDMETI for c in po_bloku[blok])\n                )\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno validator OO brojanje')
+          t = t.replace(old, new, 1)
+
+          old = '''    for oznaka in ulaz.odeljenja:\n        verska = termini[(VERSKA, oznaka)]\n        gradjansko = termini[(GRADJANSKO, oznaka)]\n        if (verska or gradjansko) and verska != gradjansko:\n            izvestaj.greske.append(\n                f"Верска настава и Грађанско васпитање за {oznaka} "\n                "морају бити истовремено"\n            )\n'''
+          new = '''    ima_predmet = {\n        (zahtev.predmet, oznaka)\n        for zahtev in ulaz.zahtevi\n        if zahtev.predmet in ALTERNATIVNI_PREDMETI\n        for oznaka in zahtev.odeljenja\n    }\n    for oznaka in ulaz.odeljenja:\n        if (VERSKA, oznaka) not in ima_predmet or (GRADJANSKO, oznaka) not in ima_predmet:\n            continue\n        verska = termini[(VERSKA, oznaka)]\n        gradjansko = termini[(GRADJANSKO, oznaka)]\n        if verska != gradjansko:\n            izvestaj.greske.append(\n                f"Верска настава и Грађанско васпитање за {oznaka} "\n                "морају бити истовремено"\n            )\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjena validator alternativa')
+          t = t.replace(old, new, 1)
+          p.write_text(t, encoding='utf-8')
+
+          p = Path('src/resavac.py')
+          t = p.read_text(encoding='utf-8')
+
+          old = '''            prazni = model.new_int_var(0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni")\n            model.add(prazni >= poslednji - prvi + 1 - zauzeto)\n            kazne.append(1000 * prazni)\n'''
+          new = '''            prazni = model.new_int_var(0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni")\n            model.add(prazni == poslednji - prvi + 1 - zauzeto)\n            kazne.append(1000 * prazni)\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno A prazni')
+          t = t.replace(old, new, 1)
+
+          old = '''            model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)\n            kazne.append(300 * visak_lokacija)\n'''
+          new = '''            model.add(visak_lokacija == sum(koristi_lokaciju) - ima_cas)\n            model.add(sum(koristi_lokaciju) <= 2)\n            model.add(prazni == visak_lokacija)\n            kazne.append(300 * visak_lokacija)\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno A lokacije')
+          t = t.replace(old, new, 1)
+
+          old = '''                model.add(prazni_b >= poslednji_b - prvi_b + 1 - zauzeto_b)\n                kazne.append(1000 * prazni_b)\n'''
+          new = '''                model.add(prazni_b == poslednji_b - prvi_b + 1 - zauzeto_b)\n                kazne.append(1000 * prazni_b)\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno B prazni')
+          t = t.replace(old, new, 1)
+
+          old = '''                model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)\n                kazne.append(300 * visak_lokacija_b)\n'''
+          new = '''                model.add(visak_lokacija_b == sum(koristi_lokaciju_b) - ima_cas_b)\n                model.add(sum(koristi_lokaciju_b) <= 2)\n                model.add(prazni_b == visak_lokacija_b)\n                kazne.append(300 * visak_lokacija_b)\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno B lokacije')
+          t = t.replace(old, new, 1)
+          p.write_text(t, encoding='utf-8')
+
+          Path('tests/test_validator_opsti_alternativni.py').write_text('''from pathlib import Path\n\nfrom src.proveravac import OPSTI_PREDMETI\nfrom src.resavac import ucitaj_standardne_ulaze\n\n\ndef test_validator_i_solver_dele_oo_klasifikaciju():\n    assert "Традиционално певање" not in OPSTI_PREDMETI\n    assert "Етнологија" not in OPSTI_PREDMETI\n    assert "Српски језик и књижевност" in OPSTI_PREDMETI\n\n\ndef test_iii5_nema_gradjansko_u_ulazu():\n    ulaz, _, _ = ucitaj_standardne_ulaze(Path("ulazi"))\n    assert any(z.predmet == "Верска настава" and "III5" in z.odeljenja for z in ulaz.zahtevi)\n    assert not any(z.predmet == "Грађанско васпитање" and "III5" in z.odeljenja for z in ulaz.zahtevi)\n''', encoding='utf-8')
+          PY
+      - name: Testovi
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pytest -q
+      - name: Proveri strogu dopustivost
+        run: |
+          python - <<'PY'
+          from ortools.sat.python import cp_model
+          from src.model import Smena
+          from src.resavac import napravi_model, ucitaj_standardne_ulaze
+          ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze('ulazi')
+          model, _, _ = napravi_model(ulaz, prostorije, nedostupnosti, Smena.CRVENA, (), sa_nedeljom_b=True)
+          model.clear_objective()
+          solver = cp_model.CpSolver()
+          solver.parameters.max_time_in_seconds = 240
+          solver.parameters.num_search_workers = 8
+          status = solver.solve(model)
+          print('STATUS', solver.status_name(status), 'WALL', solver.wall_time)
+          if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+              raise SystemExit(1)
+          PY
+      - name: Commituj
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/resavac.py src/proveravac.py tests/test_validator_opsti_alternativni.py
+          git commit -m "Uskladi validator i poostri dnevni raspored"
+          git push origin HEAD:sync-google-sheet-2026-08-25
