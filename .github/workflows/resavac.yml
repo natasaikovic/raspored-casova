@@ -2,6 +2,14 @@ name: Rešavač rasporeda
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "ulazi/**/*.csv"
+      - "src/resavac.py"
+      - "src/loader.py"
+      - "src/model.py"
+      - "src/proveravac.py"
+      - ".github/workflows/resavac.yml"
   pull_request:
     paths:
       - "ulazi/**/*.csv"
