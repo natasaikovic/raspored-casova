@@ -36,7 +36,7 @@ jobs:
           radni = tuple(x for x in sve if x.dan != 'субота')
           subota_osobe = sorted({x.nastavnik for x in subota})
 
-          def status(label, nedostupnosti, limit=45):
+          def status(label, nedostupnosti, limit=35):
               a, b = resi_obe_nedelje(
                   ulaz, prostorije, nedostupnosti,
                   vremensko_ogranicenje=limit,
@@ -49,8 +49,6 @@ jobs:
 
           print('SUBOTOM NEDOSTUPNI (' + str(len(subota_osobe)) + '): ' + ', '.join(subota_osobe), flush=True)
 
-          # Koliko igracke nastave srednje skole nosi svaka subotom nedostupna osoba.
-          # Odeljenja sa indeksom 1-4 su KB/SI; indeks 5 je NI i po pravilima ne ide subotom.
           fond_kb_si = defaultdict(int)
           detalji = defaultdict(list)
           for z in ulaz.zahtevi:
@@ -74,14 +72,11 @@ jobs:
           status('SAMO SUBOTA', subota)
           status('SAMO PON-PET', radni)
 
-          # Proveri da li jedna osoba sama otkljucava model kada joj se dozvoli subota.
-          for ime in kandidati[:12]:
-              nd = tuple(x for x in sve if not (x.dan == 'субота' and x.nastavnik == ime))
-              status('OSLOBODI SUBOTU: ' + ime, nd, limit=35)
-
-          # Ako nije dovoljna jedna osoba, probaj kumulativno najopterecenije.
-          for broj in (2, 4, 6, 8, 12):
+          # Brze kumulativne probe: koliko najopterecenijih nastavnika mora
+          # ponovo da bude dostupno subotom da dokazani INFEASIBLE nestane.
+          for broj in (4, 8, 12):
               oslobodi = set(kandidati[:broj])
+              print('OSLOBADJAM TOP ' + str(broj) + ': ' + ', '.join(kandidati[:broj]), flush=True)
               nd = tuple(x for x in sve if not (x.dan == 'субота' and x.nastavnik in oslobodi))
               status('OSLOBODI TOP ' + str(broj), nd, limit=45)
           PY
