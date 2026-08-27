@@ -24,7 +24,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - name: Izoluj subotnja ogranicenja
+      - name: Izoluj subotnji konflikt po vrsti nastave
         run: |
           python - <<'PY'
           from collections import defaultdict
@@ -33,10 +33,9 @@ jobs:
 
           ulaz, prostorije, sve = ucitaj_standardne_ulaze('ulazi')
           subota = tuple(x for x in sve if x.dan == 'субота')
-          radni = tuple(x for x in sve if x.dan != 'субота')
-          subota_osobe = sorted({x.nastavnik for x in subota})
+          subota_osobe = {x.nastavnik for x in subota}
 
-          def status(label, nedostupnosti, limit=35):
+          def status(label, nedostupnosti, limit=30):
               a, b = resi_obe_nedelje(
                   ulaz, prostorije, nedostupnosti,
                   vremensko_ogranicenje=limit,
@@ -47,36 +46,38 @@ jobs:
               print(f'{label}: A={a.status}; B={b.status}; n={len(nedostupnosti)}', flush=True)
               return a.status
 
-          print('SUBOTOM NEDOSTUPNI (' + str(len(subota_osobe)) + '): ' + ', '.join(subota_osobe), flush=True)
-
-          fond_kb_si = defaultdict(int)
-          detalji = defaultdict(list)
+          kategorije = defaultdict(set)
           for z in ulaz.zahtevi:
-              if not ulaz.predmeti[z.predmet].igracki:
+              if z.nastavnik not in subota_osobe:
                   continue
               odeljenja = [ulaz.odeljenja[o] for o in z.odeljenja]
-              if not odeljenja or any(o.skola is not Skola.SREDNJA for o in odeljenja):
+              if not odeljenja:
                   continue
-              if not any(o.oznaka.rstrip('АБ')[-1] in '1234' for o in odeljenja):
-                  continue
-              if z.nastavnik in subota_osobe:
-                  fond_kb_si[z.nastavnik] += z.fond
-                  detalji[z.nastavnik].append(f'{z.predmet}/{"+".join(z.odeljenja)}={z.fond}')
+              predmet = ulaz.predmeti[z.predmet]
+              if all(o.skola is Skola.OSNOVNA for o in odeljenja):
+                  kategorije['OBS'].add(z.nastavnik)
+              elif all(o.skola is Skola.SREDNJA for o in odeljenja):
+                  if not predmet.igracki:
+                      kategorije['OO'].add(z.nastavnik)
+                  elif all(o.oznaka.rstrip('АБ')[-1] == '5' for o in odeljenja):
+                      kategorije['NI'].add(z.nastavnik)
+                  else:
+                      kategorije['KBSI'].add(z.nastavnik)
 
-          kandidati = sorted(fond_kb_si, key=lambda ime: (-fond_kb_si[ime], ime))
-          print('SUBOTNJI KANDIDATI PO FONDU KB/SI:', flush=True)
-          for ime in kandidati:
-              print(f'  {ime}: {fond_kb_si[ime]} :: ' + '; '.join(detalji[ime]), flush=True)
+          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
+              osobe = sorted(kategorije[kat])
+              print(kat + ' SUBOTOM NEDOSTUPNI (' + str(len(osobe)) + '): ' + ', '.join(osobe), flush=True)
 
-          status('SVE NEDOSTUPNOSTI', sve)
-          status('SAMO SUBOTA', subota)
-          status('SAMO PON-PET', radni)
+          status('SAMO SUBOTA - SVI', subota)
+          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
+              osobe = kategorije[kat]
+              nd = tuple(x for x in subota if x.nastavnik in osobe)
+              status('SAMO SUBOTA - ' + kat, nd, limit=35)
 
-          # Brze kumulativne probe: koliko najopterecenijih nastavnika mora
-          # ponovo da bude dostupno subotom da dokazani INFEASIBLE nestane.
-          for broj in (4, 8, 12):
-              oslobodi = set(kandidati[:broj])
-              print('OSLOBADJAM TOP ' + str(broj) + ': ' + ', '.join(kandidati[:broj]), flush=True)
-              nd = tuple(x for x in sve if not (x.dan == 'субота' and x.nastavnik in oslobodi))
-              status('OSLOBODI TOP ' + str(broj), nd, limit=45)
+          # I komplementarne probe: iz punog skupa subotnjih zabrana ukloni
+          # celu kategoriju da vidimo koja kategorija otključava model.
+          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
+              osobe = kategorije[kat]
+              nd = tuple(x for x in subota if x.nastavnik not in osobe)
+              status('SUBOTA BEZ ' + kat, nd, limit=35)
           PY
