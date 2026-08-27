@@ -11,7 +11,24 @@ permissions:
   contents: read
 
 jobs:
-  dijagnostika:
+  po-danima:
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - sve
+          - samo-ponedeljak
+          - samo-utorak
+          - samo-sreda
+          - samo-cetvrtak
+          - samo-petak
+          - samo-subota
+          - bez-ponedeljka
+          - bez-utorka
+          - bez-srede
+          - bez-cetvrtka
+          - bez-petka
+          - bez-subote
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,37 +37,43 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - name: Izoluj konflikt nedostupnosti po danima
+      - name: Proveri scenario
+        env:
+          SCENARIO: ${{ matrix.scenario }}
         run: |
           python - <<'PY'
+          import os
           from ortools.sat.python import cp_model
-          from src.model import DANI, Smena
+          from src.model import Smena
           from src.resavac import napravi_model, ucitaj_standardne_ulaze
 
-          ulaz, prostorije, sve = ucitaj_standardne_ulaze("ulazi")
+          mapa = {
+              'ponedeljak': 'понедељак',
+              'utorak': 'уторак',
+              'sreda': 'среда',
+              'cetvrtak': 'четвртак',
+              'petak': 'петак',
+              'subota': 'субота',
+          }
+          ulaz, prostorije, sve = ucitaj_standardne_ulaze('ulazi')
+          scenario = os.environ['SCENARIO']
+          if scenario == 'sve':
+              nd = sve
+          elif scenario.startswith('samo-'):
+              dan = mapa[scenario.removeprefix('samo-')]
+              nd = tuple(x for x in sve if x.dan == dan)
+          else:
+              dan = mapa[scenario.removeprefix('bez-')]
+              nd = tuple(x for x in sve if x.dan != dan)
 
-          def status(label, nd, limit=35):
-              model, _, _ = napravi_model(
-                  ulaz, prostorije, tuple(nd), Smena.CRVENA, (), sa_nedeljom_b=False
-              )
-              model.clear_objective()
-              solver = cp_model.CpSolver()
-              solver.parameters.max_time_in_seconds = limit
-              solver.parameters.num_search_workers = 8
-              solver.parameters.random_seed = 1
-              st = solver.solve(model)
-              print(f"{label}: {solver.status_name(st)}; n={len(tuple(nd))}; wall={solver.wall_time:.2f}s", flush=True)
-              return st
-
-          print("BROJ NEDOSTUPNOSTI PO DANU:", flush=True)
-          for dan in DANI:
-              print(dan, sum(1 for x in sve if x.dan == dan), flush=True)
-
-          status("SVE", sve, 45)
-          for dan in DANI:
-              samo = tuple(x for x in sve if x.dan == dan)
-              status("SAMO " + dan, samo, 30)
-          for dan in DANI:
-              bez = tuple(x for x in sve if x.dan != dan)
-              status("SVE BEZ " + dan, bez, 40)
+          model, _, _ = napravi_model(
+              ulaz, prostorije, nd, Smena.CRVENA, (), sa_nedeljom_b=False
+          )
+          model.clear_objective()
+          solver = cp_model.CpSolver()
+          solver.parameters.max_time_in_seconds = 60
+          solver.parameters.num_search_workers = 8
+          solver.parameters.random_seed = 1
+          st = solver.solve(model)
+          print(f'SCENARIO={scenario}; STATUS={solver.status_name(st)}; N={len(nd)}; WALL={solver.wall_time:.2f}s')
           PY
