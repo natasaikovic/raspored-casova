@@ -45,7 +45,7 @@ jobs:
         run: |
           python -m src.resavac \
             --izlaz artifact \
-            --vremensko-ogranicenje 60 \
+            --vremensko-ogranicenje 300 \
             --broj-radnika 8 \
             --seme 1 \
             --bez-hintova
@@ -73,3 +73,7 @@ jobs:
             echo
             echo "Ako su CSV rezultati napravljeni, nalaze se u artifactu **raspored-solver**."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prijavi neuspeh rešavača
+        if: steps.solver.outcome != 'success'
+        run: exit 1
