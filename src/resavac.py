@@ -37,6 +37,7 @@ from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
+REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NP_SALA = "NP-сала"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
@@ -201,8 +202,10 @@ def _moguce_prostorije(
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
     if zahtev.predmet == INFORMATIKA:
         return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
-    # NP sala ima veoma usko pravilo. Prva verzija je ne koristi; ostalih deset
-    # sala daju dovoljan kapacitet, a izbegavanje NP znatno smanjuje model.
+    if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
+        "III1", "III2", "IV1", "IV2"
+    }:
+        return tuple(p for p in prostorije if p.tip is tip)
     return tuple(p for p in prostorije if p.tip is tip and p.oznaka != NP_SALA)
 
 
@@ -280,6 +283,14 @@ def napravi_model(
     intervali_korepetitora_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_prostorija_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
+    np_izbori: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
+    ima_np_program = all(
+        any(
+            z.predmet == REPERTOAR_KLASICNOG and oznaka in z.odeljenja
+            for z in ulaz.zahtevi
+        )
+        for oznaka in ("IV1", "IV2")
+    )
 
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
@@ -289,6 +300,16 @@ def napravi_model(
             jutarnja_smena,
             nedostupnosti,
         )
+        if zahtev.korepetitor and jedinica.korepeticija:
+            dozvoljeni = tuple(
+                (dan_i, blok_i)
+                for dan_i, blok_i in dozvoljeni
+                if not _nastavnik_nedostupan(
+                    zahtev.korepetitor, DANI[dan_i],
+                    tuple(blok_i + p for p in jedinica.korepeticija),
+                    nedostupnosti,
+                )
+            )
         if not dozvoljeni:
             raise ValueError(
                 f"{zahtev.gde}: нема дозвољеног почетка за „{zahtev.predmet}“"
@@ -321,6 +342,21 @@ def napravi_model(
                     jutarnja_b,
                     nedostupnosti,
                 )
+                if zahtev.korepetitor and jedinica.korepeticija:
+                    dozvoljeni_b = tuple(
+                        (dan_i, blok_i)
+                        for dan_i, blok_i in dozvoljeni_b
+                        if not _nastavnik_nedostupan(
+                            zahtev.korepetitor, DANI[dan_i],
+                            tuple(blok_i + p for p in jedinica.korepeticija),
+                            nedostupnosti,
+                        )
+                    )
+                if not dozvoljeni_b:
+                    raise ValueError(
+                        f"{zahtev.gde}: нема дозвољеног почетка у недељи B "
+                        f"за „{zahtev.predmet}“"
+                    )
                 vrednosti_starta_b = [
                     dan_i * KORAK_DANA + blok_i
                     for dan_i, blok_i in dozvoljeni_b
@@ -385,6 +421,12 @@ def napravi_model(
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
             po_lokaciji[prostorija.lokacija].append(koristi)
+            if prostorija.oznaka == NP_SALA:
+                np_izbori[zahtev.odeljenja[0]].append(koristi)
+                if jedinica.trajanje != 2:
+                    model.add(koristi == 0)
+                else:
+                    model.add(blok == 10).only_enforce_if(koristi)
             opcion = model.new_optional_interval_var(
                 start, jedinica.trajanje, kraj, koristi,
                 f"{prefiks}_{prostorija.oznaka}_i",
@@ -490,6 +532,11 @@ def napravi_model(
                         )
                     )
         jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
+
+    if ima_np_program:
+        model.add(sum(np_izbori["IV1"]) == 2)
+        model.add(sum(np_izbori["IV2"]) == 2)
+        model.add(sum(np_izbori["III1"]) + sum(np_izbori["III2"]) == 1)
 
     for intervali in intervali_nastavnika.values():
         model.add_no_overlap(intervali)

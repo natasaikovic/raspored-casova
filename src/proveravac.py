@@ -246,6 +246,7 @@ def proveri(
     _proveri_dnevni_raspored(ulaz, prostorije_po_oznaci, casovi, izvestaj)
     _proveri_dvocase(ulaz, casovi, izvestaj)
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
+    _proveri_narodno_pozoriste(ulaz, casovi, izvestaj)
     _upozori_na_pauze_nastavnika(casovi, izvestaj)
     return izvestaj
 
@@ -389,8 +390,53 @@ def _proveri_red(
                 f"{cas.gde}: наставник {cas.nastavnik} није доступан "
                 f"({cas.dan}, блокови {stavka.od_bloka}–{stavka.do_bloka})"
             )
+        if (
+            cas.korepetitor
+            and stavka.nastavnik == cas.korepetitor
+            and stavka.dan == cas.dan
+            and stavka.od_bloka <= cas.blok <= stavka.do_bloka
+        ):
+            izvestaj.greske.append(
+                f"{cas.gde}: корепетитор {cas.korepetitor} није доступан "
+                f"({cas.dan}, блокови {stavka.od_bloka}–{stavka.do_bloka})"
+            )
 
     return tuple(zahtevi)
+
+
+def _proveri_narodno_pozoriste(
+    ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj
+) -> None:
+    ima_np_program = all(
+        any(
+            z.predmet == REPERTOAR_KLASICNOG and oznaka in z.odeljenja
+            for z in ulaz.zahtevi
+        )
+        for oznaka in ("IV1", "IV2")
+    )
+    if not ima_np_program:
+        return
+    np_casovi = [cas for cas in casovi if cas.prostorija == "NP-сала"]
+    po_odeljenju = Counter(
+        cas.odeljenja[0] for cas in np_casovi if len(cas.odeljenja) == 1
+    )
+    if po_odeljenju["IV1"] != 4:
+        izvestaj.greske.append(
+            f"NP-сала: IV1 мора имати 4 блока (два двочаса), има {po_odeljenju['IV1']}"
+        )
+    if po_odeljenju["IV2"] != 4:
+        izvestaj.greske.append(
+            f"NP-сала: IV2 мора имати 4 блока (два двочаса), има {po_odeljenju['IV2']}"
+        )
+    treci = po_odeljenju["III1"] + po_odeljenju["III2"]
+    if treci != 2:
+        izvestaj.greske.append(
+            f"NP-сала: III1 или III2 морају имати један двочас (2 блока), има {treci}"
+        )
+    if len(np_casovi) != 10:
+        izvestaj.greske.append(
+            f"NP-сала: потребно је укупно 10 блокова (5 двочаса), има {len(np_casovi)}"
+        )
 
 
 def _proveri_smenu(
