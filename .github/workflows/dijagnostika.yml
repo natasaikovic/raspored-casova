@@ -6,10 +6,6 @@ on:
       - sync-google-sheet-2026-08-25
     paths:
       - ".github/workflows/dijagnostika.yml"
-      - "ulazi/**/*.csv"
-      - "src/resavac.py"
-      - "src/loader.py"
-      - "src/model.py"
 
 permissions:
   contents: read
@@ -24,60 +20,36 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -r requirements.txt
-      - name: Izoluj subotnji konflikt po vrsti nastave
+      - name: Privremeno razdvoji OO od strucnih neigrackih predmeta
         run: |
           python - <<'PY'
-          from collections import defaultdict
+          from pathlib import Path
+
+          p = Path('src/resavac.py')
+          tekst = p.read_text(encoding='utf-8')
+          stara = """                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti\n                    cilj.append(\n"""
+          nova = """                    if ulaz.predmeti[zahtev.predmet].igracki:\n                        cilj = igracki\n                    elif zahtev.predmet in OPSTI_PREDMETI:\n                        cilj = opsti\n                    else:\n                        continue\n                    cilj.append(\n"""
+          if stara not in tekst:
+              raise SystemExit('Nije pronadjeno mesto za klasifikaciju predmeta')
+          konstanta = '''\nOPSTI_PREDMETI = frozenset({\n    "Српски језик и књижевност",\n    "Француски језик",\n    "Енглески језик",\n    "Историја",\n    "Рачунарство и информатика",\n    "Математика",\n    "Биологија",\n    "Психологија",\n    "Социологија",\n    "Филозофија",\n    "Верска настава",\n    "Грађанско васпитање",\n})\n'''
+          marker = 'NEPOZNATI_KOREPETITOR = "?"\n'
+          tekst = tekst.replace(marker, marker + konstanta, 1).replace(stara, nova, 1)
+          p.write_text(tekst, encoding='utf-8')
+          PY
+      - name: Pokreni solver sa ispravljenom klasifikacijom
+        run: |
+          python - <<'PY'
           from src.resavac import ucitaj_standardne_ulaze, resi_obe_nedelje
-          from src.model import Skola
-
-          ulaz, prostorije, sve = ucitaj_standardne_ulaze('ulazi')
-          subota = tuple(x for x in sve if x.dan == 'субота')
-          subota_osobe = {x.nastavnik for x in subota}
-
-          def status(label, nedostupnosti, limit=30):
-              a, b = resi_obe_nedelje(
-                  ulaz, prostorije, nedostupnosti,
-                  vremensko_ogranicenje=limit,
-                  broj_radnika=8,
-                  seme=1,
-                  hintovi=(),
-              )
-              print(f'{label}: A={a.status}; B={b.status}; n={len(nedostupnosti)}', flush=True)
-              return a.status
-
-          kategorije = defaultdict(set)
-          for z in ulaz.zahtevi:
-              if z.nastavnik not in subota_osobe:
-                  continue
-              odeljenja = [ulaz.odeljenja[o] for o in z.odeljenja]
-              if not odeljenja:
-                  continue
-              predmet = ulaz.predmeti[z.predmet]
-              if all(o.skola is Skola.OSNOVNA for o in odeljenja):
-                  kategorije['OBS'].add(z.nastavnik)
-              elif all(o.skola is Skola.SREDNJA for o in odeljenja):
-                  if not predmet.igracki:
-                      kategorije['OO'].add(z.nastavnik)
-                  elif all(o.oznaka.rstrip('АБ')[-1] == '5' for o in odeljenja):
-                      kategorije['NI'].add(z.nastavnik)
-                  else:
-                      kategorije['KBSI'].add(z.nastavnik)
-
-          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
-              osobe = sorted(kategorije[kat])
-              print(kat + ' SUBOTOM NEDOSTUPNI (' + str(len(osobe)) + '): ' + ', '.join(osobe), flush=True)
-
-          status('SAMO SUBOTA - SVI', subota)
-          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
-              osobe = kategorije[kat]
-              nd = tuple(x for x in subota if x.nastavnik in osobe)
-              status('SAMO SUBOTA - ' + kat, nd, limit=35)
-
-          # I komplementarne probe: iz punog skupa subotnjih zabrana ukloni
-          # celu kategoriju da vidimo koja kategorija otključava model.
-          for kat in ('OBS', 'OO', 'NI', 'KBSI'):
-              osobe = kategorije[kat]
-              nd = tuple(x for x in subota if x.nastavnik not in osobe)
-              status('SUBOTA BEZ ' + kat, nd, limit=35)
+          ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze('ulazi')
+          a, b = resi_obe_nedelje(
+              ulaz, prostorije, nedostupnosti,
+              vremensko_ogranicenje=180,
+              broj_radnika=8,
+              seme=1,
+              hintovi=(),
+          )
+          print(f'ISPRAVLJENA KLASIFIKACIJA: A={a.status}; B={b.status}; casoviA={len(a.casovi)}; casoviB={len(b.casovi)}')
+          if a.izvestaj:
+              print('GRESKE A:', len(a.izvestaj.greske))
+              print('UPOZORENJA A:', len(a.izvestaj.upozorenja))
           PY
