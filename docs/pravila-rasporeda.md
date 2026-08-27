@@ -126,8 +126,15 @@ popunjena.
 ### Narodno pozorište
 
 - jedna sala;
-- može se koristiti samo od 16:00 do 18:00;
-- može se koristiti samo za predmet **Repertoar KB**.
+- može se koristiti samo od 16:00 do 17:40;
+- koristi se samo za predmet **Repertoar klasičnog baleta**;
+- `IV1` ima u toj sali **dva dvočasa nedeljno**;
+- `IV2` ima u toj sali **dva dvočasa nedeljno**;
+- preostali **peti termin** u nedelji popunjava se jednim dvočasom predmeta
+  Repertoar klasičnog baleta za **`III1` ili `III2`**; solver sme da izabere
+  koje od ta dva odeljenja koristi taj termin ako to olakšava raspored.
+
+Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 
 ### Posebne prostorije i prioriteti
 
