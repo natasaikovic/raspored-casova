@@ -269,8 +269,14 @@ class TestProstorije:
 
 
 class TestNedostupnost:
-    def test_prazna_datoteka_znaci_svi_dostupni(self):
-        assert ucitaj_nedostupnost("ulazi/nedostupnost.csv") == ()
+    def test_prazna_datoteka_znaci_svi_dostupni(self, tmp_path):
+        putanja = tmp_path / "nedostupnost.csv"
+        putanja.write_text(
+            "наставник,дан,од блока,до блока,напомена\n",
+            encoding="utf-8",
+        )
+
+        assert ucitaj_nedostupnost(putanja) == ()
 
     def test_ucitava_opseg_blokova(self, tmp_path):
         putanja = tmp_path / "nedostupnost.csv"
