@@ -1,0 +1,67 @@
+name: Rešavač rasporeda
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "ulazi/**/*.csv"
+      - "src/resavac.py"
+      - "src/loader.py"
+      - "src/model.py"
+      - "src/proveravac.py"
+      - ".github/workflows/resavac.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  resi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Preuzmi repozitorijum
+        uses: actions/checkout@v4
+
+      - name: Postavi Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instaliraj zavisnosti
+        run: python -m pip install -r requirements.txt
+
+      - name: Pokreni rešavač
+        id: solver
+        continue-on-error: true
+        run: |
+          python -m src.resavac \
+            --izlaz artifact \
+            --vremensko-ogranicenje 60 \
+            --broj-radnika 8 \
+            --seme 1 \
+            --bez-hintova
+
+      - name: Sačuvaj rezultat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raspored-solver
+          path: artifact/*.csv
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Rezime
+        if: always()
+        run: |
+          {
+            echo "## Rešavač rasporeda"
+            echo
+            if [ "${{ steps.solver.outcome }}" = "success" ]; then
+              echo "Rešavač je završio uspešno."
+            else
+              echo "Rešavač je pokrenut, ali nije završio sa potpuno ispravnim rasporedom. Pogledati log za status i izveštaj proveravača."
+            fi
+            echo
+            echo "Ako su CSV rezultati napravljeni, nalaze se u artifactu **raspored-solver**."
+          } >> "$GITHUB_STEP_SUMMARY"
