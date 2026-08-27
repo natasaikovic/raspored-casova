@@ -1,4 +1,4 @@
-name: Primeni ispravku modela
+name: Dijagnostika nedostupnosti
 
 on:
   push:
@@ -8,64 +8,49 @@ on:
       - ".github/workflows/dijagnostika.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  primeni:
+  dijagnostika:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Ispravi model i dodaj regresione testove
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - name: Izoluj konflikt nedostupnosti po danima
         run: |
           python - <<'PY'
-          from pathlib import Path
+          from ortools.sat.python import cp_model
+          from src.model import DANI, Smena
+          from src.resavac import napravi_model, ucitaj_standardne_ulaze
 
-          p = Path('src/resavac.py')
-          tekst = p.read_text(encoding='utf-8')
+          ulaz, prostorije, sve = ucitaj_standardne_ulaze("ulazi")
 
-          marker = 'NEPOZNATI_KOREPETITOR = "?"\n'
-          konstanta = '''\nOPSTI_PREDMETI = frozenset({\n    "Српски језик и књижевност",\n    "Француски језик",\n    "Енглески језик",\n    "Историја",\n    "Рачунарство и информатика",\n    "Математика",\n    "Биологија",\n    "Психологија",\n    "Социологија",\n    "Филозофија",\n    "Верска настава",\n    "Грађанско васпитање",\n})\n'''
-          if 'OPSTI_PREDMETI = frozenset' not in tekst:
-              tekst = tekst.replace(marker, marker + konstanta, 1)
+          def status(label, nd, limit=35):
+              model, _, _ = napravi_model(
+                  ulaz, prostorije, tuple(nd), Smena.CRVENA, (), sa_nedeljom_b=False
+              )
+              model.clear_objective()
+              solver = cp_model.CpSolver()
+              solver.parameters.max_time_in_seconds = limit
+              solver.parameters.num_search_workers = 8
+              solver.parameters.random_seed = 1
+              st = solver.solve(model)
+              print(f"{label}: {solver.status_name(st)}; n={len(tuple(nd))}; wall={solver.wall_time:.2f}s", flush=True)
+              return st
 
-          helper_marker = '''def _resurs_korepetitora(ime: str) -> str:\n'''
-          helper = '''def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:\n    """Subotom nastavu imaju samo igracki predmeti SBŠ odseka KB i SI."""\n\n    predmet = ulaz.predmeti[zahtev.predmet]\n    odeljenja = [ulaz.odeljenja[o] for o in zahtev.odeljenja]\n    return (\n        bool(odeljenja)\n        and all(o.skola is Skola.SREDNJA for o in odeljenja)\n        and predmet.igracki\n        and all(o.oznaka.rstrip("АБ")[-1] in "1234" for o in odeljenja)\n    )\n\n\n'''
-          if 'def _subota_dozvoljena' not in tekst:
-              tekst = tekst.replace(helper_marker, helper + helper_marker, 1)
+          print("BROJ NEDOSTUPNOSTI PO DANU:", flush=True)
+          for dan in DANI:
+              print(dan, sum(1 for x in sve if x.dan == dan), flush=True)
 
-          stara_subota = '''        model.add_exactly_one(po_danu)\n        po_danu_b: tuple[cp_model.BoolVar, ...] | None = None\n'''
-          nova_subota = '''        model.add_exactly_one(po_danu)\n        dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)\n        if not dozvoljena_subota:\n            model.add(po_danu[len(DANI) - 1] == 0)\n        po_danu_b: tuple[cp_model.BoolVar, ...] | None = None\n'''
-          if stara_subota not in tekst:
-              raise SystemExit('Nije pronadjeno mesto za pravilo subote A')
-          tekst = tekst.replace(stara_subota, nova_subota, 1)
-
-          stara_b = '''                po_danu_b = tuple(b_dani)\n            else:\n                po_danu_b = tuple(po_danu)\n'''
-          nova_b = '''                po_danu_b = tuple(b_dani)\n                if not dozvoljena_subota:\n                    model.add(b_dani[len(DANI) - 1] == 0)\n            else:\n                po_danu_b = tuple(po_danu)\n'''
-          if stara_b not in tekst:
-              raise SystemExit('Nije pronadjeno mesto za pravilo subote B')
-          tekst = tekst.replace(stara_b, nova_b, 1)
-
-          stari_limit = '''            if odeljenje.skola is Skola.SREDNJA:\n                igracki = []\n                opsti = []\n                for jedinica in stavke:\n                    zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]\n                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti\n                    cilj.append(\n                        jedinica.trajanje\n                        * promenljive[jedinica.indeks].po_danu[indeks_dana]\n                    )\n                model.add(sum(igracki) <= 4)\n                model.add(sum(opsti) <= 4)\n'''
-          novi_limit = '''            if odeljenje.skola is Skola.SREDNJA:\n                igracki = []\n                opsti = []\n                ukupno = []\n                for jedinica in stavke:\n                    zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]\n                    prisustvo = (\n                        jedinica.trajanje\n                        * promenljive[jedinica.indeks].po_danu[indeks_dana]\n                    )\n                    ukupno.append(prisustvo)\n                    if ulaz.predmeti[zahtev.predmet].igracki:\n                        igracki.append(prisustvo)\n                    elif zahtev.predmet in OPSTI_PREDMETI:\n                        opsti.append(prisustvo)\n                model.add(sum(igracki) <= 4)\n                model.add(sum(opsti) <= 4)\n                model.add(sum(ukupno) <= 8)\n'''
-          if stari_limit not in tekst:
-              raise SystemExit('Nije pronadjeno mesto za dnevne limite')
-          tekst = tekst.replace(stari_limit, novi_limit, 1)
-          p.write_text(tekst, encoding='utf-8')
-
-          test = Path('tests/test_resavac_subota_oo.py')
-          test.write_text('''from pathlib import Path\n\nfrom src.resavac import OPSTI_PREDMETI, _subota_dozvoljena, ucitaj_standardne_ulaze\n\n\ndef _zahtev(ulaz, predmet, odeljenje):\n    return next(\n        z for z in ulaz.zahtevi\n        if z.predmet == predmet and odeljenje in z.odeljenja\n    )\n\n\ndef test_strucni_neigracki_predmeti_nisu_opsteobrazovni():\n    assert "Традиционално певање" not in OPSTI_PREDMETI\n    assert "Етнологија" not in OPSTI_PREDMETI\n    assert "Солфеђо" not in OPSTI_PREDMETI\n    assert "Српски језик и књижевност" in OPSTI_PREDMETI\n    assert "Математика" in OPSTI_PREDMETI\n\n\ndef test_subota_samo_igracki_kb_i_si():\n    ulaz, _, _ = ucitaj_standardne_ulaze(Path("ulazi"))\n    assert _subota_dozvoljena(\n        _zahtev(ulaz, "Класичан балет – главни предмет", "I1"), ulaz\n    )\n    assert _subota_dozvoljena(\n        _zahtev(ulaz, "Савремена игра – главни предмет", "I3"), ulaz\n    )\n    assert not _subota_dozvoljena(\n        _zahtev(ulaz, "Народна игра – главни предмет", "I5"), ulaz\n    )\n    assert not _subota_dozvoljena(\n        _zahtev(ulaz, "Српски језик и књижевност", "I1"), ulaz\n    )\n''', encoding='utf-8')
+          status("SVE", sve, 45)
+          for dan in DANI:
+              samo = tuple(x for x in sve if x.dan == dan)
+              status("SAMO " + dan, samo, 30)
+          for dan in DANI:
+              bez = tuple(x for x in sve if x.dan != dan)
+              status("SVE BEZ " + dan, bez, 40)
           PY
-      - name: Proveri testove
-        run: |
-          python -m pip install -r requirements.txt
-          python -m pytest -q
-      - name: Commituj potvrđenu ispravku u isti PR
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/resavac.py tests/test_resavac_subota_oo.py
-          git commit -m "Ispravi OO klasifikaciju i pravila subote"
-          git push origin HEAD:sync-google-sheet-2026-08-25
