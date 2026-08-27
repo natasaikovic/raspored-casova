@@ -152,7 +152,7 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
 
-## Nastavnici
+## Nastavnici i korepetitori
 
 - Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom);
   nastavnici opštih predmeta često rade i u drugim školama.
@@ -161,7 +161,14 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   **Ovo je najvažniji podatak koji trenutno fali**: šest nastavnika osnovne ima
   tačno 20 časova, a jutarnja smena ima 4 bloka × 5 dana = 20, pa svaki
   nepoznati slobodan dan obara rešivost.
-- Nastavnici mogu imati pauzu između časova, ali je poželjno da je nemaju.
+- Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
+  blokova između angažovanja kad god je to moguće.
+- Ako kontinuitet ne može da se postigne zbog drugih tvrdih pravila, dozvoljena
+  je izuzetna pauza, ali najviše **jednom nedeljno po osobi** i najviše u
+  trajanju **jednog dvočasa (dva časovna bloka)**.
+- Kraća pauza je bolja od duže; solver treba snažno da kažnjava svaku pauzu,
+  a posebno drugu i svaku narednu pauzu iste osobe u toku nedelje ili pauzu
+  dužu od dva bloka.
 - `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
   osoba** — zajedno 21č, u okviru norme.
 
@@ -192,7 +199,8 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Učenici ne smeju imati prazne časove.
 - Izuzetak je promena lokacije, kada učenici moraju imati pauzu od jednog časovnog bloka.
 - Poželjno je da odeljenja koja naizmenično menjaju smene budu simetrično raspoređena.
-- Nastavnici mogu imati pauze, ali raspored bez pauza ima prednost.
+- Za nastavnike i korepetitore kontinuitet časova je snažan prioritet; jedna
+  pauza do dva bloka nedeljno je izuzetak, ne uobičajena organizacija rada.
 
 ## Napomene za dalju razradu
 
