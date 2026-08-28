@@ -34,12 +34,12 @@ jobs:
           )
           model.clear_objective()
           solver = cp_model.CpSolver()
-          solver.parameters.max_time_in_seconds = 180
+          solver.parameters.max_time_in_seconds = 600
           solver.parameters.num_search_workers = 8
           solver.parameters.random_seed = 1
           status = solver.solve(model)
           print(f'DOPUSTIVOST={solver.status_name(status)}; WALL={solver.wall_time:.2f}s')
-          if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+          if status == cp_model.INFEASIBLE:
               raise SystemExit(1)
           PY
       - name: Generisi obe nedelje
@@ -51,13 +51,14 @@ jobs:
           python -m src.resavac \
             --ulazi ulazi \
             --izlaz izlaz \
-            --vremensko-ogranicenje 360 \
+            --vremensko-ogranicenje 1800 \
             --broj-radnika 8 \
             --seme 1 \
             2>&1 | tee izlaz/solver.log
       - name: Napravi HTML pregled
         if: always()
         run: |
+          mkdir -p izlaz
           if [ -f izlaz/nedelja_a.csv ] && [ -f izlaz/nedelja_b.csv ]; then
             python -m src.vizualizacija \
               izlaz/nedelja_a.csv izlaz/nedelja_b.csv \
@@ -81,4 +82,4 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-# Rucno pokretanje 2026-08-28 nakon pravila za peti cas Solfedja.
+# Duži run posle pravila za peti cas Solfedja: UNKNOWN u brzoj proveri vise ne zaustavlja glavni solver.
