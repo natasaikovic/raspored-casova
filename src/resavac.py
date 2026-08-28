@@ -686,6 +686,7 @@ def napravi_model(
                 f"{token}_d{indeks_dana}_visak_lokacija",
             )
             model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)
+            model.add(sum(koristi_lokaciju) <= 2)
             kazne.append(300 * visak_lokacija)
 
             if odeljenje.skola is Skola.SREDNJA:
@@ -786,6 +787,7 @@ def napravi_model(
                     f"{token}_d{indeks_dana}_visak_lokacija_b",
                 )
                 model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)
+                model.add(sum(koristi_lokaciju_b) <= 2)
                 kazne.append(300 * visak_lokacija_b)
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.
