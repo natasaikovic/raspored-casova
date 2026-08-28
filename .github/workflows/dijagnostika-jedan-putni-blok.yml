@@ -1,0 +1,65 @@
+name: Dijagnostika jedan putni blok
+
+on:
+  push:
+    branches:
+      - sync-google-sheet-2026-08-25
+    paths:
+      - ".github/workflows/dijagnostika-jedan-putni-blok.yml"
+
+jobs:
+  dijagnostika:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [jedna, obe]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Dodaj privremeno pravila praznina
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/resavac.py')
+          t = p.read_text(encoding='utf-8')
+          old = '''            model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)\n            model.add(sum(koristi_lokaciju) <= 2)\n            kazne.append(300 * visak_lokacija)\n'''
+          new = '''            model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)\n            model.add(sum(koristi_lokaciju) <= 2)\n            dve_lokacije = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije")\n            model.add(sum(koristi_lokaciju) == 2).only_enforce_if(dve_lokacije)\n            model.add(sum(koristi_lokaciju) <= 1).only_enforce_if(~dve_lokacije)\n            model.add(prazni == 0).only_enforce_if(~dve_lokacije)\n            model.add(poslednji - prvi + 1 - zauzeto == 1).only_enforce_if(dve_lokacije)\n            kazne.append(300 * visak_lokacija)\n'''
+          if old not in t:
+              raise SystemExit('Nije pronadjeno A pravilo')
+          t = t.replace(old, new, 1)
+          old_b = '''                model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)\n                model.add(sum(koristi_lokaciju_b) <= 2)\n                kazne.append(300 * visak_lokacija_b)\n'''
+          new_b = '''                model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)\n                model.add(sum(koristi_lokaciju_b) <= 2)\n                dve_lokacije_b = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije_b")\n                model.add(sum(koristi_lokaciju_b) == 2).only_enforce_if(dve_lokacije_b)\n                model.add(sum(koristi_lokaciju_b) <= 1).only_enforce_if(~dve_lokacije_b)\n                model.add(prazni_b == 0).only_enforce_if(~dve_lokacije_b)\n                model.add(poslednji_b - prvi_b + 1 - zauzeto_b == 1).only_enforce_if(dve_lokacije_b)\n                kazne.append(300 * visak_lokacija_b)\n'''
+          if old_b not in t:
+              raise SystemExit('Nije pronadjeno B pravilo')
+          p.write_text(t.replace(old_b, new_b, 1), encoding='utf-8')
+          PY
+      - name: Instaliraj
+        run: python -m pip install -r requirements.txt
+      - name: Resi scenario
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          python - <<'PY'
+          import os
+          from ortools.sat.python import cp_model
+          from src.model import Smena
+          from src.resavac import napravi_model, ucitaj_standardne_ulaze
+          ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze('ulazi')
+          obe = os.environ['SCENARIO'] == 'obe'
+          model, _, _ = napravi_model(ulaz, prostorije, nedostupnosti, Smena.CRVENA, (), sa_nedeljom_b=obe)
+          model.clear_objective()
+          solver = cp_model.CpSolver()
+          solver.parameters.max_time_in_seconds = 600 if obe else 300
+          solver.parameters.num_search_workers = 8
+          solver.parameters.random_seed = 1
+          status = solver.solve(model)
+          print(f"SCENARIO={os.environ['SCENARIO']}; STATUS={solver.status_name(status)}; WALL={solver.wall_time:.2f}s")
+          if status == cp_model.INFEASIBLE:
+              raise SystemExit(2)
+          if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+              raise SystemExit(3)
+          PY
