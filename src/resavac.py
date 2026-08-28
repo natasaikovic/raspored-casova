@@ -687,6 +687,10 @@ def napravi_model(
             )
             model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)
             model.add(sum(koristi_lokaciju) <= 2)
+            dve_lokacije = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije")
+            model.add(sum(koristi_lokaciju) == 2).only_enforce_if(dve_lokacije)
+            model.add(sum(koristi_lokaciju) <= 1).only_enforce_if(~dve_lokacije)
+            model.add(prazni == 0).only_enforce_if(~dve_lokacije)
             kazne.append(300 * visak_lokacija)
 
             if odeljenje.skola is Skola.SREDNJA:
@@ -788,6 +792,10 @@ def napravi_model(
                 )
                 model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)
                 model.add(sum(koristi_lokaciju_b) <= 2)
+                dve_lokacije_b = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije_b")
+                model.add(sum(koristi_lokaciju_b) == 2).only_enforce_if(dve_lokacije_b)
+                model.add(sum(koristi_lokaciju_b) <= 1).only_enforce_if(~dve_lokacije_b)
+                model.add(prazni_b == 0).only_enforce_if(~dve_lokacije_b)
                 kazne.append(300 * visak_lokacija_b)
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.
