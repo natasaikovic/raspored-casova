@@ -208,3 +208,6 @@ Otvorena pitanja su izdvojena u [otvorena-pitanja.md](otvorena-pitanja.md).
 Od prvobitnog spiska ostali su prioriteti sala i dostupnost nastavnika po danima.
 Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
 odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
+
+- Izuzetak za peti cas jutarnje smene: samo Solfedjo 41 kod Marije Cvetkovic, Solfedjo 42 kod Sonje Pane Virijevic i Solfedjo 43 kod Jelene Mihailovic Krasic sme da bude u bloku 5 (11:40-12:25) kada je njihova smena jutarnja. Ovaj izuzetak ne vazi ni za jedan drugi predmet, nastavnika ili odeljenje.
+- Ista fizicka osoba je jedan rasporedni resurs bez obzira da li u konkretnom casu nastupa kao nastavnik ili korepetitor; ne sme istovremeno obavljati obe uloge na razlicitim casovima.

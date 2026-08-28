@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from .izuzeci import dozvoljen_peti_cas_solfedja
 from .loader import (
     UlazGreska,
     ucitaj_nedostupnost,
@@ -460,7 +461,14 @@ def _proveri_smenu(
     smena = zahtev.smena
     dozvoljeni: tuple[int, ...] | None = None
     if smena in (Smena.CRVENA, Smena.PLAVA):
-        dozvoljeni = PRVA_SMENA if smena is jutarnja else DRUGA_SMENA
+        if smena is jutarnja:
+            dozvoljeni = PRVA_SMENA
+            if dozvoljen_peti_cas_solfedja(
+                cas.predmet, cas.nastavnik, cas.odeljenja
+            ):
+                dozvoljeni = PRVA_SMENA + (5,)
+        else:
+            dozvoljeni = DRUGA_SMENA
     elif smena is Smena.STALNO_POPODNE:
         dozvoljeni = DRUGA_SMENA
     elif smena is Smena.POSEBNA:
@@ -556,25 +564,24 @@ def _proveri_fondove(
 
 
 def _proveri_sudare(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:
-    _prijavi_duple_resurse(
-        casovi,
-        "наставник",
-        lambda c: (c.termin, c.nastavnik),
-        lambda c: c.nastavnik,
-        izvestaj,
-    )
+    # Nastavnik i korepetitor su isti fizicki resurs.
+    zauzeca_osoba: dict[tuple[tuple[str, int], str], list[Cas]] = defaultdict(list)
+    for cas in casovi:
+        zauzeca_osoba[(cas.termin, cas.nastavnik)].append(cas)
+        if cas.korepetitor:
+            zauzeca_osoba[(cas.termin, cas.korepetitor)].append(cas)
+    for ((dan, blok), osoba), stavke in zauzeca_osoba.items():
+        if len(stavke) <= 1:
+            continue
+        redovi = ", ".join(str(c.red) for c in stavke)
+        izvestaj.greske.append(
+            f"особа {osoba} је заузета више пута: {dan}, блок {blok}, редови {redovi}"
+        )
     _prijavi_duple_resurse(
         casovi,
         "просторија",
         lambda c: (c.termin, c.prostorija),
         lambda c: c.prostorija,
-        izvestaj,
-    )
-    _prijavi_duple_resurse(
-        [c for c in casovi if c.korepetitor],
-        "корепетитор",
-        lambda c: (c.termin, c.korepetitor),
-        lambda c: c.korepetitor,
         izvestaj,
     )
 

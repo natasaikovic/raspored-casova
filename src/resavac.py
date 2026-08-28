@@ -17,6 +17,7 @@ from typing import Iterable, Sequence
 from ortools.sat.python import cp_model
 
 from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
+from .izuzeci import dozvoljen_peti_cas_solfedja
 from .model import (
     BLOKOVI,
     DANI,
@@ -144,7 +145,14 @@ def _dozvoljeni_poceci(
     nedostupnosti: Sequence[Nedostupnost],
 ) -> tuple[tuple[int, int], ...]:
     if zahtev.smena in (Smena.CRVENA, Smena.PLAVA):
-        blokovi = PRVA_SMENA if zahtev.smena is jutarnja_smena else DRUGA_SMENA
+        if zahtev.smena is jutarnja_smena:
+            blokovi = PRVA_SMENA
+            if dozvoljen_peti_cas_solfedja(
+                zahtev.predmet, zahtev.nastavnik, zahtev.odeljenja
+            ):
+                blokovi = PRVA_SMENA + (5,)
+        else:
+            blokovi = DRUGA_SMENA
     elif zahtev.smena is Smena.STALNO_POPODNE:
         blokovi = DRUGA_SMENA
     elif zahtev.smena is Smena.CEO_DAN:
@@ -538,17 +546,21 @@ def napravi_model(
         model.add(sum(np_izbori["IV2"]) == 2)
         model.add(sum(np_izbori["III1"]) + sum(np_izbori["III2"]) == 1)
 
-    for intervali in intervali_nastavnika.values():
-        model.add_no_overlap(intervali)
-    for intervali in intervali_korepetitora.values():
-        model.add_no_overlap(intervali)
+    # Ista fizicka osoba je jedan resurs bez obzira na ulogu nastavnika
+    # ili korepetitora.
+    for osoba in sorted(set(intervali_nastavnika) | set(intervali_korepetitora)):
+        model.add_no_overlap(
+            intervali_nastavnika.get(osoba, [])
+            + intervali_korepetitora.get(osoba, [])
+        )
     for intervali in intervali_prostorija.values():
         model.add_no_overlap(intervali)
     if sa_nedeljom_b:
-        for intervali in intervali_nastavnika_b.values():
-            model.add_no_overlap(intervali)
-        for intervali in intervali_korepetitora_b.values():
-            model.add_no_overlap(intervali)
+        for osoba in sorted(set(intervali_nastavnika_b) | set(intervali_korepetitora_b)):
+            model.add_no_overlap(
+                intervali_nastavnika_b.get(osoba, [])
+                + intervali_korepetitora_b.get(osoba, [])
+            )
         for intervali in intervali_prostorija_b.values():
             model.add_no_overlap(intervali)
 
