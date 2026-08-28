@@ -705,7 +705,7 @@ def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> N
             elif osnovni_klasicni:
                 po_danu = Counter(c.dan for c in stavke)
                 ocekivano = {dan: 2 for dan in DANI[:5]}
-                if predugi or po_danu != ocekivano:
+                if predugi or po_danu != ocekivano or parovi != 5:
                     izvestaj.greske.append(
                         f"„Класичан балет“ за {oznaka} мора имати тачно један "
                         "двочас сваког дана од понедељка до петка"
