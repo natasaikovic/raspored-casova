@@ -147,6 +147,34 @@ def test_obs_klasicni_fond_10_zahteva_dvocas_svakog_radnog_dana():
     )
 
 
+def test_obs_klasicni_fond_10_zahteva_uzastopne_casove_svakog_dana():
+    z = zahtev(
+        "Класичан балет",
+        ["11"],
+        10,
+        "Мила",
+        korepetitor="Ива",
+        fond_korepeticije=10,
+    )
+    ulaz = napravi_ulaz([z], igracki={z.predmet})
+    dani = ("понедељак", "уторак", "среда", "четвртак", "петак")
+    casovi = tuple(
+        Cas(dan, blok, z.predmet, ("11",), "Мила", "Ива", "S1", red)
+        for red, (dan, blok) in enumerate(
+            ((dan, blok) for dan in dani for blok in (1, 3)),
+            start=2,
+        )
+    )
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert not izvestaj.ispravan
+    assert any(
+        "мора имати тачно један двочас сваког дана од понедељка до петка" in greska
+        for greska in izvestaj.greske
+    )
+
+
 def test_latinicno_resenje_se_povezuje_sa_cirilicnim_ulazom():
     z = zahtev(
         "Класичан балет",
