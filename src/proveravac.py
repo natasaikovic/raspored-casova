@@ -62,6 +62,21 @@ ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 
+OPSTI_PREDMETI = frozenset({
+    "Српски језик и књижевност",
+    "Француски језик",
+    "Енглески језик",
+    "Историја",
+    "Рачунарство и информатика",
+    "Математика",
+    "Биологија",
+    "Психологија",
+    "Социологија",
+    "Филозофија",
+    "Верска настава",
+    "Грађанско васпитање",
+})
+
 
 @dataclass(frozen=True)
 class Cas:
@@ -650,7 +665,7 @@ def _proveri_dnevni_raspored(
                 opsti = sum(
                     1
                     for blok in blokovi
-                    if all(not ulaz.predmeti[c.predmet].igracki for c in po_bloku[blok])
+                    if any(c.predmet in OPSTI_PREDMETI for c in po_bloku[blok])
                 )
                 if igracki > 4:
                     izvestaj.greske.append(
@@ -782,10 +797,18 @@ def _proveri_versku_i_gradjansko(
         if cas.predmet in ALTERNATIVNI_PREDMETI:
             for oznaka in cas.odeljenja:
                 termini[(cas.predmet, oznaka)].add(cas.termin)
+    ima_predmet = {
+        (zahtev.predmet, oznaka)
+        for zahtev in ulaz.zahtevi
+        if zahtev.predmet in ALTERNATIVNI_PREDMETI
+        for oznaka in zahtev.odeljenja
+    }
     for oznaka in ulaz.odeljenja:
+        if (VERSKA, oznaka) not in ima_predmet or (GRADJANSKO, oznaka) not in ima_predmet:
+            continue
         verska = termini[(VERSKA, oznaka)]
         gradjansko = termini[(GRADJANSKO, oznaka)]
-        if (verska or gradjansko) and verska != gradjansko:
+        if verska != gradjansko:
             izvestaj.greske.append(
                 f"Верска настава и Грађанско васпитање за {oznaka} "
                 "морају бити истовремено"
