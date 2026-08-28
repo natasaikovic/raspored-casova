@@ -80,3 +80,5 @@ jobs:
           path: izlaz/
           if-no-files-found: warn
           retention-days: 14
+
+# Rucno pokretanje 2026-08-28 nakon pravila za peti cas Solfedja.
