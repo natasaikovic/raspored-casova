@@ -17,6 +17,7 @@ from typing import Iterable, Sequence
 from ortools.sat.python import cp_model
 
 from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
+from .izuzeci import dozvoljen_peti_cas_solfedja
 from .model import (
     BLOKOVI,
     DANI,
@@ -37,9 +38,25 @@ from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
+REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NP_SALA = "NP-сала"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
+
+OPSTI_PREDMETI = frozenset({
+    "Српски језик и књижевност",
+    "Француски језик",
+    "Енглески језик",
+    "Историја",
+    "Рачунарство и информатика",
+    "Математика",
+    "Биологија",
+    "Психологија",
+    "Социологија",
+    "Филозофија",
+    "Верска настава",
+    "Грађанско васпитање",
+})
 
 # Razmak između dana sprečava interval dužine dva da pređe u sledeći dan.
 KORAK_DANA = 20
@@ -128,7 +145,14 @@ def _dozvoljeni_poceci(
     nedostupnosti: Sequence[Nedostupnost],
 ) -> tuple[tuple[int, int], ...]:
     if zahtev.smena in (Smena.CRVENA, Smena.PLAVA):
-        blokovi = PRVA_SMENA if zahtev.smena is jutarnja_smena else DRUGA_SMENA
+        if zahtev.smena is jutarnja_smena:
+            blokovi = PRVA_SMENA
+            if dozvoljen_peti_cas_solfedja(
+                zahtev.predmet, zahtev.nastavnik, zahtev.odeljenja
+            ):
+                blokovi = PRVA_SMENA + (5,)
+        else:
+            blokovi = DRUGA_SMENA
     elif zahtev.smena is Smena.STALNO_POPODNE:
         blokovi = DRUGA_SMENA
     elif zahtev.smena is Smena.CEO_DAN:
@@ -186,9 +210,24 @@ def _moguce_prostorije(
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
     if zahtev.predmet == INFORMATIKA:
         return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
-    # NP sala ima veoma usko pravilo. Prva verzija je ne koristi; ostalih deset
-    # sala daju dovoljan kapacitet, a izbegavanje NP znatno smanjuje model.
+    if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
+        "III1", "III2", "IV1", "IV2"
+    }:
+        return tuple(p for p in prostorije if p.tip is tip)
     return tuple(p for p in prostorije if p.tip is tip and p.oznaka != NP_SALA)
+
+
+def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
+    """Subotom nastavu imaju samo igracki predmeti SBŠ odseka KB i SI."""
+
+    predmet = ulaz.predmeti[zahtev.predmet]
+    odeljenja = [ulaz.odeljenja[o] for o in zahtev.odeljenja]
+    return (
+        bool(odeljenja)
+        and all(o.skola is Skola.SREDNJA for o in odeljenja)
+        and predmet.igracki
+        and all(o.oznaka.rstrip("АБ")[-1] in "1234" for o in odeljenja)
+    )
 
 
 def _resurs_korepetitora(ime: str) -> str:
@@ -252,6 +291,14 @@ def napravi_model(
     intervali_korepetitora_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_prostorija_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
+    np_izbori: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
+    ima_np_program = all(
+        any(
+            z.predmet == REPERTOAR_KLASICNOG and oznaka in z.odeljenja
+            for z in ulaz.zahtevi
+        )
+        for oznaka in ("IV1", "IV2")
+    )
 
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
@@ -261,6 +308,16 @@ def napravi_model(
             jutarnja_smena,
             nedostupnosti,
         )
+        if zahtev.korepetitor and jedinica.korepeticija:
+            dozvoljeni = tuple(
+                (dan_i, blok_i)
+                for dan_i, blok_i in dozvoljeni
+                if not _nastavnik_nedostupan(
+                    zahtev.korepetitor, DANI[dan_i],
+                    tuple(blok_i + p for p in jedinica.korepeticija),
+                    nedostupnosti,
+                )
+            )
         if not dozvoljeni:
             raise ValueError(
                 f"{zahtev.gde}: нема дозвољеног почетка за „{zahtev.predmet}“"
@@ -293,6 +350,21 @@ def napravi_model(
                     jutarnja_b,
                     nedostupnosti,
                 )
+                if zahtev.korepetitor and jedinica.korepeticija:
+                    dozvoljeni_b = tuple(
+                        (dan_i, blok_i)
+                        for dan_i, blok_i in dozvoljeni_b
+                        if not _nastavnik_nedostupan(
+                            zahtev.korepetitor, DANI[dan_i],
+                            tuple(blok_i + p for p in jedinica.korepeticija),
+                            nedostupnosti,
+                        )
+                    )
+                if not dozvoljeni_b:
+                    raise ValueError(
+                        f"{zahtev.gde}: нема дозвољеног почетка у недељи B "
+                        f"за „{zahtev.predmet}“"
+                    )
                 vrednosti_starta_b = [
                     dan_i * KORAK_DANA + blok_i
                     for dan_i, blok_i in dozvoljeni_b
@@ -324,6 +396,9 @@ def napravi_model(
             model.add(dan != indeks_dana).only_enforce_if(~prisutan)
             po_danu.append(prisutan)
         model.add_exactly_one(po_danu)
+        dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)
+        if not dozvoljena_subota:
+            model.add(po_danu[len(DANI) - 1] == 0)
         po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
@@ -336,6 +411,8 @@ def napravi_model(
                     b_dani.append(prisutan_b)
                 model.add_exactly_one(b_dani)
                 po_danu_b = tuple(b_dani)
+                if not dozvoljena_subota:
+                    model.add(b_dani[len(DANI) - 1] == 0)
             else:
                 po_danu_b = tuple(po_danu)
 
@@ -352,6 +429,12 @@ def napravi_model(
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
             po_lokaciji[prostorija.lokacija].append(koristi)
+            if prostorija.oznaka == NP_SALA:
+                np_izbori[zahtev.odeljenja[0]].append(koristi)
+                if jedinica.trajanje != 2:
+                    model.add(koristi == 0)
+                else:
+                    model.add(blok == 10).only_enforce_if(koristi)
             opcion = model.new_optional_interval_var(
                 start, jedinica.trajanje, kraj, koristi,
                 f"{prefiks}_{prostorija.oznaka}_i",
@@ -458,17 +541,26 @@ def napravi_model(
                     )
         jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
 
-    for intervali in intervali_nastavnika.values():
-        model.add_no_overlap(intervali)
-    for intervali in intervali_korepetitora.values():
-        model.add_no_overlap(intervali)
+    if ima_np_program:
+        model.add(sum(np_izbori["IV1"]) == 2)
+        model.add(sum(np_izbori["IV2"]) == 2)
+        model.add(sum(np_izbori["III1"]) + sum(np_izbori["III2"]) == 1)
+
+    # Ista fizicka osoba je jedan resurs bez obzira na ulogu nastavnika
+    # ili korepetitora.
+    for osoba in sorted(set(intervali_nastavnika) | set(intervali_korepetitora)):
+        model.add_no_overlap(
+            intervali_nastavnika.get(osoba, [])
+            + intervali_korepetitora.get(osoba, [])
+        )
     for intervali in intervali_prostorija.values():
         model.add_no_overlap(intervali)
     if sa_nedeljom_b:
-        for intervali in intervali_nastavnika_b.values():
-            model.add_no_overlap(intervali)
-        for intervali in intervali_korepetitora_b.values():
-            model.add_no_overlap(intervali)
+        for osoba in sorted(set(intervali_nastavnika_b) | set(intervali_korepetitora_b)):
+            model.add_no_overlap(
+                intervali_nastavnika_b.get(osoba, [])
+                + intervali_korepetitora_b.get(osoba, [])
+            )
         for intervali in intervali_prostorija_b.values():
             model.add_no_overlap(intervali)
 
@@ -606,20 +698,31 @@ def napravi_model(
                 f"{token}_d{indeks_dana}_visak_lokacija",
             )
             model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)
+            model.add(sum(koristi_lokaciju) <= 2)
+            dve_lokacije = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije")
+            model.add(sum(koristi_lokaciju) == 2).only_enforce_if(dve_lokacije)
+            model.add(sum(koristi_lokaciju) <= 1).only_enforce_if(~dve_lokacije)
+            model.add(prazni == 0).only_enforce_if(~dve_lokacije)
             kazne.append(300 * visak_lokacija)
 
             if odeljenje.skola is Skola.SREDNJA:
                 igracki = []
                 opsti = []
+                ukupno = []
                 for jedinica in stavke:
                     zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
-                    cilj = igracki if ulaz.predmeti[zahtev.predmet].igracki else opsti
-                    cilj.append(
+                    prisustvo = (
                         jedinica.trajanje
                         * promenljive[jedinica.indeks].po_danu[indeks_dana]
                     )
+                    ukupno.append(prisustvo)
+                    if ulaz.predmeti[zahtev.predmet].igracki:
+                        igracki.append(prisustvo)
+                    elif zahtev.predmet in OPSTI_PREDMETI:
+                        opsti.append(prisustvo)
                 model.add(sum(igracki) <= 4)
                 model.add(sum(opsti) <= 4)
+                model.add(sum(ukupno) <= 8)
 
     # Naizmenična odeljenja imaju zaseban raspored u B, pa isti približni cilj
     # kvaliteta primenjujemo i na njihove B promenljive.
@@ -700,6 +803,11 @@ def napravi_model(
                     f"{token}_d{indeks_dana}_visak_lokacija_b",
                 )
                 model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)
+                model.add(sum(koristi_lokaciju_b) <= 2)
+                dve_lokacije_b = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije_b")
+                model.add(sum(koristi_lokaciju_b) == 2).only_enforce_if(dve_lokacije_b)
+                model.add(sum(koristi_lokaciju_b) <= 1).only_enforce_if(~dve_lokacije_b)
+                model.add(prazni_b == 0).only_enforce_if(~dve_lokacije_b)
                 kazne.append(300 * visak_lokacija_b)
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.

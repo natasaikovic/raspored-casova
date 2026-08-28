@@ -151,7 +151,7 @@ def test_prijavljuje_sudar_nastavnika():
     izvestaj = proveri(ulaz, SALE, (), casovi)
 
     assert not izvestaj.ispravan
-    assert any("наставник Мила је заузет више пута" in g for g in izvestaj.greske)
+    assert any("особа Мила је заузета више пута" in g for g in izvestaj.greske)
 
 
 def test_opsti_predmeti_mogu_drugacije_da_se_grupisu():

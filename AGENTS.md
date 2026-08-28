@@ -71,6 +71,10 @@ izmenjeni i commitovani na grani otvorenog pull requesta.
   administrator ga menja preko AI asistenta, a git prikazuje čitljiv diff.
 - Fajlove menja asistent, pa validacija mora ostati stroga.
 - Čitati sa `utf-8-sig` — BOM se često pojavi.
+- **Posle svake izmene ulaznih podataka obavezno pokrenuti rešavač.** Izmena
+  ulaza nije završena samo zato što CSV prolazi validaciju ili testove: agent
+  treba da proveri da solver i sa novim podacima može da napravi raspored i da
+  administratoru prikaže novi rezultat ili jasno prijavi ako rešavanje ne uspe.
 
 ## Konvencije u kodu
 
@@ -108,6 +112,11 @@ izmenjeni i commitovani na grani otvorenog pull requesta.
 - `python -m pytest`
 - Testovi za loader koriste samo standardnu biblioteku i moraju tako i ostati.
 - `ortools` je potreban samo za solver, kada bude napisan.
+- Ako commit napravi GitHub Actions bot, novi PR workflow-i mogu biti označeni
+  kao `action_required` umesto da se automatski izvrše. Posle takvog bota
+  napraviti sledeći potreban commit preko normalnog GitHub pristupa ili
+  eksplicitno pokrenuti proveru; ne tumačiti `action_required` kao neuspeh
+  solvera ili testova.
 
 
 ## Prikaz rasporeda korisniku

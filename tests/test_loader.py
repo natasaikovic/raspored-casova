@@ -36,7 +36,7 @@ class TestStvarniUlaz:
 
         assert ulaz.skola is Skola.OSNOVNA
         assert len(ulaz.zahtevi) == 50
-        assert ulaz.ukupno_casova == 218
+        assert ulaz.ukupno_casova == 216
         assert len(ulaz.odeljenja) == 17
 
     def test_prepoznaje_smene(self):
@@ -62,7 +62,7 @@ class TestStvarniUlaz:
         nastavnici = ulaz.opterecenje_nastavnika()
         assert next(iter(nastavnici.items())) == ("Бранислава Порчић", 22)
         assert nastavnici["Александра Ула Ускоковић"] == 20
-        assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 22
+        assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 14
         assert ulaz.opterecenje_odeljenja()["41"] == 16
 
     def test_nastavnici_smenjujucih_odeljenja_popunjavaju_jutarnji_prozor(self):
@@ -188,7 +188,7 @@ class TestCelaInstitucija:
 
         assert ulaz.skola is None
         assert len(ulaz.zahtevi) == 244
-        assert ulaz.ukupno_casova == 866
+        assert ulaz.ukupno_casova == 864
         assert len(ulaz.odeljenja) == 45
 
     def test_srednja_radi_ceo_dan(self):
@@ -217,13 +217,12 @@ class TestCelaInstitucija:
     def test_opterecenje_se_sabira_kroz_obe_skole(self):
         ulaz = ucitaj_vise(SVI_ULAZI)
 
-        # Ђорђина Убовић plays 22h in osnovna and teaches Солфеђо in srednja.
-        assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 22
-        assert ulaz.opterecenje_nastavnika()["Ђорђина Убовић"] == 5
+        # Ђорђина Убовић свира 14 часова у основној и предаје Солфеђо у средњој.
+        assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 14
+        assert ulaz.opterecenje_nastavnika()["Ђорђина Убовић"] == 6
         # Лана Јеленковић reaches the 20h norm only across the two schools.
         assert ulaz.opterecenje_korepetitora()["Лана Јеленковић"] == 20
-        # One person, once spelled Илевска in osnovna: 10h + 14h.
-        assert ulaz.opterecenje_nastavnika()["Ива Илиевска"] == 24
+        assert ulaz.opterecenje_nastavnika()["Ива Илиевска"] == 20
         assert "Ива Илевска" not in ulaz.nastavnici
 
     def test_greske_nose_ime_datoteke(self, tmp_path):
@@ -270,8 +269,14 @@ class TestProstorije:
 
 
 class TestNedostupnost:
-    def test_prazna_datoteka_znaci_svi_dostupni(self):
-        assert ucitaj_nedostupnost("ulazi/nedostupnost.csv") == ()
+    def test_prazna_datoteka_znaci_svi_dostupni(self, tmp_path):
+        putanja = tmp_path / "nedostupnost.csv"
+        putanja.write_text(
+            "наставник,дан,од блока,до блока,напомена\n",
+            encoding="utf-8",
+        )
+
+        assert ucitaj_nedostupnost(putanja) == ()
 
     def test_ucitava_opseg_blokova(self, tmp_path):
         putanja = tmp_path / "nedostupnost.csv"

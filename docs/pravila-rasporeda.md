@@ -126,8 +126,15 @@ popunjena.
 ### Narodno pozorište
 
 - jedna sala;
-- može se koristiti samo od 16:00 do 18:00;
-- može se koristiti samo za predmet **Repertoar KB**.
+- može se koristiti samo od 16:00 do 17:40;
+- koristi se samo za predmet **Repertoar klasičnog baleta**;
+- `IV1` ima u toj sali **dva dvočasa nedeljno**;
+- `IV2` ima u toj sali **dva dvočasa nedeljno**;
+- preostali **peti termin** u nedelji popunjava se jednim dvočasom predmeta
+  Repertoar klasičnog baleta za **`III1` ili `III2`**; solver sme da izabere
+  koje od ta dva odeljenja koristi taj termin ako to olakšava raspored.
+
+Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 
 ### Posebne prostorije i prioriteti
 
@@ -145,7 +152,7 @@ popunjena.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
 
-## Nastavnici
+## Nastavnici i korepetitori
 
 - Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom);
   nastavnici opštih predmeta često rade i u drugim školama.
@@ -154,7 +161,14 @@ popunjena.
   **Ovo je najvažniji podatak koji trenutno fali**: šest nastavnika osnovne ima
   tačno 20 časova, a jutarnja smena ima 4 bloka × 5 dana = 20, pa svaki
   nepoznati slobodan dan obara rešivost.
-- Nastavnici mogu imati pauzu između časova, ali je poželjno da je nemaju.
+- Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
+  blokova između angažovanja kad god je to moguće.
+- Ako kontinuitet ne može da se postigne zbog drugih tvrdih pravila, dozvoljena
+  je izuzetna pauza, ali najviše **jednom nedeljno po osobi** i najviše u
+  trajanju **jednog dvočasa (dva časovna bloka)**.
+- Kraća pauza je bolja od duže; solver treba snažno da kažnjava svaku pauzu,
+  a posebno drugu i svaku narednu pauzu iste osobe u toku nedelje ili pauzu
+  dužu od dva bloka.
 - `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
   osoba** — zajedno 21č, u okviru norme.
 
@@ -185,7 +199,8 @@ popunjena.
 - Učenici ne smeju imati prazne časove.
 - Izuzetak je promena lokacije, kada učenici moraju imati pauzu od jednog časovnog bloka.
 - Poželjno je da odeljenja koja naizmenično menjaju smene budu simetrično raspoređena.
-- Nastavnici mogu imati pauze, ali raspored bez pauza ima prednost.
+- Za nastavnike i korepetitore kontinuitet časova je snažan prioritet; jedna
+  pauza do dva bloka nedeljno je izuzetak, ne uobičajena organizacija rada.
 
 ## Napomene za dalju razradu
 
@@ -193,3 +208,6 @@ Otvorena pitanja su izdvojena u [otvorena-pitanja.md](otvorena-pitanja.md).
 Od prvobitnog spiska ostali su prioriteti sala i dostupnost nastavnika po danima.
 Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
 odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
+
+- Izuzetak za peti cas jutarnje smene: samo Solfedjo 41 kod Marije Cvetkovic, Solfedjo 42 kod Sonje Pane Virijevic i Solfedjo 43 kod Jelene Mihailovic Krasic sme da bude u bloku 5 (11:40-12:25) kada je njihova smena jutarnja. Ovaj izuzetak ne vazi ni za jedan drugi predmet, nastavnika ili odeljenje.
+- Ista fizicka osoba je jedan rasporedni resurs bez obzira da li u konkretnom casu nastupa kao nastavnik ili korepetitor; ne sme istovremeno obavljati obe uloge na razlicitim casovima.

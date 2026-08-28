@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from .izuzeci import dozvoljen_peti_cas_solfedja
 from .loader import (
     UlazGreska,
     ucitaj_nedostupnost,
@@ -61,6 +62,21 @@ GRADJANSKO = "Грађанско васпитање"
 ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
+
+OPSTI_PREDMETI = frozenset({
+    "Српски језик и књижевност",
+    "Француски језик",
+    "Енглески језик",
+    "Историја",
+    "Рачунарство и информатика",
+    "Математика",
+    "Биологија",
+    "Психологија",
+    "Социологија",
+    "Филозофија",
+    "Верска настава",
+    "Грађанско васпитање",
+})
 
 
 @dataclass(frozen=True)
@@ -246,6 +262,7 @@ def proveri(
     _proveri_dnevni_raspored(ulaz, prostorije_po_oznaci, casovi, izvestaj)
     _proveri_dvocase(ulaz, casovi, izvestaj)
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
+    _proveri_narodno_pozoriste(ulaz, casovi, izvestaj)
     _upozori_na_pauze_nastavnika(casovi, izvestaj)
     return izvestaj
 
@@ -389,8 +406,53 @@ def _proveri_red(
                 f"{cas.gde}: наставник {cas.nastavnik} није доступан "
                 f"({cas.dan}, блокови {stavka.od_bloka}–{stavka.do_bloka})"
             )
+        if (
+            cas.korepetitor
+            and stavka.nastavnik == cas.korepetitor
+            and stavka.dan == cas.dan
+            and stavka.od_bloka <= cas.blok <= stavka.do_bloka
+        ):
+            izvestaj.greske.append(
+                f"{cas.gde}: корепетитор {cas.korepetitor} није доступан "
+                f"({cas.dan}, блокови {stavka.od_bloka}–{stavka.do_bloka})"
+            )
 
     return tuple(zahtevi)
+
+
+def _proveri_narodno_pozoriste(
+    ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj
+) -> None:
+    ima_np_program = all(
+        any(
+            z.predmet == REPERTOAR_KLASICNOG and oznaka in z.odeljenja
+            for z in ulaz.zahtevi
+        )
+        for oznaka in ("IV1", "IV2")
+    )
+    if not ima_np_program:
+        return
+    np_casovi = [cas for cas in casovi if cas.prostorija == "NP-сала"]
+    po_odeljenju = Counter(
+        cas.odeljenja[0] for cas in np_casovi if len(cas.odeljenja) == 1
+    )
+    if po_odeljenju["IV1"] != 4:
+        izvestaj.greske.append(
+            f"NP-сала: IV1 мора имати 4 блока (два двочаса), има {po_odeljenju['IV1']}"
+        )
+    if po_odeljenju["IV2"] != 4:
+        izvestaj.greske.append(
+            f"NP-сала: IV2 мора имати 4 блока (два двочаса), има {po_odeljenju['IV2']}"
+        )
+    treci = po_odeljenju["III1"] + po_odeljenju["III2"]
+    if treci != 2:
+        izvestaj.greske.append(
+            f"NP-сала: III1 или III2 морају имати један двочас (2 блока), има {treci}"
+        )
+    if len(np_casovi) != 10:
+        izvestaj.greske.append(
+            f"NP-сала: потребно је укупно 10 блокова (5 двочаса), има {len(np_casovi)}"
+        )
 
 
 def _proveri_smenu(
@@ -399,7 +461,14 @@ def _proveri_smenu(
     smena = zahtev.smena
     dozvoljeni: tuple[int, ...] | None = None
     if smena in (Smena.CRVENA, Smena.PLAVA):
-        dozvoljeni = PRVA_SMENA if smena is jutarnja else DRUGA_SMENA
+        if smena is jutarnja:
+            dozvoljeni = PRVA_SMENA
+            if dozvoljen_peti_cas_solfedja(
+                cas.predmet, cas.nastavnik, cas.odeljenja
+            ):
+                dozvoljeni = PRVA_SMENA + (5,)
+        else:
+            dozvoljeni = DRUGA_SMENA
     elif smena is Smena.STALNO_POPODNE:
         dozvoljeni = DRUGA_SMENA
     elif smena is Smena.POSEBNA:
@@ -495,25 +564,24 @@ def _proveri_fondove(
 
 
 def _proveri_sudare(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:
-    _prijavi_duple_resurse(
-        casovi,
-        "наставник",
-        lambda c: (c.termin, c.nastavnik),
-        lambda c: c.nastavnik,
-        izvestaj,
-    )
+    # Nastavnik i korepetitor su isti fizicki resurs.
+    zauzeca_osoba: dict[tuple[tuple[str, int], str], list[Cas]] = defaultdict(list)
+    for cas in casovi:
+        zauzeca_osoba[(cas.termin, cas.nastavnik)].append(cas)
+        if cas.korepetitor:
+            zauzeca_osoba[(cas.termin, cas.korepetitor)].append(cas)
+    for ((dan, blok), osoba), stavke in zauzeca_osoba.items():
+        if len(stavke) <= 1:
+            continue
+        redovi = ", ".join(str(c.red) for c in stavke)
+        izvestaj.greske.append(
+            f"особа {osoba} је заузета више пута: {dan}, блок {blok}, редови {redovi}"
+        )
     _prijavi_duple_resurse(
         casovi,
         "просторија",
         lambda c: (c.termin, c.prostorija),
         lambda c: c.prostorija,
-        izvestaj,
-    )
-    _prijavi_duple_resurse(
-        [c for c in casovi if c.korepetitor],
-        "корепетитор",
-        lambda c: (c.termin, c.korepetitor),
-        lambda c: c.korepetitor,
         izvestaj,
     )
 
@@ -604,7 +672,7 @@ def _proveri_dnevni_raspored(
                 opsti = sum(
                     1
                     for blok in blokovi
-                    if all(not ulaz.predmeti[c.predmet].igracki for c in po_bloku[blok])
+                    if any(c.predmet in OPSTI_PREDMETI for c in po_bloku[blok])
                 )
                 if igracki > 4:
                     izvestaj.greske.append(
@@ -736,10 +804,18 @@ def _proveri_versku_i_gradjansko(
         if cas.predmet in ALTERNATIVNI_PREDMETI:
             for oznaka in cas.odeljenja:
                 termini[(cas.predmet, oznaka)].add(cas.termin)
+    ima_predmet = {
+        (zahtev.predmet, oznaka)
+        for zahtev in ulaz.zahtevi
+        if zahtev.predmet in ALTERNATIVNI_PREDMETI
+        for oznaka in zahtev.odeljenja
+    }
     for oznaka in ulaz.odeljenja:
+        if (VERSKA, oznaka) not in ima_predmet or (GRADJANSKO, oznaka) not in ima_predmet:
+            continue
         verska = termini[(VERSKA, oznaka)]
         gradjansko = termini[(GRADJANSKO, oznaka)]
-        if (verska or gradjansko) and verska != gradjansko:
+        if verska != gradjansko:
             izvestaj.greske.append(
                 f"Верска настава и Грађанско васпитање за {oznaka} "
                 "морају бити истовремено"
