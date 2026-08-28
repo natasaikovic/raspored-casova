@@ -595,6 +595,27 @@ def napravi_model(
         ):
             model.add_all_different([promenljive[j.indeks].dan for j in stavke])
 
+        # Klasičan balet u osnovnoj sa fondom 10 mora imati po jedan dvočas
+        # svakog radnog dana. Pet različitih dana ograničenih na pon–pet
+        # znači da nijedan dan ne može biti preskočen niti zamenjen subotom.
+        osnovni_klasicni = (
+            odeljenje.skola is Skola.OSNOVNA
+            and zahtev.predmet == "Класичан балет"
+            and zahtev.fond == 10
+        )
+        if osnovni_klasicni:
+            dani = [promenljive[j.indeks].dan for j in stavke]
+            model.add_all_different(dani)
+            for dan in dani:
+                model.add(dan <= 4)
+            if sa_nedeljom_b and zahtev.smena.menja_se:
+                dani_b = [promenljive[j.indeks].dan_b for j in stavke]
+                assert all(dan is not None for dan in dani_b)
+                model.add_all_different(dani_b)
+                for dan in dani_b:
+                    assert dan is not None
+                    model.add(dan <= 4)
+
     # Verska i Građansko istog razreda dele termin i lokaciju.
     alternativni: dict[tuple[str, str], Jedinica] = {}
     for jedinica in jedinice:
