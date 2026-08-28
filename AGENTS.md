@@ -112,6 +112,11 @@ izmenjeni i commitovani na grani otvorenog pull requesta.
 - `python -m pytest`
 - Testovi za loader koriste samo standardnu biblioteku i moraju tako i ostati.
 - `ortools` je potreban samo za solver, kada bude napisan.
+- Ako commit napravi GitHub Actions bot, novi PR workflow-i mogu biti označeni
+  kao `action_required` umesto da se automatski izvrše. Posle takvog bota
+  napraviti sledeći potreban commit preko normalnog GitHub pristupa ili
+  eksplicitno pokrenuti proveru; ne tumačiti `action_required` kao neuspeh
+  solvera ili testova.
 
 
 ## Prikaz rasporeda korisniku
