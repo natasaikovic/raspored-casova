@@ -677,6 +677,11 @@ def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> N
                 odeljenje.skola is Skola.SREDNJA
                 and "главни предмет" in zahtev.predmet
             )
+            osnovni_klasicni = (
+                odeljenje.skola is Skola.OSNOVNA
+                and zahtev.predmet == "Класичан балет"
+                and zahtev.fond == 10
+            )
             if odeljenje.skola is Skola.SREDNJA:
                 if predugi:
                     izvestaj.greske.append(
@@ -697,6 +702,14 @@ def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> N
                             f"главни предмет „{zahtev.predmet}“ за {oznaka} мора "
                             "имати тачно један двочас дневно"
                         )
+            elif osnovni_klasicni:
+                po_danu = Counter(c.dan for c in stavke)
+                ocekivano = {dan: 2 for dan in DANI[:5]}
+                if predugi or po_danu != ocekivano:
+                    izvestaj.greske.append(
+                        f"„Класичан балет“ за {oznaka} мора имати тачно један "
+                        "двочас сваког дана од понедељка до петка"
+                    )
             elif predugi or parovi * 2 + samostalni != zahtev.fond:
                 izvestaj.upozorenja.append(
                     f"проверити двочасе за „{zahtev.predmet}“, одељење {oznaka}"

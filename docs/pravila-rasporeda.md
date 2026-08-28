@@ -62,6 +62,15 @@ Za jedan čas opšteg predmeta potrebni su:
 
 ## Osnovna škola
 
+### Klasičan balet
+
+- Nedeljni fond Klasičnog baleta je **10 časova**.
+- Tih 10 časova se obavezno raspoređuje kao **tačno jedan dvočas svakog
+  radnog dana, od ponedeljka do petka**.
+- Ovo je čvrsto pravilo: nijedan radni dan ne sme biti preskočen, dva dvočasa
+  ne smeju biti spojena istog dana, a nijedan od ovih časova ne sme biti
+  prebačen na subotu.
+
 ### Igrački predmeti
 
 Za jedan čas igračkog predmeta potrebni su:

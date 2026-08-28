@@ -124,6 +124,26 @@ def test_srednjoskolski_dvocasi_istog_predmeta_su_razlicitim_danima():
     assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
 
 
+def test_obs_klasicni_balet_ima_dvocas_svakog_radnog_dana():
+    z = zahtev("Класичан балет", "11", 10, "Мила", "Ива")
+
+    rezultat = resi_nedelju(
+        ulaz([z]), (SALA,), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    po_danu = {}
+    for cas in rezultat.casovi:
+        po_danu.setdefault(cas.dan, []).append(cas.blok)
+    assert set(po_danu) == {"понедељак", "уторак", "среда", "четвртак", "петак"}
+    assert all(
+        len(blokovi) == 2 and max(blokovi) - min(blokovi) == 1
+        for blokovi in po_danu.values()
+    )
+    assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
+
+
 def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
     osnovna = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     srednja = Zahtev(
