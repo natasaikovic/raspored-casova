@@ -347,6 +347,72 @@ def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
     )
 
 
+def test_jedna_nedeljna_pauza_osobe_do_dva_bloka_je_samo_upozorenje():
+    z1 = zahtev("Историја", ["11"], 1, "Ана")
+    z2 = zahtev("Солфеђо", ["12"], 1, "Ана", red=3)
+    ulaz = napravi_ulaz([z1, z2])
+    casovi = (
+        Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
+        Cas("понедељак", 3, z2.predmet, ("12",), "Ана", None, "U1", 3),
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert izvestaj.ispravan, izvestaj.tekst()
+    assert any("особа Ана има паузу од 1 блока" in u for u in izvestaj.upozorenja)
+
+
+def test_druga_nedeljna_pauza_osobe_je_greska():
+    zahtevi = [
+        zahtev("Предмет 1", ["11"], 1, "Ана"),
+        zahtev("Предмет 2", ["12"], 1, "Ана", red=3),
+        zahtev("Предмет 3", ["13"], 1, "Ана", red=4),
+    ]
+    ulaz = napravi_ulaz(zahtevi)
+    casovi = tuple(
+        Cas("понедељак", blok, z.predmet, z.odeljenja, "Ана", None, "U1", red)
+        for z, blok, red in zip(zahtevi, (1, 3, 5), (2, 3, 4))
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert any("особа Ана има 2 паузе у недељи" in g for g in izvestaj.greske)
+
+
+def test_pauza_osobe_duza_od_dva_bloka_je_greska():
+    z1 = zahtev("Историја", ["11"], 1, "Ана")
+    z2 = zahtev("Солфеђо", ["12"], 1, "Ана", red=3)
+    ulaz = napravi_ulaz([z1, z2])
+    casovi = (
+        Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
+        Cas("понедељак", 5, z2.predmet, ("12",), "Ана", None, "U1", 3),
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert any("максимум су два блока" in g for g in izvestaj.greske)
+
+
+def test_pauze_korepetitora_se_proveravaju_kao_i_nastavnicke():
+    z1 = zahtev(
+        "Игра 1", ["11"], 1, "Мила", korepetitor="Ива", fond_korepeticije=1
+    )
+    z2 = zahtev(
+        "Игра 2", ["12"], 1, "Нина", korepetitor="Ива",
+        fond_korepeticije=1, red=3,
+    )
+    ulaz = napravi_ulaz([z1, z2], igracki={z1.predmet, z2.predmet})
+    casovi = (
+        Cas("понедељак", 1, z1.predmet, ("11",), "Мила", "Ива", "S1", 2),
+        Cas("понедељак", 3, z2.predmet, ("12",), "Нина", "Ива", "S1", 3),
+    )
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert izvestaj.ispravan, izvestaj.tekst()
+    assert any("особа Ива има паузу" in u for u in izvestaj.upozorenja)
+
+
 def test_nepoznato_prvo_odeljenje_ne_obara_proveravac():
     z = zahtev("Историја", ["I1"], 1, "Ана", razred="I", smena=Smena.CEO_DAN)
     ulaz = napravi_ulaz([z])

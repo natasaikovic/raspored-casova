@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.model import (
+    Nedostupnost,
     Odeljenje,
     Predmet,
     Prostorija,
@@ -191,3 +192,35 @@ def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
     assert srednja_a == srednja_b
     assert a.izvestaj is not None and a.izvestaj.ispravan
     assert b.izvestaj is not None and b.izvestaj.ispravan
+
+
+def test_promena_lokacije_ima_tacno_jedan_putni_blok():
+    teorija = zahtev("Теорија", "11", 1, "Ана")
+    balet = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
+    u = ulaz([teorija, balet])
+    sala = Prostorija("S1", "Прва локација", TipProstorije.SALA, None, "")
+    ucionica = Prostorija(
+        "U1", "Друга локација", TipProstorije.UCIONICA, None, ""
+    )
+    nedostupnosti = tuple(
+        Nedostupnost(osoba, dan, 1, 14, "тест")
+        for osoba in ("Ана", "Мила", "Ива")
+        for dan in ("уторак", "среда", "четвртак", "петак", "субота")
+    )
+
+    rezultat = resi_nedelju(
+        u,
+        (sala, ucionica),
+        nedostupnosti,
+        Smena.CRVENA,
+        vremensko_ogranicenje=5,
+        broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    assert {cas.dan for cas in rezultat.casovi} == {"понедељак"}
+    blokovi = sorted({cas.blok for cas in rezultat.casovi})
+    assert [b - a for a, b in zip(blokovi, blokovi[1:])].count(2) == 1
+    assert max(blokovi) - min(blokovi) + 1 == len(blokovi) + 1
+    assert rezultat.izvestaj is not None
+    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
