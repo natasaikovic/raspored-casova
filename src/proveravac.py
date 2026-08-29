@@ -62,6 +62,8 @@ GRADJANSKO = "Грађанско васпитање"
 ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
+KOREPETITOR_BR_1 = "корепетитор br.1"
+NEPOZNATI_KOREPETITOR = "?"
 
 OPSTI_PREDMETI = frozenset({
     "Српски језик и књижевност",
@@ -838,14 +840,39 @@ def _proveri_versku_i_gradjansko(
 def _upozori_na_pauze_nastavnika(
     casovi: Sequence[Cas], izvestaj: Izvestaj
 ) -> None:
+    """Proveri nedeljni kontinuitet svih osoba, bez obzira na njihovu ulogu."""
+
     termini: dict[tuple[str, str], set[int]] = defaultdict(set)
     for cas in casovi:
-        termini[(cas.nastavnik, cas.dan)].add(cas.blok)
-    for (nastavnik, dan), blokovi in termini.items():
+        osobe = {cas.nastavnik}
+        if cas.korepetitor:
+            osobe.add(cas.korepetitor)
+        for osoba in osobe:
+            if osoba in (KOREPETITOR_BR_1, NEPOZNATI_KOREPETITOR):
+                osoba = "будући корепетитор"
+            termini[(osoba, cas.dan)].add(cas.blok)
+
+    pauze_po_osobi: Counter[str] = Counter()
+    for (osoba, dan), blokovi in sorted(termini.items()):
         sortirani = sorted(blokovi)
-        if any(sledeci - prethodni > 1 for prethodni, sledeci in zip(sortirani, sortirani[1:])):
+        for prethodni, sledeci in zip(sortirani, sortirani[1:]):
+            duzina = sledeci - prethodni - 1
+            if duzina <= 0:
+                continue
+            pauze_po_osobi[osoba] += 1
             izvestaj.upozorenja.append(
-                f"наставник {nastavnik} има паузу у дану {dan}"
+                f"особа {osoba} има паузу од {duzina} блока у дану {dan} "
+                f"између блокова {prethodni} и {sledeci}"
+            )
+            if duzina > 2:
+                izvestaj.greske.append(
+                    f"особа {osoba} има паузу од {duzina} блока у дану {dan}; "
+                    "максимум су два блока"
+                )
+    for osoba, broj_pauza in sorted(pauze_po_osobi.items()):
+        if broj_pauza > 1:
+            izvestaj.greske.append(
+                f"особа {osoba} има {broj_pauza} паузе у недељи; максимум је једна"
             )
 
 

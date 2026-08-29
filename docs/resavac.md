@@ -1,6 +1,6 @@
 # Rešavač rasporeda
 
-Prva verzija rešavača koristi OR-Tools CP-SAT. Osnovna i srednja škola učitavaju
+Rešavač koristi OR-Tools CP-SAT. Osnovna i srednja škola učitavaju
 se zajedno, jer dele nastavnike, korepetitore i prostorije. Jedno pokretanje
 pravi obe nedelje:
 
@@ -14,20 +14,21 @@ ujutru). Oba fajla su na latinici i imaju format opisan u
 
 ## Odnos nedelja A i B
 
-Nedelje se rešavaju u istom CP-SAT modelu, ali naizmenične smene nisu strogo
-ogledalo po danu, bloku i prostoriji:
+Nedelje se rešavaju sekvencijalno: prvo nedelja A, zatim nedelja B. Kada je A
+pronađena, svi časovi srednje škole, stalnih smena i P1 fiksiraju se u B na isti
+dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
 
 - smena iz ulaznog CSV-a određuje dozvoljene blokove odeljenja u nedelji A;
 - njena inverzna smena određuje dozvoljene blokove u nedelji B;
 - naizmenična odeljenja osnovne škole dobijaju zasebne odluke za dan, blok i
   prostoriju u svakoj nedelji;
 - srednja škola, odeljenja `13`, `23` i `33`, kao i P1, ostaju identični u obe
-  nedelje.
+  nedelje jer su pri rešavanju B fiksirani na rezultat A.
 
-Resursi i učenička preklapanja proveravaju se u modelu zasebno za A i B, a oba
-dobijena CSV fajla zatim prolaze kroz nezavisni proveravač. Prošlogodišnja
-referenca ne sadrži dve verzije rasporeda istog odeljenja, pa ne daje osnov da
-se nametne jača simetrija.
+Svaka nedelja dobija celo zadato vremensko ograničenje. Resursi i učenička
+preklapanja proveravaju se zasebno za A i B, a oba dobijena CSV fajla zatim
+prolaze kroz nezavisni proveravač. Prošlogodišnja referenca ne sadrži dve verzije
+rasporeda istog odeljenja, pa ne daje osnov da se nametne jača simetrija.
 
 ## Čvrsta ograničenja
 
@@ -39,25 +40,34 @@ Rešavač ne sme da prekrši:
 - tip prostorije i posebnu učionicu za informatiku;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
+- bez praznih časova učenika, osim tačno jednog putnog bloka pri promeni
+  lokacije;
+- najviše jednu promenu lokacije po odeljenju u toku dana;
 - istovremenost Verske nastave i Građanskog vaspitanja;
 - nedostupnost nastavnika iz `ulazi/nedostupnost.csv`.
 
 Oznake `?` i `korepetitor br.1` tretiraju se kao ista buduća osoba, iako su u
 ulazima privremeno zapisane različito.
 
-`NP-sala` je u ovoj prvoj verziji namerno isključena iz domena rešavača. Njena
-upotreba je ograničena na Repertoar klasičnog baleta u blokovima 10 i 11, a
-ostalih deset sala trenutno daje dovoljan kapacitet. Proveravač i dalje poznaje
-i proverava njena pravila; rešavač će je uključiti kada bude potrebna.
+Rešavanje svake nedelje ima dve faze. Glavni model bira termine i lokacije i
+kontroliše zbirni kapacitet sala i učionica na svakoj lokaciji. Kada su termini
+poznati, manji pomoćni model dodeljuje konkretne prostorije bez preklapanja.
+Time se uklanjaju hiljade simetričnih izbora konkretnih sala iz glavne
+pretrage, a CSV i dalje sadrži proverenu konkretnu prostoriju za svaki čas.
+Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
+`NP-sala`, važe i u drugoj fazi.
 
 ## Optimizacija i provera
 
-Prazni časovi učenika i korišćenje više lokacija u istom danu za sada su deo
-funkcije kvaliteta. Model pokušava da ih ukloni, ali ih ne postavlja kao čvrsto
-ograničenje, jer bi nalaženje prve radne verzije bilo znatno sporije.
-Trenutni cilj daje prednost rasporedu bez promene lokacije. Dozvoljenu promenu
-lokacije sa tačno jednim slobodnim blokom još ne modelira kao poseban poželjan
-obrazac; nezavisni proveravač je ipak pravilno prihvata.
+Prazni časovi učenika i promena lokacije modelirani su kao čvrsta pravila.
+Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su povezani. Ako
+jednom promeni lokaciju, model bira smer prelaska i tačno jedan slobodan blok
+za put; taj putni blok se ne računa kao prazan čas. Druga promena lokacije i
+svaka druga praznina nisu dozvoljene.
+
+Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
+dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
+dozvoljenom okviru funkcija cilja i dalje daje prednost potpunom kontinuitetu.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
