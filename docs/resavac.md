@@ -1,6 +1,6 @@
 # Rešavač rasporeda
 
-Prva verzija rešavača koristi OR-Tools CP-SAT. Osnovna i srednja škola učitavaju
+Rešavač koristi OR-Tools CP-SAT. Osnovna i srednja škola učitavaju
 se zajedno, jer dele nastavnike, korepetitore i prostorije. Jedno pokretanje
 pravi obe nedelje:
 
@@ -25,7 +25,7 @@ dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
 - srednja škola, odeljenja `13`, `23` i `33`, kao i P1, ostaju identični u obe
   nedelje jer su pri rešavanju B fiksirani na rezultat A.
 
-Svaka faza dobija polovinu ukupnog vremenskog ograničenja. Resursi i učenička
+Svaka nedelja dobija celo zadato vremensko ograničenje. Resursi i učenička
 preklapanja proveravaju se zasebno za A i B, a oba dobijena CSV fajla zatim
 prolaze kroz nezavisni proveravač. Prošlogodišnja referenca ne sadrži dve verzije
 rasporeda istog odeljenja, pa ne daje osnov da se nametne jača simetrija.
@@ -49,10 +49,13 @@ Rešavač ne sme da prekrši:
 Oznake `?` i `korepetitor br.1` tretiraju se kao ista buduća osoba, iako su u
 ulazima privremeno zapisane različito.
 
-`NP-sala` je u ovoj prvoj verziji namerno isključena iz domena rešavača. Njena
-upotreba je ograničena na Repertoar klasičnog baleta u blokovima 10 i 11, a
-ostalih deset sala trenutno daje dovoljan kapacitet. Proveravač i dalje poznaje
-i proverava njena pravila; rešavač će je uključiti kada bude potrebna.
+Rešavanje svake nedelje ima dve faze. Glavni model bira termine i lokacije i
+kontroliše zbirni kapacitet sala i učionica na svakoj lokaciji. Kada su termini
+poznati, manji pomoćni model dodeljuje konkretne prostorije bez preklapanja.
+Time se uklanjaju hiljade simetričnih izbora konkretnih sala iz glavne
+pretrage, a CSV i dalje sadrži proverenu konkretnu prostoriju za svaki čas.
+Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
+`NP-sala`, važe i u drugoj fazi.
 
 ## Optimizacija i provera
 

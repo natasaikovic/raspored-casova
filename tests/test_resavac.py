@@ -75,6 +75,29 @@ def test_isti_nastavnik_ne_moze_u_dva_odeljenja_istovremeno():
     assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
 
 
+def test_druga_faza_dodeljuje_razlicite_prostorije_istog_tipa():
+    z1 = zahtev("Теорија 1", "11", 1, "Мила")
+    z2 = zahtev("Теорија 2", "12", 1, "Ана")
+    druga = Prostorija(
+        "KM-уч3", "Кнез Милетина 8", TipProstorije.UCIONICA, None, ""
+    )
+
+    rezultat = resi_nedelju(
+        ulaz([z1, z2]), (UCIONICA, druga), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    po_terminu = {}
+    for cas in rezultat.casovi:
+        po_terminu.setdefault(cas.termin, []).append(cas.prostorija)
+    assert all(
+        len(prostorije) == len(set(prostorije))
+        for prostorije in po_terminu.values()
+    )
+    assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
+
+
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):
     z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     rezultat = resi_nedelju(
