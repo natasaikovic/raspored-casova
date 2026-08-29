@@ -247,6 +247,267 @@ def _tokeni_odeljenja(ulaz: Ulaz, oznake: Iterable[str]) -> frozenset[str]:
     return frozenset(rezultat)
 
 
+def _promenljive_za_nedelju(
+    promenljive: PromenljiveJedinice,
+    nedelja_b: bool,
+) -> tuple[
+    cp_model.IntVar,
+    tuple[cp_model.BoolVar, ...],
+    dict[str, cp_model.BoolVar],
+]:
+    if not nedelja_b:
+        return promenljive.blok, promenljive.po_danu, promenljive.lokacije
+    assert promenljive.blok_b is not None
+    assert promenljive.po_danu_b is not None
+    assert promenljive.lokacije_b is not None
+    return (
+        promenljive.blok_b,
+        promenljive.po_danu_b,
+        promenljive.lokacije_b,
+    )
+
+
+def _dodaj_dnevno_pravilo_lokacije(
+    model: cp_model.CpModel,
+    kazne: list[cp_model.LinearExprT],
+    token: str,
+    indeks_dana: int,
+    stavke: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Zabrani praznine osim jednog putnog bloka pri jednoj promeni lokacije."""
+
+    sufiks = "_b" if nedelja_b else ""
+    prisutnosti: list[cp_model.BoolVar] = []
+    for jedinica in stavke:
+        _, po_danu, _ = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        prisutnosti.append(po_danu[indeks_dana])
+
+    ima_cas = model.new_bool_var(f"{token}_d{indeks_dana}_ima{sufiks}")
+    model.add_max_equality(ima_cas, prisutnosti)
+    prvi = model.new_int_var(
+        1, len(BLOKOVI), f"{token}_d{indeks_dana}_prvi{sufiks}"
+    )
+    poslednji = model.new_int_var(
+        0, len(BLOKOVI), f"{token}_d{indeks_dana}_poslednji{sufiks}"
+    )
+    model.add(prvi == 1).only_enforce_if(~ima_cas)
+    model.add(poslednji == 0).only_enforce_if(~ima_cas)
+    for jedinica in stavke:
+        blok, po_danu, _ = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        model.add(prvi <= blok).only_enforce_if(po_danu[indeks_dana])
+        model.add(poslednji >= blok + jedinica.trajanje - 1).only_enforce_if(
+            po_danu[indeks_dana]
+        )
+    zauzeto = sum(
+        jedinica.trajanje
+        * _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )[1][indeks_dana]
+        for jedinica in stavke
+    )
+
+    sve_lokacije = sorted(
+        {
+            lokacija
+            for jedinica in stavke
+            for lokacija in _promenljive_za_nedelju(
+                promenljive[jedinica.indeks], nedelja_b
+            )[2]
+        }
+    )
+    koristi_lokaciju: dict[str, cp_model.BoolVar] = {}
+    for broj_lokacije, lokacija in enumerate(sve_lokacije):
+        preseci: list[cp_model.BoolVar] = []
+        for jedinica in stavke:
+            _, po_danu, lokacije = _promenljive_za_nedelju(
+                promenljive[jedinica.indeks], nedelja_b
+            )
+            na_lokaciji = lokacije.get(lokacija)
+            if na_lokaciji is None:
+                continue
+            oba = model.new_bool_var(
+                f"{token}_d{indeks_dana}_l{broj_lokacije}"
+                f"_j{jedinica.indeks}{sufiks}"
+            )
+            model.add(oba <= po_danu[indeks_dana])
+            model.add(oba <= na_lokaciji)
+            model.add(oba >= po_danu[indeks_dana] + na_lokaciji - 1)
+            preseci.append(oba)
+        koristi = model.new_bool_var(
+            f"{token}_d{indeks_dana}_l{broj_lokacije}{sufiks}"
+        )
+        if preseci:
+            model.add_max_equality(koristi, preseci)
+        else:
+            model.add(koristi == 0)
+        koristi_lokaciju[lokacija] = koristi
+
+    broj_lokacija = sum(koristi_lokaciju.values())
+    model.add(broj_lokacija <= 2)
+    menja_lokaciju = model.new_bool_var(
+        f"{token}_d{indeks_dana}_promena_lokacije{sufiks}"
+    )
+    model.add(broj_lokacija == 2).only_enforce_if(menja_lokaciju)
+    model.add(broj_lokacija <= 1).only_enforce_if(~menja_lokaciju)
+
+    # Putni blok se ne računa kao prazan čas. Svaka druga praznina je tvrdo
+    # zabranjena, pa je dnevni raspon jednak zauzetim blokovima plus eventualno
+    # jednom putnom bloku.
+    prazni = model.new_int_var(
+        0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni{sufiks}"
+    )
+    model.add(
+        prazni
+        == poslednji - prvi + 1 - zauzeto - menja_lokaciju
+    )
+    model.add(prazni == 0)
+
+    # Jedan indikator opisuje smer jedine dozvoljene promene u danu. Izabrani
+    # putni blok razdvaja sve časove na polaznoj i dolaznoj lokaciji.
+    putni_blok = model.new_int_var(
+        1, len(BLOKOVI), f"{token}_d{indeks_dana}_putni_blok{sufiks}"
+    )
+    model.add(putni_blok == 1).only_enforce_if(~menja_lokaciju)
+    promene: list[cp_model.BoolVar] = []
+    for broj_pre, lokacija_pre in enumerate(sve_lokacije):
+        for broj_posle, lokacija_posle in enumerate(sve_lokacije):
+            if lokacija_pre == lokacija_posle:
+                continue
+            promena = model.new_bool_var(
+                f"{token}_d{indeks_dana}_promena_{broj_pre}_{broj_posle}{sufiks}"
+            )
+            model.add(promena <= koristi_lokaciju[lokacija_pre])
+            model.add(promena <= koristi_lokaciju[lokacija_posle])
+            promene.append(promena)
+            for jedinica in stavke:
+                blok, po_danu, lokacije = _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )
+                na_lokaciji_pre = lokacije.get(lokacija_pre)
+                if na_lokaciji_pre is not None:
+                    model.add(blok + jedinica.trajanje <= putni_blok).only_enforce_if(
+                        [promena, po_danu[indeks_dana], na_lokaciji_pre]
+                    )
+                na_lokaciji_posle = lokacije.get(lokacija_posle)
+                if na_lokaciji_posle is not None:
+                    model.add(blok >= putni_blok + 1).only_enforce_if(
+                        [promena, po_danu[indeks_dana], na_lokaciji_posle]
+                    )
+    model.add(sum(promene) == menja_lokaciju)
+    kazne.append(300 * menja_lokaciju)
+
+
+def _angazovanja_po_osobi(
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+) -> dict[str, list[tuple[Jedinica, tuple[int, ...]]]]:
+    angazovanja: dict[str, dict[int, set[int]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    po_indeksu = {jedinica.indeks: jedinica for jedinica in jedinice}
+    for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        angazovanja[_resurs_korepetitora(zahtev.nastavnik)][jedinica.indeks].update(
+            range(jedinica.trajanje)
+        )
+        if zahtev.korepetitor and jedinica.korepeticija:
+            angazovanja[_resurs_korepetitora(zahtev.korepetitor)][
+                jedinica.indeks
+            ].update(jedinica.korepeticija)
+    return {
+        osoba: [
+            (po_indeksu[indeks], tuple(sorted(pomeraji)))
+            for indeks, pomeraji in sorted(stavke.items())
+        ]
+        for osoba, stavke in angazovanja.items()
+    }
+
+
+def _dodaj_kontinuitet_osoba(
+    model: cp_model.CpModel,
+    kazne: list[cp_model.LinearExprT],
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Snažno kazni pauze nastavnika i korepetitora u funkciji cilja."""
+
+    sufiks = "_b" if nedelja_b else ""
+    for broj_osobe, (_osoba, stavke) in enumerate(
+        sorted(_angazovanja_po_osobi(ulaz, jedinice).items())
+    ):
+        dnevne_pauze: list[cp_model.BoolVar] = []
+        for indeks_dana in range(len(DANI)):
+            prisutnosti = [
+                _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )[1][indeks_dana]
+                for jedinica, _ in stavke
+            ]
+            ima_cas = model.new_bool_var(
+                f"o{broj_osobe}_d{indeks_dana}_ima{sufiks}"
+            )
+            model.add_max_equality(ima_cas, prisutnosti)
+            prvi = model.new_int_var(
+                1, len(BLOKOVI), f"o{broj_osobe}_d{indeks_dana}_prvi{sufiks}"
+            )
+            poslednji = model.new_int_var(
+                0, len(BLOKOVI), f"o{broj_osobe}_d{indeks_dana}_poslednji{sufiks}"
+            )
+            model.add(prvi == 1).only_enforce_if(~ima_cas)
+            model.add(poslednji == 0).only_enforce_if(~ima_cas)
+            for jedinica, pomeraji in stavke:
+                blok, po_danu, _ = _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )
+                prisutan = po_danu[indeks_dana]
+                model.add(prvi <= blok + min(pomeraji)).only_enforce_if(prisutan)
+                model.add(poslednji >= blok + max(pomeraji)).only_enforce_if(prisutan)
+            zauzeto = sum(
+                len(pomeraji)
+                * _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )[1][indeks_dana]
+                for jedinica, pomeraji in stavke
+            )
+
+            ima_pauzu = model.new_bool_var(
+                f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
+            )
+            duzina_pauze = model.new_int_var(
+                0,
+                len(BLOKOVI),
+                f"o{broj_osobe}_d{indeks_dana}_duzina_pauze{sufiks}",
+            )
+            model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
+            model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
+            model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
+            visak_duzine = model.new_int_var(
+                0,
+                len(BLOKOVI),
+                f"o{broj_osobe}_d{indeks_dana}_visak_pauze{sufiks}",
+            )
+            model.add(visak_duzine >= duzina_pauze - 2)
+            dnevne_pauze.append(ima_pauzu)
+            kazne.append(500 * ima_pauzu)
+            kazne.append(100 * duzina_pauze)
+            kazne.append(5000 * visak_duzine)
+        dodatne_pauze = model.new_int_var(
+            0,
+            len(DANI),
+            f"o{broj_osobe}_dodatne_pauze{sufiks}",
+        )
+        model.add(dodatne_pauze >= sum(dnevne_pauze) - 1)
+        kazne.append(5000 * dodatne_pauze)
+
+
 def _dodaj_jednakost_lokacije(
     model: cp_model.CpModel,
     prva: PromenljiveJedinice,
@@ -660,71 +921,19 @@ def napravi_model(
             assert all(interval is not None for interval in intervali_b)
             model.add_no_overlap(intervali_b)
 
-    # Prazni časovi i više lokacija u danu ulaze u cilj. Čvrsto nametanje oba
-    # svojstva čini prvi raspored nepotrebno teškim za nalaženje; nezavisni
-    # proveravač ih i dalje prijavljuje kao greške, pa kandidat ne može biti
-    # pogrešno predstavljen kao konačan.
+    # Učenici nemaju prazne časove. Jedini izuzetak je tačno jedan putni blok
+    # pri jedinoj dozvoljenoj promeni lokacije u toku dana.
     for token, stavke in po_ucenickom_tokenu.items():
         odeljenje = ulaz.odeljenja[token]
         for indeks_dana in range(len(DANI)):
-            prisutnosti = [promenljive[j.indeks].po_danu[indeks_dana] for j in stavke]
-            ima_cas = model.new_bool_var(f"{token}_d{indeks_dana}_ima")
-            model.add_max_equality(ima_cas, prisutnosti)
-            prvi = model.new_int_var(1, len(BLOKOVI), f"{token}_d{indeks_dana}_prvi")
-            poslednji = model.new_int_var(0, len(BLOKOVI), f"{token}_d{indeks_dana}_poslednji")
-            model.add(prvi == 1).only_enforce_if(~ima_cas)
-            model.add(poslednji == 0).only_enforce_if(~ima_cas)
-            for jedinica in stavke:
-                p = promenljive[jedinica.indeks]
-                model.add(prvi <= p.blok).only_enforce_if(p.po_danu[indeks_dana])
-                model.add(
-                    poslednji >= p.blok + jedinica.trajanje - 1
-                ).only_enforce_if(p.po_danu[indeks_dana])
-            zauzeto = sum(
-                jedinica.trajanje * promenljive[jedinica.indeks].po_danu[indeks_dana]
-                for jedinica in stavke
+            _dodaj_dnevno_pravilo_lokacije(
+                model,
+                kazne,
+                token,
+                indeks_dana,
+                stavke,
+                promenljive,
             )
-            prazni = model.new_int_var(0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni")
-            model.add(prazni >= poslednji - prvi + 1 - zauzeto)
-            kazne.append(1000 * prazni)
-
-            koristi_lokaciju: list[cp_model.BoolVar] = []
-            sve_lokacije = sorted(
-                {lokacija for j in stavke for lokacija in promenljive[j.indeks].lokacije}
-            )
-            for broj_lokacije, lokacija in enumerate(sve_lokacije):
-                preseci: list[cp_model.BoolVar] = []
-                for jedinica in stavke:
-                    p = promenljive[jedinica.indeks]
-                    na_lokaciji = p.lokacije.get(lokacija)
-                    if na_lokaciji is None:
-                        continue
-                    oba = model.new_bool_var(
-                        f"{token}_d{indeks_dana}_l{broj_lokacije}_j{jedinica.indeks}"
-                    )
-                    model.add(oba <= p.po_danu[indeks_dana])
-                    model.add(oba <= na_lokaciji)
-                    model.add(oba >= p.po_danu[indeks_dana] + na_lokaciji - 1)
-                    preseci.append(oba)
-                koristi = model.new_bool_var(
-                    f"{token}_d{indeks_dana}_l{broj_lokacije}"
-                )
-                if preseci:
-                    model.add_max_equality(koristi, preseci)
-                else:
-                    model.add(koristi == 0)
-                koristi_lokaciju.append(koristi)
-            visak_lokacija = model.new_int_var(
-                0, max(0, len(koristi_lokaciju) - 1),
-                f"{token}_d{indeks_dana}_visak_lokacija",
-            )
-            model.add(visak_lokacija >= sum(koristi_lokaciju) - 1)
-            model.add(sum(koristi_lokaciju) <= 2)
-            dve_lokacije = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije")
-            model.add(sum(koristi_lokaciju) == 2).only_enforce_if(dve_lokacije)
-            model.add(sum(koristi_lokaciju) <= 1).only_enforce_if(~dve_lokacije)
-            model.add(prazni == 0).only_enforce_if(~dve_lokacije)
-            kazne.append(300 * visak_lokacija)
 
             if odeljenje.skola is Skola.SREDNJA:
                 igracki = []
@@ -745,91 +954,32 @@ def napravi_model(
                 model.add(sum(opsti) <= 4)
                 model.add(sum(ukupno) <= 8)
 
-    # Naizmenična odeljenja imaju zaseban raspored u B, pa isti približni cilj
-    # kvaliteta primenjujemo i na njihove B promenljive.
+    # Naizmenična odeljenja imaju zaseban raspored u B, pa ista čvrsta pravila
+    # primenjujemo i na njihove B promenljive.
     if sa_nedeljom_b:
         for token, stavke in po_ucenickom_tokenu.items():
             if not ulaz.odeljenja[token].smena.menja_se:
                 continue
             for indeks_dana in range(len(DANI)):
-                prisutnosti_b = []
-                for jedinica in stavke:
-                    po_danu_b = promenljive[jedinica.indeks].po_danu_b
-                    assert po_danu_b is not None
-                    prisutnosti_b.append(po_danu_b[indeks_dana])
-                ima_cas_b = model.new_bool_var(f"{token}_d{indeks_dana}_ima_b")
-                model.add_max_equality(ima_cas_b, prisutnosti_b)
-                prvi_b = model.new_int_var(
-                    1, len(BLOKOVI), f"{token}_d{indeks_dana}_prvi_b"
+                _dodaj_dnevno_pravilo_lokacije(
+                    model,
+                    kazne,
+                    token,
+                    indeks_dana,
+                    stavke,
+                    promenljive,
+                    nedelja_b=True,
                 )
-                poslednji_b = model.new_int_var(
-                    0, len(BLOKOVI), f"{token}_d{indeks_dana}_poslednji_b"
-                )
-                model.add(prvi_b == 1).only_enforce_if(~ima_cas_b)
-                model.add(poslednji_b == 0).only_enforce_if(~ima_cas_b)
-                for jedinica in stavke:
-                    p = promenljive[jedinica.indeks]
-                    assert p.blok_b is not None and p.po_danu_b is not None
-                    model.add(prvi_b <= p.blok_b).only_enforce_if(
-                        p.po_danu_b[indeks_dana]
-                    )
-                    model.add(
-                        poslednji_b >= p.blok_b + jedinica.trajanje - 1
-                    ).only_enforce_if(p.po_danu_b[indeks_dana])
-                zauzeto_b = sum(
-                    jedinica.trajanje
-                    * promenljive[jedinica.indeks].po_danu_b[indeks_dana]
-                    for jedinica in stavke
-                )
-                prazni_b = model.new_int_var(
-                    0, len(BLOKOVI), f"{token}_d{indeks_dana}_prazni_b"
-                )
-                model.add(prazni_b >= poslednji_b - prvi_b + 1 - zauzeto_b)
-                kazne.append(1000 * prazni_b)
 
-                sve_lokacije_b = sorted(
-                    {
-                        lokacija
-                        for jedinica in stavke
-                        for lokacija in promenljive[jedinica.indeks].lokacije_b
-                    }
-                )
-                koristi_lokaciju_b: list[cp_model.BoolVar] = []
-                for broj_lokacije, lokacija in enumerate(sve_lokacije_b):
-                    preseci_b: list[cp_model.BoolVar] = []
-                    for jedinica in stavke:
-                        p = promenljive[jedinica.indeks]
-                        assert p.po_danu_b is not None and p.lokacije_b is not None
-                        na_lokaciji_b = p.lokacije_b.get(lokacija)
-                        if na_lokaciji_b is None:
-                            continue
-                        oba_b = model.new_bool_var(
-                            f"{token}_d{indeks_dana}_l{broj_lokacije}"
-                            f"_j{jedinica.indeks}_b"
-                        )
-                        model.add(oba_b <= p.po_danu_b[indeks_dana])
-                        model.add(oba_b <= na_lokaciji_b)
-                        model.add(
-                            oba_b >= p.po_danu_b[indeks_dana] + na_lokaciji_b - 1
-                        )
-                        preseci_b.append(oba_b)
-                    koristi_b = model.new_bool_var(
-                        f"{token}_d{indeks_dana}_l{broj_lokacije}_b"
-                    )
-                    model.add_max_equality(koristi_b, preseci_b)
-                    koristi_lokaciju_b.append(koristi_b)
-                visak_lokacija_b = model.new_int_var(
-                    0,
-                    max(0, len(koristi_lokaciju_b) - 1),
-                    f"{token}_d{indeks_dana}_visak_lokacija_b",
-                )
-                model.add(visak_lokacija_b >= sum(koristi_lokaciju_b) - 1)
-                model.add(sum(koristi_lokaciju_b) <= 2)
-                dve_lokacije_b = model.new_bool_var(f"{token}_d{indeks_dana}_dve_lokacije_b")
-                model.add(sum(koristi_lokaciju_b) == 2).only_enforce_if(dve_lokacije_b)
-                model.add(sum(koristi_lokaciju_b) <= 1).only_enforce_if(~dve_lokacije_b)
-                model.add(prazni_b == 0).only_enforce_if(~dve_lokacije_b)
-                kazne.append(300 * visak_lokacija_b)
+    # Kontinuitet nastavnika i korepetitora snažno ulazi u cilj. Druga nedeljna
+    # pauza i deo pauze preko dva bloka dobijaju naročito veliku kaznu.
+    _dodaj_kontinuitet_osoba(
+        model, kazne, ulaz, jedinice, promenljive
+    )
+    if sa_nedeljom_b:
+        _dodaj_kontinuitet_osoba(
+            model, kazne, ulaz, jedinice, promenljive, nedelja_b=True
+        )
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.
     # Ispravnost ne zavisi od cilja; sva pravila iznad su čvrsta.
