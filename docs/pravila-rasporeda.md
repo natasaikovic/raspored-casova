@@ -178,6 +178,12 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Kraća pauza je bolja od duže; solver treba snažno da kažnjava svaku pauzu,
   a posebno drugu i svaku narednu pauzu iste osobe u toku nedelje ili pauzu
   dužu od dva bloka.
+- Od ograničenja broja i trajanja pauza izuzeti su: Anastasia Antičević,
+  Branislava Porčić, Iva Bojović Petković, Ksenija Dukić, Lidija Palčić,
+  Marija Vučenović, Mirjana Anđelković, Nina Anđić, Petar Đorčevski, Vladimir
+  Jovanović, Đorđe Mihajlović i Đorđina Ubović. Njihove pauze i dalje treba
+  svesti na najmanju moguću meru. Ivana Ljujić i Jelena Prvulović nisu izuzete:
+  za njih ostaje najviše jedna pauza nedeljno, duga najviše dva bloka.
 - `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
   osoba** — zajedno 21č, u okviru norme.
 

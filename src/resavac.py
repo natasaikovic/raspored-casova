@@ -17,7 +17,7 @@ from typing import Iterable, Sequence
 from ortools.sat.python import cp_model
 
 from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
-from .izuzeci import dozvoljen_peti_cas_solfedja
+from .izuzeci import dozvoljen_peti_cas_solfedja, izuzet_od_ogranicenja_pauza
 from .model import (
     BLOKOVI,
     DANI,
@@ -460,7 +460,7 @@ def _dodaj_kontinuitet_osoba(
     """Ograniči pauze osoba i dodatno ih smanji kroz funkciju cilja."""
 
     sufiks = "_b" if nedelja_b else ""
-    for broj_osobe, (_osoba, stavke) in enumerate(
+    for broj_osobe, (osoba, stavke) in enumerate(
         sorted(_angazovanja_po_osobi(ulaz, jedinice).items())
     ):
         dnevne_pauze: list[cp_model.BoolVar] = []
@@ -509,11 +509,13 @@ def _dodaj_kontinuitet_osoba(
             model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
             model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
-            model.add(duzina_pauze <= 2)
+            if not izuzet_od_ogranicenja_pauza(osoba):
+                model.add(duzina_pauze <= 2)
             dnevne_pauze.append(ima_pauzu)
             kazne.append(500 * ima_pauzu)
             kazne.append(100 * duzina_pauze)
-        model.add(sum(dnevne_pauze) <= 1)
+        if not izuzet_od_ogranicenja_pauza(osoba):
+            model.add(sum(dnevne_pauze) <= 1)
 
 
 def _dodaj_jednakost_lokacije(

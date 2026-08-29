@@ -68,6 +68,9 @@ svaka druga praznina nisu dozvoljene.
 Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
 dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
 dozvoljenom okviru funkcija cilja i dalje daje prednost potpunom kontinuitetu.
+Pojedinačno odobreni izuzeci navedeni su u pravilima rasporeda i u
+`src/izuzeci.py`; za njih broj i trajanje pauza nisu čvrsti, ali svaka pauza i
+dalje pogoršava cilj solvera.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu

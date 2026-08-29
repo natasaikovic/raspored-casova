@@ -131,6 +131,22 @@ def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
+def test_solver_dozvoljava_vise_pauza_odobrenom_izuzetku():
+    zahtevi = [
+        zahtev(f"Теорија {i}", odeljenje, 1, "Бранислава Порчић")
+        for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    termini = ((0, 1), (0, 3), (1, 1), (1, 3))
+    for jedinica, (dan, blok) in zip(jedinice, termini):
+        model.add(promenljive[jedinica.indeks].dan == dan)
+        model.add(promenljive[jedinica.indeks].blok == blok)
+
+    assert cp_model.CpSolver().solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
+
+
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):
     z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     rezultat = resi_nedelju(
