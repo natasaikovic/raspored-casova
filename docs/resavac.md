@@ -14,20 +14,21 @@ ujutru). Oba fajla su na latinici i imaju format opisan u
 
 ## Odnos nedelja A i B
 
-Nedelje se rešavaju u istom CP-SAT modelu, ali naizmenične smene nisu strogo
-ogledalo po danu, bloku i prostoriji:
+Nedelje se rešavaju sekvencijalno: prvo nedelja A, zatim nedelja B. Kada je A
+pronađena, svi časovi srednje škole, stalnih smena i P1 fiksiraju se u B na isti
+dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
 
 - smena iz ulaznog CSV-a određuje dozvoljene blokove odeljenja u nedelji A;
 - njena inverzna smena određuje dozvoljene blokove u nedelji B;
 - naizmenična odeljenja osnovne škole dobijaju zasebne odluke za dan, blok i
   prostoriju u svakoj nedelji;
 - srednja škola, odeljenja `13`, `23` i `33`, kao i P1, ostaju identični u obe
-  nedelje.
+  nedelje jer su pri rešavanju B fiksirani na rezultat A.
 
-Resursi i učenička preklapanja proveravaju se u modelu zasebno za A i B, a oba
-dobijena CSV fajla zatim prolaze kroz nezavisni proveravač. Prošlogodišnja
-referenca ne sadrži dve verzije rasporeda istog odeljenja, pa ne daje osnov da
-se nametne jača simetrija.
+Svaka faza dobija polovinu ukupnog vremenskog ograničenja. Resursi i učenička
+preklapanja proveravaju se zasebno za A i B, a oba dobijena CSV fajla zatim
+prolaze kroz nezavisni proveravač. Prošlogodišnja referenca ne sadrži dve verzije
+rasporeda istog odeljenja, pa ne daje osnov da se nametne jača simetrija.
 
 ## Čvrsta ograničenja
 

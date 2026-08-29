@@ -1209,44 +1209,70 @@ def resi_obe_nedelje(
     seme: int = 1,
     hintovi: Sequence[Cas] = (),
 ) -> tuple[Rezultat, Rezultat]:
-    """Reši obe nedelje zajedno, sa inverznom smenom osnovne u B."""
+    """Reši A, pa B uz fiksiranje svega što ne menja smenu."""
 
-    model, jedinice, promenljive = napravi_model(
+    vreme_po_nedelji = max(1.0, vremensko_ogranicenje / 2)
+    model_a, jedinice_a, promenljive_a = napravi_model(
         ulaz,
         prostorije,
         nedostupnosti,
         Smena.CRVENA,
         hintovi,
-        sa_nedeljom_b=True,
+        sa_nedeljom_b=False,
     )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
-    solver.parameters.num_search_workers = broj_radnika
-    solver.parameters.random_seed = seme
-    status = solver.solve(model)
-    status_tekst = _status_tekst(status)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        prazan = Rezultat(status_tekst, (), None, None)
+    solver_a = cp_model.CpSolver()
+    solver_a.parameters.max_time_in_seconds = vreme_po_nedelji
+    solver_a.parameters.num_search_workers = broj_radnika
+    solver_a.parameters.random_seed = seme
+    status_a = solver_a.solve(model_a)
+    status_a_tekst = _status_tekst(status_a)
+    if status_a not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        prazan = Rezultat(status_a_tekst, (), None, None)
         return prazan, prazan
 
-    casovi_a = _izvuci_casove(solver, ulaz, jedinice, promenljive)
-    casovi_b = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive, nedelja_b=True
+    casovi_a = _izvuci_casove(solver_a, ulaz, jedinice_a, promenljive_a)
+    rezultat_a = Rezultat(
+        status_a_tekst,
+        casovi_a,
+        proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+        solver_a.objective_value,
     )
-    cilj = solver.objective_value
-    return (
-        Rezultat(
-            status_tekst,
-            casovi_a,
-            proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
-            cilj,
-        ),
-        Rezultat(
-            status_tekst,
-            casovi_b,
-            proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
-            cilj,
-        ),
+
+    model_b, jedinice_b, promenljive_b = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        Smena.PLAVA,
+        hintovi,
+        sa_nedeljom_b=False,
+    )
+    for jedinica_a, jedinica_b in zip(jedinice_a, jedinice_b):
+        assert jedinica_a == jedinica_b
+        zahtev = ulaz.zahtevi[jedinica_a.zahtev_indeks]
+        if zahtev.smena.menja_se:
+            continue
+        p_a = promenljive_a[jedinica_a.indeks]
+        p_b = promenljive_b[jedinica_b.indeks]
+        model_b.add(p_b.start == solver_a.value(p_a.start))
+        for oznaka, koristi_b in p_b.prostorije.items():
+            koristi_a = p_a.prostorije[oznaka]
+            model_b.add(koristi_b == int(solver_a.boolean_value(koristi_a)))
+
+    solver_b = cp_model.CpSolver()
+    solver_b.parameters.max_time_in_seconds = vreme_po_nedelji
+    solver_b.parameters.num_search_workers = broj_radnika
+    solver_b.parameters.random_seed = seme + 1
+    status_b = solver_b.solve(model_b)
+    status_b_tekst = _status_tekst(status_b)
+    if status_b not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return rezultat_a, Rezultat(status_b_tekst, (), None, None)
+
+    casovi_b = _izvuci_casove(solver_b, ulaz, jedinice_b, promenljive_b)
+    return rezultat_a, Rezultat(
+        status_b_tekst,
+        casovi_b,
+        proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+        solver_b.objective_value,
     )
 
 
