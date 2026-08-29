@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .izuzeci import dozvoljen_peti_cas_solfedja
+from .izuzeci import dozvoljen_peti_cas_solfedja, izuzet_od_ogranicenja_pauza
 from .loader import (
     UlazGreska,
     ucitaj_nedostupnost,
@@ -864,13 +864,13 @@ def _upozori_na_pauze_nastavnika(
                 f"особа {osoba} има паузу од {duzina} блока у дану {dan} "
                 f"између блокова {prethodni} и {sledeci}"
             )
-            if duzina > 2:
+            if duzina > 2 and not izuzet_od_ogranicenja_pauza(osoba):
                 izvestaj.greske.append(
                     f"особа {osoba} има паузу од {duzina} блока у дану {dan}; "
                     "максимум су два блока"
                 )
     for osoba, broj_pauza in sorted(pauze_po_osobi.items()):
-        if broj_pauza > 1:
+        if broj_pauza > 1 and not izuzet_od_ogranicenja_pauza(osoba):
             izvestaj.greske.append(
                 f"особа {osoba} има {broj_pauza} паузе у недељи; максимум је једна"
             )

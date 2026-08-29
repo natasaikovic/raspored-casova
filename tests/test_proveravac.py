@@ -393,6 +393,26 @@ def test_pauza_osobe_duza_od_dva_bloka_je_greska():
     assert any("максимум су два блока" in g for g in izvestaj.greske)
 
 
+def test_odobreni_izuzetak_sme_imati_vise_dugih_pauza():
+    zahtevi = [
+        zahtev(
+            f"Предмет {i}", [odeljenje], 1, "Бранислава Порчић",
+            razred="I", smena=Smena.CEO_DAN, red=i + 1,
+        )
+        for i, odeljenje in enumerate(("I1", "I2", "I3"), start=1)
+    ]
+    ulaz = napravi_ulaz(zahtevi)
+    casovi = tuple(
+        Cas("понедељак", blok, z.predmet, z.odeljenja, z.nastavnik, None, "U1", red)
+        for z, blok, red in zip(zahtevi, (1, 5, 9), (2, 3, 4))
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert izvestaj.ispravan, izvestaj.tekst()
+    assert sum("Бранислава Порчић има паузу" in u for u in izvestaj.upozorenja) == 2
+
+
 def test_pauze_korepetitora_se_proveravaju_kao_i_nastavnicke():
     z1 = zahtev(
         "Игра 1", ["11"], 1, "Мила", korepetitor="Ива", fond_korepeticije=1
