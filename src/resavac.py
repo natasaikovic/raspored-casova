@@ -1231,7 +1231,10 @@ def resi_obe_nedelje(
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A, pa B uz fiksiranje svega što ne menja smenu."""
 
-    vreme_po_nedelji = max(1.0, vremensko_ogranicenje / 2)
+    # CLI ograničenje važi za svako zasebno rešavanje. Deljenje sa dva je
+    # nedelji A davalo samo 900 sekundi i prekidalo je pre prvog rešenja, pa B
+    # nije ni započinjala.
+    vreme_po_nedelji = max(1.0, vremensko_ogranicenje)
     model_a, jedinice_a, promenljive_a = napravi_model(
         ulaz,
         prostorije,
