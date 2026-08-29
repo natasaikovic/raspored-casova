@@ -2,9 +2,14 @@ name: Generisi raspored
 
 on:
   push:
-    branches:
-      - sync-google-sheet-2026-08-25
     paths:
+      - "ulazi/**/*.csv"
+      - "src/*.py"
+      - ".github/workflows/generisi-raspored.yml"
+  pull_request:
+    paths:
+      - "ulazi/**/*.csv"
+      - "src/*.py"
       - ".github/workflows/generisi-raspored.yml"
   workflow_dispatch:
 

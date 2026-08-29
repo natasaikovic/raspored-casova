@@ -5,18 +5,12 @@ on:
   push:
     paths:
       - "ulazi/**/*.csv"
-      - "src/resavac.py"
-      - "src/loader.py"
-      - "src/model.py"
-      - "src/proveravac.py"
+      - "src/*.py"
       - ".github/workflows/resavac.yml"
   pull_request:
     paths:
       - "ulazi/**/*.csv"
-      - "src/resavac.py"
-      - "src/loader.py"
-      - "src/model.py"
-      - "src/proveravac.py"
+      - "src/*.py"
       - ".github/workflows/resavac.yml"
 
 permissions:

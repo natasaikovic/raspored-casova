@@ -39,6 +39,9 @@ Rešavač ne sme da prekrši:
 - tip prostorije i posebnu učionicu za informatiku;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
+- bez praznih časova učenika, osim tačno jednog putnog bloka pri promeni
+  lokacije;
+- najviše jednu promenu lokacije po odeljenju u toku dana;
 - istovremenost Verske nastave i Građanskog vaspitanja;
 - nedostupnost nastavnika iz `ulazi/nedostupnost.csv`.
 
@@ -52,12 +55,16 @@ i proverava njena pravila; rešavač će je uključiti kada bude potrebna.
 
 ## Optimizacija i provera
 
-Prazni časovi učenika i korišćenje više lokacija u istom danu za sada su deo
-funkcije kvaliteta. Model pokušava da ih ukloni, ali ih ne postavlja kao čvrsto
-ograničenje, jer bi nalaženje prve radne verzije bilo znatno sporije.
-Trenutni cilj daje prednost rasporedu bez promene lokacije. Dozvoljenu promenu
-lokacije sa tačno jednim slobodnim blokom još ne modelira kao poseban poželjan
-obrazac; nezavisni proveravač je ipak pravilno prihvata.
+Prazni časovi učenika i promena lokacije modelirani su kao čvrsta pravila.
+Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su povezani. Ako
+jednom promeni lokaciju, model bira smer prelaska i tačno jedan slobodan blok
+za put; taj putni blok se ne računa kao prazan čas. Druga promena lokacije i
+svaka druga praznina nisu dozvoljene.
+
+Kontinuitet nastavnika i korepetitora je snažan cilj optimizacije. Prva pauza
+do dva bloka je izuzetak; druga nedeljna pauza i deo pauze preko dva bloka nose
+naročito veliku kaznu. Nezavisni proveravač obuhvata obe uloge i prijavljuje kao
+grešku više od jedne pauze nedeljno ili pauzu dužu od dva bloka.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
