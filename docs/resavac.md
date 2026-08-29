@@ -65,10 +65,9 @@ jednom promeni lokaciju, model bira smer prelaska i tačno jedan slobodan blok
 za put; taj putni blok se ne računa kao prazan čas. Druga promena lokacije i
 svaka druga praznina nisu dozvoljene.
 
-Kontinuitet nastavnika i korepetitora je snažan cilj optimizacije. Prva pauza
-do dva bloka je izuzetak; druga nedeljna pauza i deo pauze preko dva bloka nose
-naročito veliku kaznu. Nezavisni proveravač obuhvata obe uloge i prijavljuje kao
-grešku više od jedne pauze nedeljno ili pauzu dužu od dva bloka.
+Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
+dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
+dozvoljenom okviru funkcija cilja i dalje daje prednost potpunom kontinuitetu.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu

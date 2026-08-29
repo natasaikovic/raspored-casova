@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from ortools.sat.python import cp_model
+
 from src.model import (
     Nedostupnost,
     Odeljenje,
@@ -12,7 +14,7 @@ from src.model import (
     Zahtev,
 )
 from src.proveravac import ucitaj_resenje
-from src.resavac import resi_nedelju, resi_obe_nedelje, sacuvaj_csv
+from src.resavac import napravi_model, resi_nedelju, resi_obe_nedelje, sacuvaj_csv
 
 
 SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
@@ -96,6 +98,37 @@ def test_druga_faza_dodeljuje_razlicite_prostorije_istog_tipa():
         for prostorije in po_terminu.values()
     )
     assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
+
+
+def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
+    zahtevi = [
+        zahtev("Теорија 1", "11", 1, "Мила"),
+        zahtev("Теорија 2", "12", 1, "Мила"),
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    for jedinica, blok in zip(jedinice, (1, 5)):
+        model.add(promenljive[jedinica.indeks].dan == 0)
+        model.add(promenljive[jedinica.indeks].blok == blok)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
+    zahtevi = [
+        zahtev(f"Теорија {i}", odeljenje, 1, "Мила")
+        for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    termini = ((0, 1), (0, 3), (1, 1), (1, 3))
+    for jedinica, (dan, blok) in zip(jedinice, termini):
+        model.add(promenljive[jedinica.indeks].dan == dan)
+        model.add(promenljive[jedinica.indeks].blok == blok)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):

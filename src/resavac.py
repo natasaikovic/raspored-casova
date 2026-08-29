@@ -457,7 +457,7 @@ def _dodaj_kontinuitet_osoba(
     promenljive: dict[int, PromenljiveJedinice],
     nedelja_b: bool = False,
 ) -> None:
-    """Snažno kazni pauze nastavnika i korepetitora u funkciji cilja."""
+    """Ograniči pauze osoba i dodatno ih smanji kroz funkciju cilja."""
 
     sufiks = "_b" if nedelja_b else ""
     for broj_osobe, (_osoba, stavke) in enumerate(
@@ -509,23 +509,11 @@ def _dodaj_kontinuitet_osoba(
             model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
             model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
-            visak_duzine = model.new_int_var(
-                0,
-                len(BLOKOVI),
-                f"o{broj_osobe}_d{indeks_dana}_visak_pauze{sufiks}",
-            )
-            model.add(visak_duzine >= duzina_pauze - 2)
+            model.add(duzina_pauze <= 2)
             dnevne_pauze.append(ima_pauzu)
             kazne.append(500 * ima_pauzu)
             kazne.append(100 * duzina_pauze)
-            kazne.append(5000 * visak_duzine)
-        dodatne_pauze = model.new_int_var(
-            0,
-            len(DANI),
-            f"o{broj_osobe}_dodatne_pauze{sufiks}",
-        )
-        model.add(dodatne_pauze >= sum(dnevne_pauze) - 1)
-        kazne.append(5000 * dodatne_pauze)
+        model.add(sum(dnevne_pauze) <= 1)
 
 
 def _dodaj_jednakost_lokacije(
@@ -1071,8 +1059,9 @@ def napravi_model(
                     nedelja_b=True,
                 )
 
-    # Kontinuitet nastavnika i korepetitora snažno ulazi u cilj. Druga nedeljna
-    # pauza i deo pauze preko dva bloka dobijaju naročito veliku kaznu.
+    # Nastavnik ili korepetitor sme imati najviše jednu nedeljnu pauzu, dugu
+    # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni
+    # kontinuitet.
     _dodaj_kontinuitet_osoba(
         model, kazne, ulaz, jedinice, promenljive
     )
