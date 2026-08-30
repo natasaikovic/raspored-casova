@@ -60,10 +60,12 @@ Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
 ## Optimizacija i provera
 
 Prazni časovi učenika i promena lokacije modelirani su kao čvrsta pravila.
-Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su povezani. Ako
-jednom promeni lokaciju, model bira smer prelaska i tačno jedan slobodan blok
-za put; taj putni blok se ne računa kao prazan čas. Druga promena lokacije i
-svaka druga praznina nisu dozvoljene.
+Za svako odeljenje i dan model bira kompaktan dnevni obrazac: prvi i poslednji
+blok, ukupan broj časova, postojanje i položaj putnog bloka, kao i lokaciju pre
+i posle njega. Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su
+povezani. Ako jednom promeni lokaciju, časovi čine dve povezane celine sa tačno
+jednim slobodnim blokom za put između njih. Druga promena lokacije, povratak na
+prvu lokaciju i svaka druga praznina nisu dozvoljeni.
 
 Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
 dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
