@@ -387,6 +387,22 @@ def test_jedna_nedeljna_pauza_osobe_do_dva_bloka_je_samo_upozorenje():
     assert any("особа Ана има паузу од 1 блока" in u for u in izvestaj.upozorenja)
 
 
+def test_vise_od_sest_casova_osobe_dnevno_je_greska():
+    zahtevi = [
+        zahtev(f"Предмет {i}", [f"1{i}"], 1, "Ана", red=i + 1)
+        for i in range(1, 8)
+    ]
+    ulaz = napravi_ulaz(zahtevi)
+    casovi = tuple(
+        Cas("понедељак", i, z.predmet, z.odeljenja, "Ана", None, "U1", i + 1)
+        for i, z in enumerate(zahtevi, start=1)
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert any("особа Ана има 7 часова" in g for g in izvestaj.greske)
+
+
 def test_druga_nedeljna_pauza_osobe_je_greska():
     zahtevi = [
         zahtev("Предмет 1", ["11"], 1, "Ивана Љујић"),
