@@ -398,6 +398,22 @@ def _proveri_red(
                     f"{cas.gde}: NP-сала се користи само у блоковима 10 и 11"
                 )
 
+    if cas.dan == "субота":
+        if cas.blok > 8:
+            izvestaj.greske.append(
+                f"{cas.gde}: суботом настава не сме трајати после 15:05"
+            )
+        elif cas.blok > 6:
+            izvestaj.upozorenja.append(
+                f"{cas.gde}: суботњи час после 13:15 треба избегавати"
+            )
+        if prostorija and prostorija.tip is TipProstorije.SALA and not (
+            cas.prostorija.startswith("SG-")
+        ):
+            izvestaj.upozorenja.append(
+                f"{cas.gde}: суботом предност имају сале Спортске гимназије"
+            )
+
     for stavka in nedostupnosti:
         if (
             stavka.nastavnik == cas.nastavnik

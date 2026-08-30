@@ -119,6 +119,26 @@ def test_ispravan_dvocas_osnovne_skole():
     assert izvestaj.greske == []
 
 
+def test_subotom_je_blok_posle_1505_greska():
+    z = zahtev("Класичан балет", ["I1"], 1, "Мила", razred="I")
+    ulaz = napravi_ulaz([z], igracki={z.predmet})
+    casovi = (Cas("субота", 9, z.predmet, ("I1",), "Мила", None, "S1", 2),)
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert any("после 15:05" in greska for greska in izvestaj.greske)
+
+
+def test_subotom_sala_van_sportske_gimnazije_je_upozorenje():
+    z = zahtev("Класичан балет", ["I1"], 1, "Мила", razred="I")
+    ulaz = napravi_ulaz([z], igracki={z.predmet})
+    casovi = (Cas("субота", 6, z.predmet, ("I1",), "Мила", None, "S1", 2),)
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert any("Спортске гимназије" in upozorenje for upozorenje in izvestaj.upozorenja)
+
+
 def test_obs_klasicni_fond_10_zahteva_dvocas_svakog_radnog_dana():
     z = zahtev(
         "Класичан балет",

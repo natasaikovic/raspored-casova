@@ -232,6 +232,47 @@ def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
     )
 
 
+def _dodaj_subotnje_ogranicenje(
+    model: cp_model.CpModel,
+    kazne: list[cp_model.LinearExprT],
+    blok: cp_model.IntVar,
+    prisutan_subotom: cp_model.BoolVar,
+    trajanje: int,
+    token: str,
+) -> None:
+    """Subotom zabrani rad posle 15:05 i snažno favorizuj kraj do 13:15."""
+
+    kraj_bloka = blok + trajanje - 1
+    model.add(kraj_bloka <= 8).only_enforce_if(prisutan_subotom)
+    kasno = model.new_bool_var(f"{token}_subota_posle_1315")
+    model.add(kasno <= prisutan_subotom)
+    model.add(kraj_bloka >= 7).only_enforce_if(kasno)
+    model.add(kraj_bloka <= 6).only_enforce_if([prisutan_subotom, ~kasno])
+    kazne.append(2000 * kasno)
+
+
+def _dodaj_subotnji_prioritet_sg(
+    model: cp_model.CpModel,
+    kazne: list[cp_model.LinearExprT],
+    prisutan_subotom: cp_model.BoolVar,
+    lokacije: dict[str, cp_model.BoolVar],
+    token: str,
+) -> None:
+    """Subotom snažno favorizuj raspoložive sale Sportske gimnazije."""
+
+    for broj, (lokacija, koristi) in enumerate(sorted(lokacije.items())):
+        if lokacija == "Спортска гимназија":
+            continue
+        subotom_van_sg = model.new_bool_var(f"{token}_subota_van_sg_{broj}")
+        model.add_bool_and([prisutan_subotom, koristi]).only_enforce_if(
+            subotom_van_sg
+        )
+        model.add_bool_or([~prisutan_subotom, ~koristi]).only_enforce_if(
+            ~subotom_van_sg
+        )
+        kazne.append(500 * subotom_van_sg)
+
+
 def _resurs_korepetitora(ime: str) -> str:
     if ime in (KOREPETITOR_BR_1, NEPOZNATI_KOREPETITOR):
         return "будући корепетитор"
@@ -675,6 +716,15 @@ def napravi_model(
         dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)
         if not dozvoljena_subota:
             model.add(po_danu[len(DANI) - 1] == 0)
+        else:
+            _dodaj_subotnje_ogranicenje(
+                model,
+                kazne,
+                blok,
+                po_danu[len(DANI) - 1],
+                jedinica.trajanje,
+                prefiks,
+            )
         po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
@@ -818,6 +868,15 @@ def napravi_model(
                     lokacije_b[lokacija] = koristi_lokaciju_b
             else:
                 lokacije_b = lokacije
+
+        if dozvoljena_subota:
+            _dodaj_subotnji_prioritet_sg(
+                model,
+                kazne,
+                po_danu[len(DANI) - 1],
+                lokacije,
+                prefiks,
+            )
 
         promenljive[jedinica.indeks] = PromenljiveJedinice(
             start=start,
@@ -1539,62 +1598,3 @@ def ucitaj_standardne_ulaze(
     ulaz = ucitaj_vise(
         [
             direktorijum / "osnovna_baletska_skola.csv",
-            direktorijum / "srednja_baletska_skola.csv",
-            direktorijum / "ostali_casovi.csv",
-        ]
-    )
-    return (
-        ulaz,
-        ucitaj_prostorije(direktorijum / "prostorije.csv"),
-        ucitaj_nedostupnost(direktorijum / "nedostupnost.csv"),
-    )
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Napravi dve CSV nedelje rasporeda")
-    parser.add_argument("--ulazi", type=Path, default=Path("ulazi"))
-    parser.add_argument("--izlaz", type=Path, required=True, help="direktorijum za dve CSV datoteke")
-    parser.add_argument("--vremensko-ogranicenje", type=float, default=300)
-    parser.add_argument("--broj-radnika", type=int, default=8)
-    parser.add_argument("--seme", type=int, default=1)
-    parser.add_argument(
-        "--bez-hintova",
-        action="store_true",
-        help="ne koristi postojeće radne verzije kao početne hintove",
-    )
-    argumenti = parser.parse_args(argv)
-
-    ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze(argumenti.ulazi)
-    hintovi: tuple[Cas, ...] = ()
-    putanja_hinta = Path("radne_verzije/2026-27/nedelja_a.csv")
-    if not argumenti.bez_hintova and putanja_hinta.exists():
-        hintovi = ucitaj_resenje(putanja_hinta)
-    rezultat_a, rezultat_b = resi_obe_nedelje(
-        ulaz,
-        prostorije,
-        nedostupnosti,
-        vremensko_ogranicenje=argumenti.vremensko_ogranicenje,
-        broj_radnika=argumenti.broj_radnika,
-        seme=argumenti.seme,
-        hintovi=hintovi,
-    )
-    izlazni_status = 0
-    for ime, rezultat in (
-        ("nedelja_a.csv", rezultat_a),
-        ("nedelja_b.csv", rezultat_b),
-    ):
-        print(f"{ime}: {rezultat.status}")
-        if not rezultat.pronadjen:
-            izlazni_status = 1
-            continue
-        putanja = argumenti.izlaz / ime
-        sacuvaj_csv(putanja, rezultat.casovi)
-        assert rezultat.izvestaj is not None
-        print(rezultat.izvestaj.tekst(latinica=True))
-        if not rezultat.izvestaj.ispravan:
-            izlazni_status = 1
-    return izlazni_status
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

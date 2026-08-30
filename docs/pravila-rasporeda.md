@@ -27,6 +27,14 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
 
+### Subota
+
+- Subotom se prvo popunjavaju sale Sportske gimnazije.
+- Nastava treba da se završi do 13:15 (zaključno sa blokom 6).
+- Ako raspored nije moguće napraviti u tom okviru, dozvoljeni su blokovi 7 i 8,
+  odnosno rad najkasnije do 15:05, ali ih solver snažno izbegava.
+- Nastava posle 15:05 subotom nije dozvoljena.
+
 ### Polugrupe
 
 Odeljenja narodnog odseka se za deo predmeta dele na polugrupe `А` i `Б`

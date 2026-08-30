@@ -38,6 +38,8 @@ Rešavač ne sme da prekrši:
 - fondove i grupisanje iz ulaznih CSV fajlova;
 - smene osnovne škole i posebne termine P1;
 - zauzetost odeljenja i polugrupa, nastavnika, korepetitora i prostorija;
+- subotom završetak najkasnije do 15:05, uz snažnu prednost završetka do 13:15
+  i korišćenja sala Sportske gimnazije;
 - tip prostorije i posebnu učionicu za informatiku;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
