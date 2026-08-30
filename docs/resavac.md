@@ -68,12 +68,10 @@ gimnazije, dve celine moraju biti neposredno jedna uz drugu. Za druge promene
 lokacije između njih postoji tačno jedan slobodan blok za put. Druga promena
 lokacije, povratak na prvu lokaciju i svaka druga praznina nisu dozvoljeni.
 
-Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
-dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
-dozvoljenom okviru funkcija cilja i dalje daje prednost potpunom kontinuitetu.
-Pojedinačno odobreni izuzeci navedeni su u pravilima rasporeda i u
-`src/izuzeci.py`; za njih broj i trajanje pauza nisu čvrsti, ali svaka pauza i
-dalje pogoršava cilj solvera.
+Samo Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše jedne
+pauze nedeljno, duge najviše dva bloka. Za sve ostale nastavnike i
+korepetitore broj i trajanje pauza nisu čvrsti, ali svaka pauza i dalje
+pogoršava cilj solvera. Isto pravilo primenjuje nezavisni proveravač.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
