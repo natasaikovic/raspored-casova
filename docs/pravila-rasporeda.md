@@ -159,7 +159,10 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   savremene igre** i **Improvizacije**.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
-- Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
+- Pri promeni lokacije **Knez Miletina ↔ Sportska gimnazija**, časovi moraju
+  biti neposredno jedan za drugim, bez putnog bloka.
+- Pri drugim promenama lokacije između časova mora postojati tačno jedan
+  slobodan blok za put.
 
 ## Nastavnici i korepetitori
 
@@ -212,7 +215,9 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   gore; za osnovnu iz prošlogodišnjeg rasporeda sledi isto — igrački dvočasi).
 - Prvo treba rasporediti osnovnu školu, a zatim srednju školu.
 - Učenici ne smeju imati prazne časove.
-- Izuzetak je promena lokacije, kada učenici moraju imati pauzu od jednog časovnog bloka.
+- Izuzetak je promena lokacije koja nije Knez Miletina ↔ Sportska gimnazija,
+  kada učenici moraju imati tačno jedan slobodan blok za put. Između Knez
+  Miletine i Sportske gimnazije časovi moraju biti neposredno jedan za drugim.
 - Poželjno je da odeljenja koja naizmenično menjaju smene budu simetrično raspoređena.
 - Za nastavnike i korepetitore kontinuitet časova je snažan prioritet; jedna
   pauza do dva bloka nedeljno je izuzetak, ne uobičajena organizacija rada.
