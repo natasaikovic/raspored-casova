@@ -72,6 +72,8 @@ Samo Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše je
 pauze nedeljno, duge najviše dva bloka. Za sve ostale nastavnike i
 korepetitore broj i trajanje pauza nisu čvrsti, ali svaka pauza i dalje
 pogoršava cilj solvera. Isto pravilo primenjuje nezavisni proveravač.
+Svaka osoba ima čvrsti dnevni maksimum od šest časova, dok cilj dodatno
+kažnjava peti i šesti čas kako bi optimalno dnevno angažovanje bilo do četiri.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
