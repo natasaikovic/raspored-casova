@@ -40,6 +40,8 @@ GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NP_SALA = "NP-сала"
+KNEZ_MILETINA = "Кнез Милетина 8"
+SPORTSKA_GIMNAZIJA = "Спортска гимназија"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
@@ -324,9 +326,25 @@ def _dodaj_dnevno_pravilo_lokacije(
     menja_lokaciju = model.new_bool_var(
         f"{token}_d{indeks_dana}_promena_lokacije{sufiks}"
     )
+    ima_putni_blok = model.new_bool_var(
+        f"{token}_d{indeks_dana}_putni_blok_postoji{sufiks}"
+    )
     model.add(menja_lokaciju <= ima_cas)
-    model.add(lokacija_pre != lokacija_posle).only_enforce_if(menja_lokaciju)
-    model.add(lokacija_pre == lokacija_posle).only_enforce_if(~menja_lokaciju)
+    dozvoljeni_prelazi = []
+    for pre_naziv, pre_indeks in indeks_lokacije.items():
+        for posle_naziv, posle_indeks in indeks_lokacije.items():
+            menja = int(pre_indeks != posle_indeks)
+            neposredan = {pre_naziv, posle_naziv} == {
+                KNEZ_MILETINA, SPORTSKA_GIMNAZIJA
+            }
+            putuje = int(bool(menja and not neposredan))
+            dozvoljeni_prelazi.append(
+                (pre_indeks, posle_indeks, menja, putuje)
+            )
+    model.add_allowed_assignments(
+        [lokacija_pre, lokacija_posle, menja_lokaciju, ima_putni_blok],
+        dozvoljeni_prelazi,
+    )
 
     prvi = model.new_int_var(
         1, len(BLOKOVI) + 1, f"{token}_d{indeks_dana}_prvi{sufiks}"
@@ -337,10 +355,10 @@ def _dodaj_dnevno_pravilo_lokacije(
     prvi_kandidati: list[cp_model.IntVar] = []
     poslednji_kandidati: list[cp_model.IntVar] = []
     posle_puta: list[cp_model.BoolVar] = []
-    putni_blok = model.new_int_var(
-        1, len(BLOKOVI), f"{token}_d{indeks_dana}_putni_blok{sufiks}"
+    granica_prelaza = model.new_int_var(
+        1, len(BLOKOVI), f"{token}_d{indeks_dana}_granica_prelaza{sufiks}"
     )
-    model.add(putni_blok == 1).only_enforce_if(~menja_lokaciju)
+    model.add(granica_prelaza == 1).only_enforce_if(~menja_lokaciju)
 
     for jedinica in stavke:
         blok, po_danu, lokacije = _promenljive_za_nedelju(
@@ -370,8 +388,8 @@ def _dodaj_dnevno_pravilo_lokacije(
         )
         model.add(posle <= prisutan)
         model.add(posle <= menja_lokaciju)
-        model.add(blok >= putni_blok + 1).only_enforce_if(posle)
-        model.add(blok + jedinica.trajanje <= putni_blok).only_enforce_if(
+        model.add(blok >= granica_prelaza + ima_putni_blok).only_enforce_if(posle)
+        model.add(blok + jedinica.trajanje <= granica_prelaza).only_enforce_if(
             [prisutan, ~posle, menja_lokaciju]
         )
         posle_puta.append(posle)
@@ -392,7 +410,7 @@ def _dodaj_dnevno_pravilo_lokacije(
     # Ukupan dnevni raspon sadrži samo nastavne blokove i, pri promeni
     # lokacije, tačno jedan slobodan blok za put.
     model.add(
-        kraj - prvi == zauzeto + menja_lokaciju
+        kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
     kazne.append(300 * menja_lokaciju)
 
