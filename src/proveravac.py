@@ -709,15 +709,24 @@ def _proveri_dnevni_raspored(
                 razmak = sledeci - prethodni
                 if menja:
                     promene += 1
-                    if razmak < 2:
+                    neposredan_prelaz = {lokacija_pre, lokacija_posle} == {
+                        "Кнез Милетина 8", "Спортска гимназија"
+                    }
+                    ocekivani_razmak = 1 if neposredan_prelaz else 2
+                    if razmak < ocekivani_razmak:
                         izvestaj.greske.append(
                             f"{grupa} мења локацију без слободног блока: {dan}, "
                             f"блокови {prethodni}–{sledeci}"
                         )
-                    elif razmak > 2:
+                    elif razmak > ocekivani_razmak:
+                        opis = (
+                            "са паузом између Кнез Милетине и Спортске гимназије"
+                            if neposredan_prelaz
+                            else "са паузом дужом од једног блока"
+                        )
                         izvestaj.greske.append(
-                            f"{grupa} мења локацију са паузом дужом од једног "
-                            f"блока: {dan}, блокови {prethodni}–{sledeci}"
+                            f"{grupa} мења локацију {opis}: {dan}, "
+                            f"блокови {prethodni}–{sledeci}"
                         )
                 elif razmak > 1:
                     izvestaj.greske.append(
