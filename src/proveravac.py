@@ -864,6 +864,15 @@ def _upozori_na_pauze_nastavnika(
     pauze_po_osobi: Counter[str] = Counter()
     for (osoba, dan), blokovi in sorted(termini.items()):
         sortirani = sorted(blokovi)
+        broj_casova = len(sortirani)
+        if broj_casova > 6:
+            izvestaj.greske.append(
+                f"особа {osoba} има {broj_casova} часова у дану {dan}; максимум је 6"
+            )
+        elif broj_casova > 4:
+            izvestaj.upozorenja.append(
+                f"особа {osoba} има {broj_casova} часова у дану {dan}; оптимално је до 4"
+            )
         for prethodni, sledeci in zip(sortirani, sortirani[1:]):
             duzina = sledeci - prethodni - 1
             if duzina <= 0:
