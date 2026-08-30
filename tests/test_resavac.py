@@ -296,3 +296,40 @@ def test_promena_lokacije_ima_tacno_jedan_putni_blok():
     assert max(blokovi) - min(blokovi) + 1 == len(blokovi) + 1
     assert rezultat.izvestaj is not None
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+
+
+def test_dnevni_obrazac_zabranjuje_dve_praznine_na_istoj_lokaciji():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(3)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    for jedinica, blok in zip(jedinice, (1, 3, 5)):
+        model.add(promenljive[jedinica.indeks].dan == 0)
+        model.add(promenljive[jedinica.indeks].blok == blok)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_dnevni_obrazac_zabranjuje_povratak_na_prvu_lokaciju():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(3)
+    ]
+    druga = Prostorija(
+        "SG-уч1", "Спортска гимназија", TipProstorije.UCIONICA, None, ""
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA, druga), (), Smena.CRVENA
+    )
+    for jedinica, blok, prostorija in zip(
+        jedinice, (1, 3, 4), (UCIONICA.oznaka, druga.oznaka, UCIONICA.oznaka)
+    ):
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        model.add(p.blok == blok)
+        model.add(p.prostorije[prostorija] == 1)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
