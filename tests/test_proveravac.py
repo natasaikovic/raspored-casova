@@ -347,6 +347,31 @@ def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
     )
 
 
+def test_knez_miletina_sportska_gimnazija_moraju_biti_neposredne():
+    z1 = zahtev("Историја", ["11"], 1, "Ана")
+    z2 = zahtev("Солфеђо", ["11"], 1, "Ива", red=3)
+    ulaz = napravi_ulaz([z1, z2])
+    prostorije = (
+        Prostorija("KM-U1", "Кнез Милетина 8", TipProstorije.UCIONICA, None, ""),
+        Prostorija("SG-U1", "Спортска гимназија", TipProstorije.UCIONICA, None, ""),
+    )
+    neposredni = (
+        Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "KM-U1", 2),
+        Cas("понедељак", 2, z2.predmet, ("11",), "Ива", None, "SG-U1", 3),
+    )
+    sa_pauzom = (
+        neposredni[0],
+        Cas("понедељак", 3, z2.predmet, ("11",), "Ива", None, "SG-U1", 3),
+    )
+
+    assert proveri(ulaz, prostorije, (), neposredni).ispravan
+    izvestaj = proveri(ulaz, prostorije, (), sa_pauzom)
+    assert any(
+        "са паузом између Кнез Милетине и Спортске гимназије" in g
+        for g in izvestaj.greske
+    )
+
+
 def test_jedna_nedeljna_pauza_osobe_do_dva_bloka_je_samo_upozorenje():
     z1 = zahtev("Историја", ["11"], 1, "Ана")
     z2 = zahtev("Солфеђо", ["12"], 1, "Ана", red=3)
