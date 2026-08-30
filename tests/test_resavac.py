@@ -102,8 +102,8 @@ def test_druga_faza_dodeljuje_razlicite_prostorije_istog_tipa():
 
 def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
     zahtevi = [
-        zahtev("Теорија 1", "11", 1, "Мила"),
-        zahtev("Теорија 2", "12", 1, "Мила"),
+        zahtev("Теорија 1", "11", 1, "Ивана Љујић"),
+        zahtev("Теорија 2", "12", 1, "Ивана Љујић"),
     ]
     model, jedinice, promenljive = napravi_model(
         ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
@@ -117,7 +117,7 @@ def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
 
 def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
     zahtevi = [
-        zahtev(f"Теорија {i}", odeljenje, 1, "Мила")
+        zahtev(f"Теорија {i}", odeljenje, 1, "Јелена Првуловић")
         for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
     ]
     model, jedinice, promenljive = napravi_model(
@@ -131,7 +131,7 @@ def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
-def test_solver_dozvoljava_vise_pauza_odobrenom_izuzetku():
+def test_solver_dozvoljava_vise_pauza_ostalim_osobama():
     zahtevi = [
         zahtev(f"Теорија {i}", odeljenje, 1, "Бранислава Порчић")
         for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
