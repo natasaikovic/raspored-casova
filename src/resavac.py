@@ -489,6 +489,12 @@ def _dodaj_kontinuitet_osoba(
                 )[1][indeks_dana]
                 for jedinica, pomeraji in stavke
             )
+            model.add(zauzeto <= 6)
+            preko_optimuma = model.new_int_var(
+                0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
+            )
+            model.add_max_equality(preko_optimuma, [0, zauzeto - 4])
+            kazne.append(250 * preko_optimuma)
 
             ima_pauzu = model.new_bool_var(
                 f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
