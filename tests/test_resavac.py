@@ -147,6 +147,20 @@ def test_solver_dozvoljava_vise_pauza_ostalim_osobama():
     assert cp_model.CpSolver().solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
 
 
+def test_solver_zabranjuje_vise_od_sest_casova_osobe_dnevno():
+    zahtevi = [
+        zahtev(f"Теорија {i}", f"1{i}", 1, "Ана")
+        for i in range(1, 8)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    for jedinica in jedinice:
+        model.add(promenljive[jedinica.indeks].dan == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):
     z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     rezultat = resi_nedelju(
