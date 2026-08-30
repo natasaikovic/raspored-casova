@@ -276,7 +276,12 @@ def _dodaj_dnevno_pravilo_lokacije(
     promenljive: dict[int, PromenljiveJedinice],
     nedelja_b: bool = False,
 ) -> None:
-    """Zabrani praznine osim jednog putnog bloka pri jednoj promeni lokacije."""
+    """Zabrani praznine kompaktnim dnevnim obrascem.
+
+    Dan je jedan neprekinut raspon nastavnih blokova ili dva takva dela sa
+    tacno jednim putnim blokom izmedju njih. Umesto posebnog intervala za
+    svaku mogucu lokaciju biramo samo lokaciju pre i posle putnog bloka.
+    """
 
     sufiks = "_b" if nedelja_b else ""
     prisutnosti: list[cp_model.BoolVar] = []
@@ -305,107 +310,23 @@ def _dodaj_dnevno_pravilo_lokacije(
             )[2]
         }
     )
-    koristi_lokaciju: dict[str, cp_model.BoolVar] = {}
-    rasponi_lokacija: list[cp_model.IntervalVar] = []
-    prvi_kandidati: list[cp_model.IntVar] = []
-    poslednji_kandidati: list[cp_model.IntVar] = []
-    for broj_lokacije, lokacija in enumerate(sve_lokacije):
-        preseci: list[tuple[Jedinica, cp_model.BoolVar]] = []
-        for jedinica in stavke:
-            _, po_danu, lokacije = _promenljive_za_nedelju(
-                promenljive[jedinica.indeks], nedelja_b
-            )
-            na_lokaciji = lokacije.get(lokacija)
-            if na_lokaciji is None:
-                continue
-            oba = model.new_bool_var(
-                f"{token}_d{indeks_dana}_l{broj_lokacije}"
-                f"_j{jedinica.indeks}{sufiks}"
-            )
-            model.add(oba <= po_danu[indeks_dana])
-            model.add(oba <= na_lokaciji)
-            model.add(oba >= po_danu[indeks_dana] + na_lokaciji - 1)
-            preseci.append((jedinica, oba))
-        koristi = model.new_bool_var(
-            f"{token}_d{indeks_dana}_l{broj_lokacije}{sufiks}"
-        )
-        if preseci:
-            model.add_max_equality(koristi, [oba for _, oba in preseci])
-        else:
-            model.add(koristi == 0)
-        koristi_lokaciju[lokacija] = koristi
-
-        prvi_lokacije = model.new_int_var(
-            1,
-            len(BLOKOVI),
-            f"{token}_d{indeks_dana}_l{broj_lokacije}_prvi{sufiks}",
-        )
-        kraj_lokacije = model.new_int_var(
-            1,
-            len(BLOKOVI) + 1,
-            f"{token}_d{indeks_dana}_l{broj_lokacije}_kraj{sufiks}",
-        )
-        duzina_raspona = model.new_int_var(
-            0,
-            len(BLOKOVI),
-            f"{token}_d{indeks_dana}_l{broj_lokacije}_raspon{sufiks}",
-        )
-        model.add(kraj_lokacije == prvi_lokacije + duzina_raspona)
-        model.add(
-            duzina_raspona
-            == sum(jedinica.trajanje * oba for jedinica, oba in preseci)
-        )
-        model.add(prvi_lokacije == 1).only_enforce_if(~koristi)
-        for jedinica, oba in preseci:
-            blok, _, _ = _promenljive_za_nedelju(
-                promenljive[jedinica.indeks], nedelja_b
-            )
-            model.add(prvi_lokacije <= blok).only_enforce_if(oba)
-            model.add(
-                kraj_lokacije >= blok + jedinica.trajanje
-            ).only_enforce_if(oba)
-        rasponi_lokacija.append(
-            model.new_optional_interval_var(
-                prvi_lokacije,
-                duzina_raspona,
-                kraj_lokacije,
-                koristi,
-                f"{token}_d{indeks_dana}_l{broj_lokacije}_i{sufiks}",
-            )
-        )
-
-        prvi_kandidat = model.new_int_var(
-            1,
-            len(BLOKOVI) + 1,
-            f"{token}_d{indeks_dana}_l{broj_lokacije}_prvi_kandidat{sufiks}",
-        )
-        model.add(prvi_kandidat == prvi_lokacije).only_enforce_if(koristi)
-        model.add(prvi_kandidat == len(BLOKOVI) + 1).only_enforce_if(
-            ~koristi
-        )
-        prvi_kandidati.append(prvi_kandidat)
-
-        poslednji_kandidat = model.new_int_var(
-            0,
-            len(BLOKOVI) + 1,
-            f"{token}_d{indeks_dana}_l{broj_lokacije}_kraj_kandidat{sufiks}",
-        )
-        model.add(poslednji_kandidat == kraj_lokacije).only_enforce_if(koristi)
-        model.add(poslednji_kandidat == 0).only_enforce_if(~koristi)
-        poslednji_kandidati.append(poslednji_kandidat)
-
-    # Časovi na jednoj lokaciji čine neprekinut raspon, a rasponi različitih
-    # lokacija ne mogu da se prepliću. Zato su dve lokacije nužno dve celine
-    # razdvojene jedinim putnim blokom.
-    model.add_no_overlap(rasponi_lokacija)
-
-    broj_lokacija = sum(koristi_lokaciju.values())
+    if not sve_lokacije:
+        raise ValueError(f"{token}: нема могуће локације")
+    indeks_lokacije = {naziv: indeks for indeks, naziv in enumerate(sve_lokacije)}
+    lokacija_pre = model.new_int_var(
+        0, len(sve_lokacije) - 1,
+        f"{token}_d{indeks_dana}_lokacija_pre{sufiks}",
+    )
+    lokacija_posle = model.new_int_var(
+        0, len(sve_lokacije) - 1,
+        f"{token}_d{indeks_dana}_lokacija_posle{sufiks}",
+    )
     menja_lokaciju = model.new_bool_var(
         f"{token}_d{indeks_dana}_promena_lokacije{sufiks}"
     )
-    # Bez časa nema lokacije; sa časovima se koristi jedna lokacija, odnosno
-    # dve tačno kada postoji jedina dozvoljena promena.
-    model.add(broj_lokacija == ima_cas + menja_lokaciju)
+    model.add(menja_lokaciju <= ima_cas)
+    model.add(lokacija_pre != lokacija_posle).only_enforce_if(menja_lokaciju)
+    model.add(lokacija_pre == lokacija_posle).only_enforce_if(~menja_lokaciju)
 
     prvi = model.new_int_var(
         1, len(BLOKOVI) + 1, f"{token}_d{indeks_dana}_prvi{sufiks}"
@@ -413,8 +334,61 @@ def _dodaj_dnevno_pravilo_lokacije(
     kraj = model.new_int_var(
         0, len(BLOKOVI) + 1, f"{token}_d{indeks_dana}_kraj{sufiks}"
     )
+    prvi_kandidati: list[cp_model.IntVar] = []
+    poslednji_kandidati: list[cp_model.IntVar] = []
+    posle_puta: list[cp_model.BoolVar] = []
+    putni_blok = model.new_int_var(
+        1, len(BLOKOVI), f"{token}_d{indeks_dana}_putni_blok{sufiks}"
+    )
+    model.add(putni_blok == 1).only_enforce_if(~menja_lokaciju)
+
+    for jedinica in stavke:
+        blok, po_danu, lokacije = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        prisutan = po_danu[indeks_dana]
+        kandidat_prvog = model.new_int_var(
+            1, len(BLOKOVI) + 1,
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_prvi{sufiks}",
+        )
+        model.add(kandidat_prvog == blok).only_enforce_if(prisutan)
+        model.add(kandidat_prvog == len(BLOKOVI) + 1).only_enforce_if(~prisutan)
+        prvi_kandidati.append(kandidat_prvog)
+
+        kandidat_kraja = model.new_int_var(
+            0, len(BLOKOVI) + 1,
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_kraj{sufiks}",
+        )
+        model.add(kandidat_kraja == blok + jedinica.trajanje).only_enforce_if(
+            prisutan
+        )
+        model.add(kandidat_kraja == 0).only_enforce_if(~prisutan)
+        poslednji_kandidati.append(kandidat_kraja)
+
+        posle = model.new_bool_var(
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_posle_puta{sufiks}"
+        )
+        model.add(posle <= prisutan)
+        model.add(posle <= menja_lokaciju)
+        model.add(blok >= putni_blok + 1).only_enforce_if(posle)
+        model.add(blok + jedinica.trajanje <= putni_blok).only_enforce_if(
+            [prisutan, ~posle, menja_lokaciju]
+        )
+        posle_puta.append(posle)
+
+        lokacija_jedinice = sum(
+            indeks_lokacije[lokacija] * koristi
+            for lokacija, koristi in lokacije.items()
+        )
+        model.add(lokacija_jedinice == lokacija_posle).only_enforce_if(posle)
+        model.add(lokacija_jedinice == lokacija_pre).only_enforce_if(
+            [prisutan, ~posle]
+        )
+
     model.add_min_equality(prvi, prvi_kandidati)
     model.add_max_equality(kraj, poslednji_kandidati)
+    model.add(sum(posle_puta) >= menja_lokaciju)
+    model.add(sum(prisutnosti) - sum(posle_puta) >= menja_lokaciju)
     # Ukupan dnevni raspon sadrži samo nastavne blokove i, pri promeni
     # lokacije, tačno jedan slobodan blok za put.
     model.add(
