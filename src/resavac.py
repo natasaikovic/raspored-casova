@@ -1278,6 +1278,82 @@ def _dodeli_prostorije(
     }
 
 
+def _dodeli_prostorije_obe(
+    solver_termina: cp_model.CpSolver,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    vremensko_ogranicenje: float = 60,
+    broj_radnika: int = 8,
+) -> tuple[dict[int, str], dict[int, str]] | None:
+    """Zajedno dodeli prostorije za A i B uz iste sobe stalnih smena."""
+
+    model = cp_model.CpModel()
+    izbori_a: dict[int, dict[str, cp_model.BoolVar]] = {}
+    izbori_b: dict[int, dict[str, cp_model.BoolVar]] = {}
+    intervali_a: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    intervali_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        p = promenljive[jedinica.indeks]
+        assert p.start_b is not None and p.lokacije_b is not None
+        start_a = solver_termina.value(p.start)
+        start_b = solver_termina.value(p.start_b)
+        lokacija_a = next(n for n, x in p.lokacije.items() if solver_termina.boolean_value(x))
+        lokacija_b = next(n for n, x in p.lokacije_b.items() if solver_termina.boolean_value(x))
+        moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
+        moguce_a = [s for s in moguce if s.lokacija == lokacija_a]
+        moguce_b = [s for s in moguce if s.lokacija == lokacija_b]
+        if not moguce_a or not moguce_b:
+            return None
+        izbori_a[jedinica.indeks] = {}
+        izbori_b[jedinica.indeks] = {}
+        for soba in moguce_a:
+            koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_a")
+            izbori_a[jedinica.indeks][soba.oznaka] = koristi
+            intervali_a[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
+                start_a, jedinica.trajanje, koristi,
+                f"j{jedinica.indeks}_{soba.oznaka}_i_a",
+            ))
+        model.add_exactly_one(izbori_a[jedinica.indeks].values())
+        if zahtev.smena.menja_se:
+            for soba in moguce_b:
+                koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_b")
+                izbori_b[jedinica.indeks][soba.oznaka] = koristi
+                intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
+                    start_b, jedinica.trajanje, koristi,
+                    f"j{jedinica.indeks}_{soba.oznaka}_i_b",
+                ))
+            model.add_exactly_one(izbori_b[jedinica.indeks].values())
+        else:
+            izbori_b[jedinica.indeks] = izbori_a[jedinica.indeks]
+            for soba in moguce_a:
+                intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
+                    start_b, jedinica.trajanje,
+                    izbori_a[jedinica.indeks][soba.oznaka],
+                    f"j{jedinica.indeks}_{soba.oznaka}_i_b",
+                ))
+    for stavke in intervali_a.values():
+        model.add_no_overlap(stavke)
+    for stavke in intervali_b.values():
+        model.add_no_overlap(stavke)
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
+    solver.parameters.num_search_workers = broj_radnika
+    status = solver.solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None
+
+    def izvuci(izbori: dict[int, dict[str, cp_model.BoolVar]]) -> dict[int, str]:
+        return {
+            indeks: next(o for o, x in po_sobi.items() if solver.boolean_value(x))
+            for indeks, po_sobi in izbori.items()
+        }
+
+    return izvuci(izbori_a), izvuci(izbori_b)
+
+
 def _izvuci_casove(
     solver: cp_model.CpSolver,
     ulaz: Ulaz,
@@ -1382,100 +1458,53 @@ def resi_obe_nedelje(
     seme: int = 1,
     hintovi: Sequence[Cas] = (),
 ) -> tuple[Rezultat, Rezultat]:
-    """Reši A, pa B uz fiksiranje svega što ne menja smenu."""
+    """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
-    # CLI ograničenje važi za svako zasebno rešavanje. Deljenje sa dva je
-    # nedelji A davalo samo 900 sekundi i prekidalo je pre prvog rešenja, pa B
-    # nije ni započinjala.
-    vreme_po_nedelji = max(1.0, vremensko_ogranicenje)
-    model_a, jedinice_a, promenljive_a = napravi_model(
+    model, jedinice, promenljive = napravi_model(
         ulaz,
         prostorije,
         nedostupnosti,
         Smena.CRVENA,
         hintovi,
-        sa_nedeljom_b=False,
+        sa_nedeljom_b=True,
         samo_lokacije=True,
     )
-    solver_a = cp_model.CpSolver()
-    solver_a.parameters.max_time_in_seconds = vreme_po_nedelji
-    solver_a.parameters.num_search_workers = broj_radnika
-    solver_a.parameters.random_seed = seme
-    status_a = solver_a.solve(model_a)
-    status_a_tekst = _status_tekst(status_a)
-    if status_a not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        prazan = Rezultat(status_a_tekst, (), None, None)
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = max(1.0, vremensko_ogranicenje)
+    solver.parameters.num_search_workers = broj_radnika
+    solver.parameters.random_seed = seme
+    status = solver.solve(model)
+    status_tekst = _status_tekst(status)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
-
-    dodela_a = _dodeli_prostorije(
-        solver_a, ulaz, prostorije, jedinice_a, promenljive_a,
+    dodele = _dodeli_prostorije_obe(
+        solver, ulaz, prostorije, jedinice, promenljive,
         broj_radnika=broj_radnika,
     )
-    if dodela_a is None:
+    if dodele is None:
         prazan = Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
         return prazan, prazan
+    dodela_a, dodela_b = dodele
     casovi_a = _izvuci_casove(
-        solver_a, ulaz, jedinice_a, promenljive_a,
+        solver, ulaz, jedinice, promenljive,
         dodeljene_prostorije=dodela_a,
     )
-    rezultat_a = Rezultat(
-        status_a_tekst,
-        casovi_a,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
-        solver_a.objective_value,
-    )
-
-    model_b, jedinice_b, promenljive_b = napravi_model(
-        ulaz,
-        prostorije,
-        nedostupnosti,
-        Smena.PLAVA,
-        hintovi,
-        sa_nedeljom_b=False,
-        samo_lokacije=True,
-    )
-    for jedinica_a, jedinica_b in zip(jedinice_a, jedinice_b):
-        assert jedinica_a == jedinica_b
-        zahtev = ulaz.zahtevi[jedinica_a.zahtev_indeks]
-        if zahtev.smena.menja_se:
-            continue
-        p_a = promenljive_a[jedinica_a.indeks]
-        p_b = promenljive_b[jedinica_b.indeks]
-        model_b.add(p_b.start == solver_a.value(p_a.start))
-        for lokacija, koristi_b in p_b.lokacije.items():
-            koristi_a = p_a.lokacije[lokacija]
-            model_b.add(koristi_b == int(solver_a.boolean_value(koristi_a)))
-
-    solver_b = cp_model.CpSolver()
-    solver_b.parameters.max_time_in_seconds = vreme_po_nedelji
-    solver_b.parameters.num_search_workers = broj_radnika
-    solver_b.parameters.random_seed = seme + 1
-    status_b = solver_b.solve(model_b)
-    status_b_tekst = _status_tekst(status_b)
-    if status_b not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return rezultat_a, Rezultat(status_b_tekst, (), None, None)
-
-    fiksne_b = {
-        jedinica.indeks: dodela_a[jedinica.indeks]
-        for jedinica in jedinice_b
-        if not ulaz.zahtevi[jedinica.zahtev_indeks].smena.menja_se
-    }
-    dodela_b = _dodeli_prostorije(
-        solver_b, ulaz, prostorije, jedinice_b, promenljive_b,
-        fiksne=fiksne_b,
-        broj_radnika=broj_radnika,
-    )
-    if dodela_b is None:
-        return rezultat_a, Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
     casovi_b = _izvuci_casove(
-        solver_b, ulaz, jedinice_b, promenljive_b,
+        solver, ulaz, jedinice, promenljive, nedelja_b=True,
         dodeljene_prostorije=dodela_b,
     )
-    return rezultat_a, Rezultat(
-        status_b_tekst,
+    cilj = solver.objective_value
+    return Rezultat(
+        status_tekst,
+        casovi_a,
+        proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+        cilj,
+    ), Rezultat(
+        status_tekst,
         casovi_b,
         proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
-        solver_b.objective_value,
+        cilj,
     )
 
 
