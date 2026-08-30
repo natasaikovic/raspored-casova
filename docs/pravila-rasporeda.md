@@ -175,11 +175,17 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   nepoznati slobodan dan obara rešivost.
 - Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
   blokova između angažovanja kad god je to moguće.
+- Optimalno dnevno angažovanje nastavnika i korepetitora je najviše četiri
+  časa, a čvrsti дневни maksimum je šest časova.
 - Kraća pauza je bolja od duže; solver snažno kažnjava svaku pauzu, ali za sve
   osobe osim Ivane Ljujić i Jelene Prvulović broj i trajanje pauza nisu čvrsta
   ograničenja.
 - Za **Ivanu Ljujić** i **Jelenu Prvulović** ostaje čvrsto pravilo: najviše
   jedna pauza nedeljno, duga najviše dva časovna bloka.
+- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Od njegovog fonda
+  Istorije dva časa za grupu IV3,IV5 preuzima privremeno označeni `nastavnik
+  istorije br.2`, čiji identitet još nije poznat. Dušanov fond je time 18
+  časova, što omogućava najviše šest časova dnevno.
 - `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
   osoba** — zajedno 21č, u okviru norme.
 
