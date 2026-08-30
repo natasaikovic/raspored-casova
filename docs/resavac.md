@@ -14,9 +14,10 @@ ujutru). Oba fajla su na latinici i imaju format opisan u
 
 ## Odnos nedelja A i B
 
-Nedelje se rešavaju sekvencijalno: prvo nedelja A, zatim nedelja B. Kada je A
-pronađena, svi časovi srednje škole, stalnih smena i P1 fiksiraju se u B na isti
-dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
+Nedelje se rešavaju zajedno u jednom modelu. Time izbor dobrog rasporeda za A
+ne može naknadno da učini B nemogućom. Časovi srednje škole, stalnih smena i P1
+dele isti dan, blok i prostoriju u obe nedelje. Naizmenične smene nisu strogo
+ogledalo:
 
 - smena iz ulaznog CSV-a određuje dozvoljene blokove odeljenja u nedelji A;
 - njena inverzna smena određuje dozvoljene blokove u nedelji B;
