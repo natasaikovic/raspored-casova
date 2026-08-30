@@ -389,28 +389,28 @@ def test_jedna_nedeljna_pauza_osobe_do_dva_bloka_je_samo_upozorenje():
 
 def test_druga_nedeljna_pauza_osobe_je_greska():
     zahtevi = [
-        zahtev("Предмет 1", ["11"], 1, "Ана"),
-        zahtev("Предмет 2", ["12"], 1, "Ана", red=3),
-        zahtev("Предмет 3", ["13"], 1, "Ана", red=4),
+        zahtev("Предмет 1", ["11"], 1, "Ивана Љујић"),
+        zahtev("Предмет 2", ["12"], 1, "Ивана Љујић", red=3),
+        zahtev("Предмет 3", ["13"], 1, "Ивана Љујић", red=4),
     ]
     ulaz = napravi_ulaz(zahtevi)
     casovi = tuple(
-        Cas("понедељак", blok, z.predmet, z.odeljenja, "Ана", None, "U1", red)
+        Cas("понедељак", blok, z.predmet, z.odeljenja, "Ивана Љујић", None, "U1", red)
         for z, blok, red in zip(zahtevi, (1, 3, 5), (2, 3, 4))
     )
 
     izvestaj = proveri(ulaz, UCIONICE, (), casovi)
 
-    assert any("особа Ана има 2 паузе у недељи" in g for g in izvestaj.greske)
+    assert any("особа Ивана Љујић има 2 паузе у недељи" in g for g in izvestaj.greske)
 
 
 def test_pauza_osobe_duza_od_dva_bloka_je_greska():
-    z1 = zahtev("Историја", ["11"], 1, "Ана")
-    z2 = zahtev("Солфеђо", ["12"], 1, "Ана", red=3)
+    z1 = zahtev("Историја", ["11"], 1, "Јелена Првуловић")
+    z2 = zahtev("Солфеђо", ["12"], 1, "Јелена Првуловић", red=3)
     ulaz = napravi_ulaz([z1, z2])
     casovi = (
-        Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
-        Cas("понедељак", 5, z2.predmet, ("12",), "Ана", None, "U1", 3),
+        Cas("понедељак", 1, z1.predmet, ("11",), "Јелена Првуловић", None, "U1", 2),
+        Cas("понедељак", 5, z2.predmet, ("12",), "Јелена Првуловић", None, "U1", 3),
     )
 
     izvestaj = proveri(ulaz, UCIONICE, (), casovi)
@@ -418,7 +418,7 @@ def test_pauza_osobe_duza_od_dva_bloka_je_greska():
     assert any("максимум су два блока" in g for g in izvestaj.greske)
 
 
-def test_odobreni_izuzetak_sme_imati_vise_dugih_pauza():
+def test_ostale_osobe_smeju_imati_vise_dugih_pauza():
     zahtevi = [
         zahtev(
             f"Предмет {i}", [odeljenje], 1, "Бранислава Порчић",
