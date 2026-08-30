@@ -333,3 +333,25 @@ def test_dnevni_obrazac_zabranjuje_povratak_na_prvu_lokaciju():
         model.add(p.prostorije[prostorija] == 1)
 
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_knez_miletina_sportska_gimnazija_su_neposredne_u_modelu():
+    zahtevi = [
+        zahtev("Теорија 1", "11", 1, "Наставник 1"),
+        zahtev("Теорија 2", "11", 1, "Наставник 2"),
+    ]
+    sportska = Prostorija(
+        "SG-уч1", "Спортска гимназија", TipProstorije.UCIONICA, None, ""
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA, sportska), (), Smena.CRVENA
+    )
+    for jedinica, prostorija in zip(jedinice, (UCIONICA.oznaka, sportska.oznaka)):
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        model.add(p.prostorije[prostorija] == 1)
+
+    solver = cp_model.CpSolver()
+    assert solver.solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
+    blokovi = sorted(solver.value(promenljive[j.indeks].blok) for j in jedinice)
+    assert blokovi[1] == blokovi[0] + 1
