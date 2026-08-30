@@ -186,8 +186,8 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   Istorije dva časa za grupu IV3,IV5 preuzima privremeno označeni `nastavnik
   istorije br.2`, čiji identitet još nije poznat. Dušanov fond je time 18
   časova, što omogućava najviše šest časova dnevno.
-- `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
-  osoba** — zajedno 21č, u okviru norme.
+- Kosta Milanović je korepetitor na časovima koji su ranije bili označeni
+  privremenim nazivom `корепетитор` u osnovnoj i srednjoj školi.
 
 ## Vremenski blokovi
 
