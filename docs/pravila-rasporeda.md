@@ -27,6 +27,14 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
 
+### Subota
+
+- Subotom se prvo popunjavaju sale Sportske gimnazije.
+- Nastava treba da se završi do 13:15 (zaključno sa blokom 6).
+- Ako raspored nije moguće napraviti u tom okviru, dozvoljeni su blokovi 7 i 8,
+  odnosno rad najkasnije do 15:05, ali ih solver snažno izbegava.
+- Nastava posle 15:05 subotom nije dozvoljena.
+
 ### Polugrupe
 
 Odeljenja narodnog odseka se za deo predmeta dele na polugrupe `А` i `Б`
@@ -159,7 +167,10 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   savremene igre** i **Improvizacije**.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
-- Ako učenici menjaju lokaciju, između časova moraju imati pauzu u trajanju od jednog časovnog bloka.
+- Pri promeni lokacije **Knez Miletina ↔ Sportska gimnazija**, časovi moraju
+  biti neposredno jedan za drugim, bez putnog bloka.
+- Pri drugim promenama lokacije između časova mora postojati tačno jedan
+  slobodan blok za put.
 
 ## Nastavnici i korepetitori
 
@@ -172,20 +183,19 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   nepoznati slobodan dan obara rešivost.
 - Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
   blokova između angažovanja kad god je to moguće.
-- Ako kontinuitet ne može da se postigne zbog drugih tvrdih pravila, dozvoljena
-  je izuzetna pauza, ali najviše **jednom nedeljno po osobi** i najviše u
-  trajanju **jednog dvočasa (dva časovna bloka)**.
-- Kraća pauza je bolja od duže; solver treba snažno da kažnjava svaku pauzu,
-  a posebno drugu i svaku narednu pauzu iste osobe u toku nedelje ili pauzu
-  dužu od dva bloka.
-- Od ograničenja broja i trajanja pauza izuzeti su: Anastasia Antičević,
-  Branislava Porčić, Iva Bojović Petković, Ksenija Dukić, Lidija Palčić,
-  Marija Vučenović, Mirjana Anđelković, Nina Anđić, Petar Đorčevski, Vladimir
-  Jovanović, Đorđe Mihajlović i Đorđina Ubović. Njihove pauze i dalje treba
-  svesti na najmanju moguću meru. Ivana Ljujić i Jelena Prvulović nisu izuzete:
-  za njih ostaje najviše jedna pauza nedeljno, duga najviše dva bloka.
-- `корепетитор br.1` (osnovna, 13č) i `?` (srednja, 8č) su **jedna buduća
-  osoba** — zajedno 21č, u okviru norme.
+- Optimalno dnevno angažovanje nastavnika i korepetitora je najviše četiri
+  časa, a čvrsti дневни maksimum je šest časova.
+- Kraća pauza je bolja od duže; solver snažno kažnjava svaku pauzu, ali za sve
+  osobe osim Ivane Ljujić i Jelene Prvulović broj i trajanje pauza nisu čvrsta
+  ograničenja.
+- Za **Ivanu Ljujić** i **Jelenu Prvulović** ostaje čvrsto pravilo: najviše
+  jedna pauza nedeljno, duga najviše dva časovna bloka.
+- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Od njegovog fonda
+  Istorije dva časa za grupu IV3,IV5 preuzima privremeno označeni `nastavnik
+  istorije br.2`, čiji identitet još nije poznat. Dušanov fond je time 18
+  časova, što omogućava najviše šest časova dnevno.
+- Kosta Milanović je korepetitor na časovima koji su ranije bili označeni
+  privremenim nazivom `корепетитор` u osnovnoj i srednjoj školi.
 
 ## Vremenski blokovi
 
@@ -212,7 +222,9 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   gore; za osnovnu iz prošlogodišnjeg rasporeda sledi isto — igrački dvočasi).
 - Prvo treba rasporediti osnovnu školu, a zatim srednju školu.
 - Učenici ne smeju imati prazne časove.
-- Izuzetak je promena lokacije, kada učenici moraju imati pauzu od jednog časovnog bloka.
+- Izuzetak je promena lokacije koja nije Knez Miletina ↔ Sportska gimnazija,
+  kada učenici moraju imati tačno jedan slobodan blok za put. Između Knez
+  Miletine i Sportske gimnazije časovi moraju biti neposredno jedan za drugim.
 - Poželjno je da odeljenja koja naizmenično menjaju smene budu simetrično raspoređena.
 - Za nastavnike i korepetitore kontinuitet časova je snažan prioritet; jedna
   pauza do dva bloka nedeljno je izuzetak, ne uobičajena organizacija rada.

@@ -14,9 +14,10 @@ ujutru). Oba fajla su na latinici i imaju format opisan u
 
 ## Odnos nedelja A i B
 
-Nedelje se rešavaju sekvencijalno: prvo nedelja A, zatim nedelja B. Kada je A
-pronađena, svi časovi srednje škole, stalnih smena i P1 fiksiraju se u B na isti
-dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
+Nedelje se rešavaju zajedno u jednom modelu. Time izbor dobrog rasporeda za A
+ne može naknadno da učini B nemogućom. Časovi srednje škole, stalnih smena i P1
+dele isti dan, blok i prostoriju u obe nedelje. Naizmenične smene nisu strogo
+ogledalo:
 
 - smena iz ulaznog CSV-a određuje dozvoljene blokove odeljenja u nedelji A;
 - njena inverzna smena određuje dozvoljene blokove u nedelji B;
@@ -37,6 +38,8 @@ Rešavač ne sme da prekrši:
 - fondove i grupisanje iz ulaznih CSV fajlova;
 - smene osnovne škole i posebne termine P1;
 - zauzetost odeljenja i polugrupa, nastavnika, korepetitora i prostorija;
+- subotom završetak najkasnije do 15:05, uz snažnu prednost završetka do 13:15
+  i korišćenja sala Sportske gimnazije;
 - tip prostorije i posebnu učionicu za informatiku;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
@@ -60,17 +63,20 @@ Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
 ## Optimizacija i provera
 
 Prazni časovi učenika i promena lokacije modelirani su kao čvrsta pravila.
-Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su povezani. Ako
-jednom promeni lokaciju, model bira smer prelaska i tačno jedan slobodan blok
-za put; taj putni blok se ne računa kao prazan čas. Druga promena lokacije i
-svaka druga praznina nisu dozvoljene.
+Za svako odeljenje i dan model bira kompaktan dnevni obrazac: prvi i poslednji
+blok, ukupan broj časova, postojanje i položaj putnog bloka, kao i lokaciju pre
+i posle njega. Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su
+povezani. Ako jednom promeni lokaciju između Knez Miletine i Sportske
+gimnazije, dve celine moraju biti neposredno jedna uz drugu. Za druge promene
+lokacije između njih postoji tačno jedan slobodan blok za put. Druga promena
+lokacije, povratak na prvu lokaciju i svaka druga praznina nisu dozvoljeni.
 
-Nastavnik ili korepetitor sme imati najviše jednu pauzu nedeljno, dugu najviše
-dva bloka. To je čvrsto ograničenje, isto kao u nezavisnom proveravaču. U tom
-dozvoljenom okviru funkcija cilja i dalje daje prednost potpunom kontinuitetu.
-Pojedinačno odobreni izuzeci navedeni su u pravilima rasporeda i u
-`src/izuzeci.py`; za njih broj i trajanje pauza nisu čvrsti, ali svaka pauza i
-dalje pogoršava cilj solvera.
+Samo Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše jedne
+pauze nedeljno, duge najviše dva bloka. Za sve ostale nastavnike i
+korepetitore broj i trajanje pauza nisu čvrsti, ali svaka pauza i dalje
+pogoršava cilj solvera. Isto pravilo primenjuje nezavisni proveravač.
+Svaka osoba ima čvrsti dnevni maksimum od šest časova, dok cilj dodatno
+kažnjava peti i šesti čas kako bi optimalno dnevno angažovanje bilo do četiri.
 
 Svaki rezultat se zato odmah prosleđuje nezavisnom proveravaču. Komanda završava
 statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu

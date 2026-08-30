@@ -398,6 +398,22 @@ def _proveri_red(
                     f"{cas.gde}: NP-сала се користи само у блоковима 10 и 11"
                 )
 
+    if cas.dan == "субота":
+        if cas.blok > 8:
+            izvestaj.greske.append(
+                f"{cas.gde}: суботом настава не сме трајати после 15:05"
+            )
+        elif cas.blok > 6:
+            izvestaj.upozorenja.append(
+                f"{cas.gde}: суботњи час после 13:15 треба избегавати"
+            )
+        if prostorija and prostorija.tip is TipProstorije.SALA and not (
+            cas.prostorija.startswith("SG-")
+        ):
+            izvestaj.upozorenja.append(
+                f"{cas.gde}: суботом предност имају сале Спортске гимназије"
+            )
+
     for stavka in nedostupnosti:
         if (
             stavka.nastavnik == cas.nastavnik
@@ -709,15 +725,24 @@ def _proveri_dnevni_raspored(
                 razmak = sledeci - prethodni
                 if menja:
                     promene += 1
-                    if razmak < 2:
+                    neposredan_prelaz = {lokacija_pre, lokacija_posle} == {
+                        "Кнез Милетина 8", "Спортска гимназија"
+                    }
+                    ocekivani_razmak = 1 if neposredan_prelaz else 2
+                    if razmak < ocekivani_razmak:
                         izvestaj.greske.append(
                             f"{grupa} мења локацију без слободног блока: {dan}, "
                             f"блокови {prethodni}–{sledeci}"
                         )
-                    elif razmak > 2:
+                    elif razmak > ocekivani_razmak:
+                        opis = (
+                            "са паузом између Кнез Милетине и Спортске гимназије"
+                            if neposredan_prelaz
+                            else "са паузом дужом од једног блока"
+                        )
                         izvestaj.greske.append(
-                            f"{grupa} мења локацију са паузом дужом од једног "
-                            f"блока: {dan}, блокови {prethodni}–{sledeci}"
+                            f"{grupa} мења локацију {opis}: {dan}, "
+                            f"блокови {prethodni}–{sledeci}"
                         )
                 elif razmak > 1:
                     izvestaj.greske.append(
@@ -855,6 +880,15 @@ def _upozori_na_pauze_nastavnika(
     pauze_po_osobi: Counter[str] = Counter()
     for (osoba, dan), blokovi in sorted(termini.items()):
         sortirani = sorted(blokovi)
+        broj_casova = len(sortirani)
+        if broj_casova > 6:
+            izvestaj.greske.append(
+                f"особа {osoba} има {broj_casova} часова у дану {dan}; максимум је 6"
+            )
+        elif broj_casova > 4:
+            izvestaj.upozorenja.append(
+                f"особа {osoba} има {broj_casova} часова у дану {dan}; оптимално је до 4"
+            )
         for prethodni, sledeci in zip(sortirani, sortirani[1:]):
             duzina = sledeci - prethodni - 1
             if duzina <= 0:

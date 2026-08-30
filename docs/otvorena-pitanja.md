@@ -42,9 +42,7 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 ## Pravila koja treba raščistiti
 
-- **Kadrovske rupe.** Korepetitor za 21 čas (osnovna
-  `корепетитор br.1` 13 časova + srednja `?` 8 časova) još nije zaposlen;
-  Dijani Jovanović (18 časova) sme da se doda. U referenci je nerazrešen par
-  `Kristina / Ana` (2 časa petkom).
+- **Kadrovske rupe.** Dijani Jovanović (18 časova) sme da se doda. U
+  referenci je nerazrešen par `Kristina / Ana` (2 časa petkom).
 
   Odgovor upisati u odgovarajuće CSV fajlove u `ulazi/`.

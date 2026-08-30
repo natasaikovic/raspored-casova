@@ -102,8 +102,8 @@ def test_druga_faza_dodeljuje_razlicite_prostorije_istog_tipa():
 
 def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
     zahtevi = [
-        zahtev("Теорија 1", "11", 1, "Мила"),
-        zahtev("Теорија 2", "12", 1, "Мила"),
+        zahtev("Теорија 1", "11", 1, "Ивана Љујић"),
+        zahtev("Теорија 2", "12", 1, "Ивана Љујић"),
     ]
     model, jedinice, promenljive = napravi_model(
         ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
@@ -117,7 +117,7 @@ def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
 
 def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
     zahtevi = [
-        zahtev(f"Теорија {i}", odeljenje, 1, "Мила")
+        zahtev(f"Теорија {i}", odeljenje, 1, "Јелена Првуловић")
         for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
     ]
     model, jedinice, promenljive = napravi_model(
@@ -131,7 +131,7 @@ def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
-def test_solver_dozvoljava_vise_pauza_odobrenom_izuzetku():
+def test_solver_dozvoljava_vise_pauza_ostalim_osobama():
     zahtevi = [
         zahtev(f"Теорија {i}", odeljenje, 1, "Бранислава Порчић")
         for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
@@ -145,6 +145,20 @@ def test_solver_dozvoljava_vise_pauza_odobrenom_izuzetku():
         model.add(promenljive[jedinica.indeks].blok == blok)
 
     assert cp_model.CpSolver().solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
+
+
+def test_solver_zabranjuje_vise_od_sest_casova_osobe_dnevno():
+    zahtevi = [
+        zahtev(f"Теорија {i}", f"1{i}", 1, "Ана")
+        for i in range(1, 8)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    for jedinica in jedinice:
+        model.add(promenljive[jedinica.indeks].dan == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):
@@ -296,3 +310,62 @@ def test_promena_lokacije_ima_tacno_jedan_putni_blok():
     assert max(blokovi) - min(blokovi) + 1 == len(blokovi) + 1
     assert rezultat.izvestaj is not None
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+
+
+def test_dnevni_obrazac_zabranjuje_dve_praznine_na_istoj_lokaciji():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(3)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+    )
+    for jedinica, blok in zip(jedinice, (1, 3, 5)):
+        model.add(promenljive[jedinica.indeks].dan == 0)
+        model.add(promenljive[jedinica.indeks].blok == blok)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_dnevni_obrazac_zabranjuje_povratak_na_prvu_lokaciju():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(3)
+    ]
+    druga = Prostorija(
+        "SG-уч1", "Спортска гимназија", TipProstorije.UCIONICA, None, ""
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA, druga), (), Smena.CRVENA
+    )
+    for jedinica, blok, prostorija in zip(
+        jedinice, (1, 3, 4), (UCIONICA.oznaka, druga.oznaka, UCIONICA.oznaka)
+    ):
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        model.add(p.blok == blok)
+        model.add(p.prostorije[prostorija] == 1)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_knez_miletina_sportska_gimnazija_su_neposredne_u_modelu():
+    zahtevi = [
+        zahtev("Теорија 1", "11", 1, "Наставник 1"),
+        zahtev("Теорија 2", "11", 1, "Наставник 2"),
+    ]
+    sportska = Prostorija(
+        "SG-уч1", "Спортска гимназија", TipProstorije.UCIONICA, None, ""
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA, sportska), (), Smena.CRVENA
+    )
+    for jedinica, prostorija in zip(jedinice, (UCIONICA.oznaka, sportska.oznaka)):
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        model.add(p.prostorije[prostorija] == 1)
+
+    solver = cp_model.CpSolver()
+    assert solver.solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
+    blokovi = sorted(solver.value(promenljive[j.indeks].blok) for j in jedinice)
+    assert blokovi[1] == blokovi[0] + 1
