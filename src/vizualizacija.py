@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -103,6 +104,30 @@ def ucitaj(putanja: Path, nedelja: str) -> list[dict[str, object]]:
     return rezultat
 
 
+def prosiri_odeljenja_za_prikaz(
+    podaci: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Poveži celo odeljenje i njegove A/B polugrupe u HTML pregledu."""
+
+    polugrupe: dict[str, set[str]] = {}
+    for cas in podaci:
+        for oznaka in cas["odeljenja"]:
+            poklapanje = re.fullmatch(r"([IV]+5)[ABАБ]", str(oznaka))
+            if poklapanje:
+                polugrupe.setdefault(poklapanje.group(1), set()).add(str(oznaka))
+
+    for cas in podaci:
+        prikaz = {str(oznaka) for oznaka in cas["odeljenja"]}
+        for oznaka in tuple(prikaz):
+            poklapanje = re.fullmatch(r"([IV]+5)[ABАБ]", oznaka)
+            if poklapanje:
+                prikaz.add(poklapanje.group(1))
+            else:
+                prikaz.update(polugrupe.get(oznaka, ()))
+        cas["odeljenja_prikaz"] = sorted(prikaz)
+    return podaci
+
+
 SABLON = """<!doctype html>
 <html lang="sr">
 <head>
@@ -178,7 +203,7 @@ function values() {
   return [...set].sort((a,b) => a.localeCompare(b, "sr", {numeric:true}));
 }
 function matches(x, value) {
-  return kind.value === "odeljenja" ? x.odeljenja.includes(value) : x[kind.value] === value;
+  return kind.value === "odeljenja" ? x.odeljenja_prikaz.includes(value) : x[kind.value] === value;
 }
 function lessonCard(x) {
   const div = document.createElement("div");
@@ -243,7 +268,9 @@ fillEntities();
 
 
 def napravi_html(nedelja_a: Path, nedelja_b: Path, izlaz: Path) -> None:
-    podaci = ucitaj(nedelja_a, "A") + ucitaj(nedelja_b, "B")
+    podaci = prosiri_odeljenja_za_prikaz(
+        ucitaj(nedelja_a, "A") + ucitaj(nedelja_b, "B")
+    )
     json_podaci = json.dumps(podaci, ensure_ascii=False).replace("</", "<\\/")
     vremena = json.dumps(BLOK_VREMENA, ensure_ascii=False)
     html = SABLON.replace("__PODACI__", json_podaci).replace("__VREMENA__", vremena)

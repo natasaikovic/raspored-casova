@@ -57,6 +57,10 @@ KOLONE_RESENJA_LATINICA = (
     "prostorija",
 )
 
+KNEZ_MILETINA = "Кнез Милетина 8"
+SPORTSKA_GIMNAZIJA = "Спортска гимназија"
+NARODNO_POZORISTE = "Народно позориште"
+
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
@@ -726,9 +730,20 @@ def _proveri_dnevni_raspored(
                 if menja:
                     promene += 1
                     neposredan_prelaz = {lokacija_pre, lokacija_posle} == {
-                        "Кнез Милетина 8", "Спортска гимназија"
+                        KNEZ_MILETINA, SPORTSKA_GIMNAZIJA
                     }
-                    ocekivani_razmak = 1 if neposredan_prelaz else 2
+                    put_ka_np = (
+                        lokacija_posle == NARODNO_POZORISTE
+                        and lokacija_pre in {KNEZ_MILETINA, SPORTSKA_GIMNAZIJA}
+                    )
+                    if not neposredan_prelaz and not put_ka_np:
+                        izvestaj.greske.append(
+                            f"{grupa} мења локацију са {lokacija_pre} на "
+                            f"{lokacija_posle} у дану {dan}; путни блок је "
+                            "дозвољен само непосредно пре наставе у Народном позоришту"
+                        )
+                        continue
+                    ocekivani_razmak = 2 if put_ka_np else 1
                     if razmak < ocekivani_razmak:
                         izvestaj.greske.append(
                             f"{grupa} мења локацију без слободног блока: {dan}, "
@@ -738,7 +753,7 @@ def _proveri_dnevni_raspored(
                         opis = (
                             "са паузом између Кнез Милетине и Спортске гимназије"
                             if neposredan_prelaz
-                            else "са паузом дужом од једног блока"
+                            else "са паузом дужом од дозвољеног путног блока за Народно позориште"
                         )
                         izvestaj.greske.append(
                             f"{grupa} мења локацију {opis}: {dan}, "

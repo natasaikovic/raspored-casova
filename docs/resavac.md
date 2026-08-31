@@ -44,8 +44,8 @@ Rešavač ne sme da prekrši:
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri časa dnevno za odeljenja osnovne škole;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
-- bez praznih časova učenika, osim tačno jednog putnog bloka pri promeni
-  lokacije;
+- bez praznih časova učenika, osim bloka 9 neposredno pre nastave u Narodnom
+  pozorištu;
 - najviše jednu promenu lokacije po odeljenju u toku dana;
 - istovremenost Verske nastave i Građanskog vaspitanja;
 - nedostupnost nastavnika iz `ulazi/nedostupnost.csv`.
@@ -65,12 +65,11 @@ Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
 
 Prazni časovi učenika i promena lokacije modelirani su kao čvrsta pravila.
 Za svako odeljenje i dan model bira kompaktan dnevni obrazac: prvi i poslednji
-blok, ukupan broj časova, postojanje i položaj putnog bloka, kao i lokaciju pre
-i posle njega. Ako odeljenje ostaje na jednoj lokaciji, svi dnevni časovi su
-povezani. Ako jednom promeni lokaciju između Knez Miletine i Sportske
-gimnazije, dve celine moraju biti neposredno jedna uz drugu. Za druge promene
-lokacije između njih postoji tačno jedan slobodan blok za put. Druga promena
-lokacije, povratak na prvu lokaciju i svaka druga praznina nisu dozvoljeni.
+blok, ukupan broj časova i lokaciju pre i posle eventualne promene. Svi dnevni
+časovi moraju biti povezani. Promena između Knez Miletine i Sportske gimnazije
+mora biti neposredna. Jedini putni blok je blok 9 neposredno pre nastave u
+Narodnom pozorištu u bloku 10; druge promene lokacije koje traže pauzu,
+povratak na prvu lokaciju i svaka druga praznina nisu dozvoljeni.
 
 Samo Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše jedne
 pauze nedeljno, duge najviše dva bloka. Za sve ostale nastavnike i

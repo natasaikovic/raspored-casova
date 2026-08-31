@@ -346,7 +346,7 @@ def test_prazan_cas_bez_promene_lokacije_je_greska():
     assert any("има празан час без промене локације" in g for g in izvestaj.greske)
 
 
-def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
+def test_putni_blok_nije_dozvoljen_izmedju_drugih_lokacija():
     z1 = zahtev("Историја", ["11"], 1, "Ана")
     z2 = zahtev("Солфеђо", ["11"], 1, "Ива", red=3)
     ulaz = napravi_ulaz([z1, z2])
@@ -356,15 +356,43 @@ def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
     )
     casovi = (
         Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
-        Cas("понедељак", 4, z2.predmet, ("11",), "Ива", None, "U3", 3),
+        Cas("понедељак", 3, z2.predmet, ("11",), "Ива", None, "U3", 3),
     )
 
     izvestaj = proveri(ulaz, prostorije, (), casovi)
 
     assert any(
-        "мења локацију са паузом дужом од једног блока" in g
+        "путни блок је дозвољен само непосредно пре наставе у Народном позоришту" in g
         for g in izvestaj.greske
     )
+
+
+def test_putni_blok_je_dozvoljen_pre_narodnog_pozorista():
+    z1 = zahtev(
+        "Историја", ["I1"], 1, "Ана",
+        razred="I", smena=Smena.CEO_DAN,
+    )
+    z2 = zahtev(
+        "Математика", ["I1"], 1, "Ива",
+        razred="I", smena=Smena.CEO_DAN, red=3,
+    )
+    ulaz = napravi_ulaz([z1, z2])
+    prostorije = (
+        Prostorija(
+            "KM-U1", "Кнез Милетина 8", TipProstorije.UCIONICA, None, ""
+        ),
+        Prostorija(
+            "NP-U1", "Народно позориште", TipProstorije.UCIONICA, None, ""
+        ),
+    )
+    casovi = (
+        Cas("понедељак", 8, z1.predmet, ("I1",), "Ана", None, "KM-U1", 2),
+        Cas("понедељак", 10, z2.predmet, ("I1",), "Ива", None, "NP-U1", 3),
+    )
+
+    izvestaj = proveri(ulaz, prostorije, (), casovi)
+
+    assert izvestaj.ispravan, izvestaj.tekst()
 
 
 def test_knez_miletina_sportska_gimnazija_moraju_biti_neposredne():

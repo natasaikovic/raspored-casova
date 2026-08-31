@@ -1,6 +1,11 @@
 import csv
 
-from src.vizualizacija import BLOK_VREMENA, napravi_html, ucitaj
+from src.vizualizacija import (
+    BLOK_VREMENA,
+    napravi_html,
+    prosiri_odeljenja_za_prikaz,
+    ucitaj,
+)
 
 
 def upisi_csv(putanja, zaglavlje, red):
@@ -41,3 +46,17 @@ def test_html_sadrzi_vremena_blokova(tmp_path):
     html = izlaz.read_text(encoding="utf-8")
     assert BLOK_VREMENA[1] in html
     assert BLOK_VREMENA[14] in html
+
+
+def test_prikaz_povezuje_celo_odeljenje_i_polugrupe():
+    podaci = [
+        {"odeljenja": ["II5"]},
+        {"odeljenja": ["II5A"]},
+        {"odeljenja": ["II5B"]},
+    ]
+
+    prosiri_odeljenja_za_prikaz(podaci)
+
+    assert set(podaci[0]["odeljenja_prikaz"]) == {"II5", "II5A", "II5B"}
+    assert set(podaci[1]["odeljenja_prikaz"]) == {"II5", "II5A"}
+    assert set(podaci[2]["odeljenja_prikaz"]) == {"II5", "II5B"}

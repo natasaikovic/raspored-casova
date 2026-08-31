@@ -345,7 +345,70 @@ def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
     assert b.izvestaj is not None and b.izvestaj.ispravan
 
 
-def test_promena_lokacije_ima_tacno_jedan_putni_blok():
+def test_putni_blok_je_dozvoljen_pre_narodnog_pozorista():
+    teorija = Zahtev(
+        predmet="Историја",
+        razred="IV",
+        odeljenja=("IV1",),
+        fond=1,
+        fond_korepeticije=0,
+        nastavnik="Ана",
+        korepetitor=None,
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+        red=2,
+    )
+    repertoar = Zahtev(
+        predmet="Репертоар класичног балета",
+        razred="IV",
+        odeljenja=("IV1",),
+        fond=2,
+        fond_korepeticije=2,
+        nastavnik="Мила",
+        korepetitor="Ива",
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+        red=3,
+    )
+    u = Ulaz(
+        (teorija, repertoar),
+        {"IV1": Odeljenje("IV1", "IV", Smena.CEO_DAN, Skola.SREDNJA)},
+        {
+            teorija.predmet: Predmet(teorija.predmet, False, False),
+            repertoar.predmet: Predmet(repertoar.predmet, True, True),
+        },
+        Skola.SREDNJA,
+    )
+    prostorije = (
+        Prostorija(
+            "KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, ""
+        ),
+        Prostorija(
+            "NP-сала", "Народно позориште", TipProstorije.SALA, None, ""
+        ),
+    )
+    model, jedinice, promenljive = napravi_model(
+        u,
+        prostorije,
+        (),
+        Smena.CRVENA,
+        samo_lokacije=True,
+    )
+    for jedinica in jedinice:
+        zahtev_jedinice = u.zahtevi[jedinica.zahtev_indeks]
+        model.add(promenljive[jedinica.indeks].dan == 0)
+        model.add(
+            promenljive[jedinica.indeks].blok
+            == (8 if zahtev_jedinice.predmet == teorija.predmet else 10)
+        )
+
+    assert cp_model.CpSolver().solve(model) in (
+        cp_model.FEASIBLE,
+        cp_model.OPTIMAL,
+    )
+
+
+def test_putni_blok_nije_dozvoljen_izmedju_drugih_lokacija():
     teorija = zahtev("Теорија", "11", 1, "Ана")
     balet = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     u = ulaz([teorija, balet])
@@ -368,13 +431,7 @@ def test_promena_lokacije_ima_tacno_jedan_putni_blok():
         broj_radnika=1,
     )
 
-    assert rezultat.pronadjen
-    assert {cas.dan for cas in rezultat.casovi} == {"понедељак"}
-    blokovi = sorted({cas.blok for cas in rezultat.casovi})
-    assert [b - a for a, b in zip(blokovi, blokovi[1:])].count(2) == 1
-    assert max(blokovi) - min(blokovi) + 1 == len(blokovi) + 1
-    assert rezultat.izvestaj is not None
-    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+    assert not rezultat.pronadjen
 
 
 def test_dnevni_obrazac_zabranjuje_dve_praznine_na_istoj_lokaciji():

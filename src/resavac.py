@@ -42,6 +42,7 @@ REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
+NARODNO_POZORISTE = "Народно позориште"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
@@ -318,9 +319,10 @@ def _dodaj_dnevno_pravilo_lokacije(
 ) -> None:
     """Zabrani praznine kompaktnim dnevnim obrascem.
 
-    Dan je jedan neprekinut raspon nastavnih blokova ili dva takva dela sa
-    tacno jednim putnim blokom izmedju njih. Umesto posebnog intervala za
-    svaku mogucu lokaciju biramo samo lokaciju pre i posle putnog bloka.
+    Dan je jedan neprekinut raspon nastavnih blokova. Jedini izuzetak je
+    putni blok neposredno pre nastave u Narodnom pozoristu. Umesto posebnog
+    intervala za svaku mogucu lokaciju biramo samo lokaciju pre i posle
+    eventualnog putnog bloka.
     """
 
     sufiks = "_b" if nedelja_b else ""
@@ -375,10 +377,22 @@ def _dodaj_dnevno_pravilo_lokacije(
             neposredan = {pre_naziv, posle_naziv} == {
                 KNEZ_MILETINA, SPORTSKA_GIMNAZIJA
             }
-            putuje = int(bool(menja and not neposredan))
-            dozvoljeni_prelazi.append(
-                (pre_indeks, posle_indeks, menja, putuje)
+            put_ka_np = (
+                posle_naziv == NARODNO_POZORISTE
+                and pre_naziv in {KNEZ_MILETINA, SPORTSKA_GIMNAZIJA}
             )
+            if not menja:
+                dozvoljeni_prelazi.append(
+                    (pre_indeks, posle_indeks, 0, 0)
+                )
+            elif neposredan:
+                dozvoljeni_prelazi.append(
+                    (pre_indeks, posle_indeks, 1, 0)
+                )
+            elif put_ka_np:
+                dozvoljeni_prelazi.append(
+                    (pre_indeks, posle_indeks, 1, 1)
+                )
     model.add_allowed_assignments(
         [lokacija_pre, lokacija_posle, menja_lokaciju, ima_putni_blok],
         dozvoljeni_prelazi,
@@ -445,8 +459,8 @@ def _dodaj_dnevno_pravilo_lokacije(
     model.add_max_equality(kraj, poslednji_kandidati)
     model.add(sum(posle_puta) >= menja_lokaciju)
     model.add(sum(prisutnosti) - sum(posle_puta) >= menja_lokaciju)
-    # Ukupan dnevni raspon sadrži samo nastavne blokove i, pri promeni
-    # lokacije, tačno jedan slobodan blok za put.
+    # Ukupan dnevni raspon sadrži samo nastavne blokove. Jedini dozvoljeni
+    # slobodan blok je put ka nastavi u Narodnom pozorištu.
     model.add(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
@@ -1065,8 +1079,8 @@ def napravi_model(
             assert all(interval is not None for interval in intervali_b)
             model.add_no_overlap(intervali_b)
 
-    # Učenici nemaju prazne časove. Jedini izuzetak je tačno jedan putni blok
-    # pri jedinoj dozvoljenoj promeni lokacije u toku dana.
+    # Učenici nemaju prazne časove. Jedini izuzetak je putni blok neposredno
+    # pre nastave u Narodnom pozorištu.
     for token, stavke in po_ucenickom_tokenu.items():
         odeljenje = ulaz.odeljenja[token]
         for indeks_dana in range(len(DANI)):
