@@ -31,3 +31,5 @@ jobs:
           git add ulazi/ostali_casovi.csv src/resavac.py src/proveravac.py docs/pravila-rasporeda.md tests/test_dusan_ilijin.py
           git commit -m "Dodaj pravila istorije za Dusana Ilijina"
           git push origin HEAD:popravi-prikaz-i-stroge-pauze
+
+# Ponovljeno nakon ispravke regresionog testa pauza.
