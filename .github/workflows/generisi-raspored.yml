@@ -82,3 +82,4 @@ jobs:
           retention-days: 14
 
 # Duži run posle pravila za peti cas Solfedja: UNKNOWN u brzoj proveri vise ne zaustavlja glavni solver.
+# Ponovljeno generisanje posle uvodjenja Aleksandra Boskovica u ulaz.
