@@ -33,13 +33,6 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
-- **Fond odeljenja П1.** Potvrđeno je da se nastava održava tačno
-  ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15). U ulazu je, međutim,
-  nedeljni fond 6 časova, a tri potvrđena termina daju samo 3 časa. Da li fond
-  treba promeniti na 3 ili jedan termin obuhvata još jedan blok?
-
-  Odgovor upisati u: `ulazi/osnovna_baletska_skola.csv`.
-
 ## Pravila koja treba raščistiti
 
 - **Kadrovske rupe.** Dijani Jovanović (18 časova) sme da se doda. U

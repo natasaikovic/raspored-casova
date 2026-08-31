@@ -113,12 +113,9 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
     rezultat: list[Jedinica] = []
     for zahtev_indeks, zahtev in enumerate(ulaz.zahtevi):
         predmet = ulaz.predmeti[zahtev.predmet]
-        if zahtev.smena is Smena.POSEBNA and zahtev.fond % 2:
-            raise ValueError(
-                f"{zahtev.gde}: посебна смена „{zahtev.smena_opis}“ "
-                "захтева паран фонд часова"
-            )
-        if predmet.igracki:
+        if zahtev.smena is Smena.POSEBNA:
+            trajanja = [1] * zahtev.fond
+        elif predmet.igracki:
             trajanja = [2] * (zahtev.fond // 2) + [1] * (zahtev.fond % 2)
         else:
             trajanja = [1] * zahtev.fond
@@ -163,7 +160,7 @@ def _dozvoljeni_poceci(
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis != poznati_opis:
             return ()
-        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 2)
+        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 1)
         return tuple(
             (dan, blok)
             for dan, blok in kandidati

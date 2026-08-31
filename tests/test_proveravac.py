@@ -536,11 +536,11 @@ def test_nepoznato_prvo_odeljenje_ne_obara_proveravac():
     assert any("непознато одељење XX" in g for g in izvestaj.greske)
 
 
-def test_p1_koristi_vidljivu_privremenu_pretpostavku():
+def test_p1_ima_tri_pojedinacna_casa_u_1830():
     z = zahtev(
         "Класичан балет",
         ["П1"],
-        6,
+        3,
         "Исидора",
         smena=Smena.POSEBNA,
     )
@@ -554,11 +554,8 @@ def test_p1_koristi_vidljivu_privremenu_pretpostavku():
         for red, (dan, blok) in enumerate(
             [
                 ("понедељак", 13),
-                ("понедељак", 14),
                 ("среда", 13),
-                ("среда", 14),
                 ("петак", 13),
-                ("петак", 14),
             ],
             start=2,
         )
@@ -567,4 +564,26 @@ def test_p1_koristi_vidljivu_privremenu_pretpostavku():
     izvestaj = proveri(ulaz, SALE, (), casovi)
 
     assert izvestaj.ispravan, izvestaj.tekst()
-    assert any("привремено протумачено" in u for u in izvestaj.upozorenja)
+    assert not izvestaj.upozorenja
+
+
+def test_p1_ne_sme_u_blok_14():
+    z = zahtev(
+        "Класичан балет",
+        ["П1"],
+        1,
+        "Исидора",
+        smena=Smena.POSEBNA,
+    )
+    z = replace(
+        z,
+        smena_opis="стално од 18,30 часова понедељком средом петком",
+    )
+    ulaz = napravi_ulaz([z], igracki={z.predmet})
+    casovi = (
+        Cas("понедељак", 14, z.predmet, ("П1",), "Исидора", None, "S1", 2),
+    )
+
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+
+    assert any("средом и петком у блоку 13" in g for g in izvestaj.greske)

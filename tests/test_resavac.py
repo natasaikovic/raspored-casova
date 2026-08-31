@@ -63,6 +63,41 @@ def test_resava_i_odmah_proverava_mali_raspored():
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
 
 
+def test_p1_ima_tri_pojedinacna_casa_u_1830():
+    z = Zahtev(
+        predmet="Класичан балет",
+        razred="припремно",
+        odeljenja=("П1",),
+        fond=3,
+        fond_korepeticije=3,
+        nastavnik="Исидора",
+        korepetitor="Јован",
+        smena=Smena.POSEBNA,
+        smena_opis="стално од 18,30 часова понедељком средом петком",
+        red=2,
+    )
+    u = Ulaz(
+        (z,),
+        {"П1": Odeljenje("П1", "припремно", Smena.POSEBNA, Skola.OSNOVNA)},
+        {z.predmet: Predmet(z.predmet, True, True)},
+        Skola.OSNOVNA,
+    )
+
+    rezultat = resi_nedelju(
+        u, (SALA,), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    assert {(cas.dan, cas.blok) for cas in rezultat.casovi} == {
+        ("понедељак", 13),
+        ("среда", 13),
+        ("петак", 13),
+    }
+    assert rezultat.izvestaj is not None
+    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+
+
 def test_isti_nastavnik_ne_moze_u_dva_odeljenja_istovremeno():
     z1 = zahtev("Теорија 1", "11", 1, "Мила")
     z2 = zahtev("Теорија 2", "12", 1, "Мила")
