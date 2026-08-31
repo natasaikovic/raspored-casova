@@ -1082,7 +1082,14 @@ def napravi_model(
                 promenljive,
             )
 
-            if odeljenje.skola is Skola.SREDNJA:
+            if odeljenje.skola is Skola.OSNOVNA:
+                ukupno = [
+                    jedinica.trajanje
+                    * promenljive[jedinica.indeks].po_danu[indeks_dana]
+                    for jedinica in stavke
+                ]
+                model.add(sum(ukupno) <= 4)
+            elif odeljenje.skola is Skola.SREDNJA:
                 igracki = []
                 opsti = []
                 ukupno = []
@@ -1105,7 +1112,8 @@ def napravi_model(
     # primenjujemo i na njihove B promenljive.
     if sa_nedeljom_b:
         for token, stavke in po_ucenickom_tokenu.items():
-            if not ulaz.odeljenja[token].smena.menja_se:
+            odeljenje = ulaz.odeljenja[token]
+            if not odeljenje.smena.menja_se:
                 continue
             for indeks_dana in range(len(DANI)):
                 _dodaj_dnevno_pravilo_lokacije(
@@ -1117,6 +1125,13 @@ def napravi_model(
                     promenljive,
                     nedelja_b=True,
                 )
+                if odeljenje.skola is Skola.OSNOVNA:
+                    ukupno = []
+                    for jedinica in stavke:
+                        po_danu_b = promenljive[jedinica.indeks].po_danu_b
+                        assert po_danu_b is not None
+                        ukupno.append(jedinica.trajanje * po_danu_b[indeks_dana])
+                    model.add(sum(ukupno) <= 4)
 
     # Nastavnik ili korepetitor sme imati najviše jednu nedeljnu pauzu, dugu
     # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni

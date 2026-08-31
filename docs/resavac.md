@@ -42,6 +42,7 @@ Rešavač ne sme da prekrši:
   i korišćenja sala Sportske gimnazije;
 - tip prostorije i posebnu učionicu za informatiku;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
+- najviše četiri časa dnevno za odeljenja osnovne škole;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
 - bez praznih časova učenika, osim tačno jednog putnog bloka pri promeni
   lokacije;

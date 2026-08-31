@@ -70,6 +70,11 @@ Za jedan čas opšteg predmeta potrebni su:
 
 ## Osnovna škola
 
+### Dnevno opterećenje
+
+Učenici osnovne baletske škole smeju da imaju najviše **4 časa dnevno**.
+Ovo je čvrsto pravilo i važi u obe smene i u obe nedelje rasporeda.
+
 ### Klasičan balet
 
 - Nedeljni fond Klasičnog baleta je **10 časova**.

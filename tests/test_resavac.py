@@ -161,6 +161,36 @@ def test_solver_zabranjuje_vise_od_sest_casova_osobe_dnevno():
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
+def test_solver_zabranjuje_vise_od_cetiri_casa_obs_dnevno_u_nedelji_a():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(1, 6)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.PLAVA
+    )
+    for jedinica in jedinice:
+        model.add(promenljive[jedinica.indeks].dan == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_zabranjuje_vise_od_cetiri_casa_obs_dnevno_u_nedelji_b():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(1, 6)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA, sa_nedeljom_b=True
+    )
+    for jedinica in jedinice:
+        dan_b = promenljive[jedinica.indeks].dan_b
+        assert dan_b is not None
+        model.add(dan_b == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
 def test_csv_izlaz_je_na_latinici(tmp_path: Path):
     z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     rezultat = resi_nedelju(

@@ -681,7 +681,13 @@ def _proveri_dnevni_raspored(
                 po_bloku[cas.blok].append(cas)
             blokovi = sorted(po_bloku)
 
-            if ulaz.odeljenja[grupa].skola is Skola.SREDNJA:
+            if ulaz.odeljenja[grupa].skola is Skola.OSNOVNA:
+                if len(blokovi) > 4:
+                    izvestaj.greske.append(
+                        f"{grupa} има {len(blokovi)} часова у дану {dan}; "
+                        "максимум за основну школу је 4"
+                    )
+            elif ulaz.odeljenja[grupa].skola is Skola.SREDNJA:
                 igracki = sum(
                     1
                     for blok in blokovi

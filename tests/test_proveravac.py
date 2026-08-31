@@ -423,6 +423,35 @@ def test_vise_od_sest_casova_osobe_dnevno_je_greska():
     assert any("особа Ана има 7 часова" in g for g in izvestaj.greske)
 
 
+def test_vise_od_cetiri_casa_obs_dnevno_je_greska():
+    zahtevi = [
+        zahtev(
+            f"Предмет {i}",
+            ["13"],
+            1,
+            f"Наставник {i}",
+            smena=Smena.STALNO_POPODNE,
+            red=i + 1,
+        )
+        for i in range(1, 6)
+    ]
+    ulaz = napravi_ulaz(zahtevi)
+    casovi = tuple(
+        Cas(
+            "понедељак", blok, z.predmet, z.odeljenja,
+            z.nastavnik, None, "U1", i + 1,
+        )
+        for i, (z, blok) in enumerate(zip(zahtevi, range(9, 14)), start=1)
+    )
+
+    izvestaj = proveri(ulaz, UCIONICE, (), casovi)
+
+    assert any(
+        "13 има 5 часова у дану понедељак; максимум за основну школу је 4" in g
+        for g in izvestaj.greske
+    )
+
+
 def test_druga_nedeljna_pauza_osobe_je_greska():
     zahtevi = [
         zahtev("Предмет 1", ["11"], 1, "Ивана Љујић"),
