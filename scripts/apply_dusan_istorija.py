@@ -251,7 +251,7 @@ def test_dusan_sme_najvise_dva_bloka_pauze() -> None:
         ),
         izvestaj,
     )
-    assert any("максимум су 2" in g for g in izvestaj.greske)
+    assert any("maksimum su 2" in g for g in izvestaj.greske)
 
 
 def test_dusan_ne_sme_utorkom_ni_sredom() -> None:
