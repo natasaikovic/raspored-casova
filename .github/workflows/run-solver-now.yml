@@ -21,7 +21,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Primeni izmene
-        run: python scripts/apply_aleksandar.py
+        run: |
+          python scripts/apply_aleksandar.py
+          python scripts/fix_aleksandar_validator.py
       - name: Pokreni testove
         run: python -m pip install -r requirements.txt && python -m pytest
       - name: Commit izmene
