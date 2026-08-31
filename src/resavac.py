@@ -39,6 +39,9 @@ VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
+NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
+REPERTOAR_NARODNE = "Репертоар народне игре"
+SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -210,11 +213,29 @@ def _moguce_prostorije(
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
     if zahtev.predmet == INFORMATIKA:
         return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
+    if zahtev.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
+        return tuple(
+            p
+            for p in prostorije
+            if p.tip is TipProstorije.SALA
+            and p.lokacija == SPORTSKA_GIMNAZIJA
+            and p.oznaka in SG_SALE
+        )
     if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
         "III1", "III2", "IV1", "IV2"
     }:
         return tuple(p for p in prostorije if p.tip is tip)
     return tuple(p for p in prostorije if p.tip is tip and p.oznaka != NP_SALA)
+
+
+def _kazna_sala_narodne_igre(zahtev: Zahtev, oznaka: str) -> int:
+    """SG-1 je standard; SG-2/SG-3 su izuzetak, prvenstveno za IV5."""
+
+    if zahtev.predmet != NARODNA_IGRA_GLAVNI or oznaka == "SG-1":
+        return 0
+    if oznaka not in {"SG-2", "SG-3"}:
+        return 100_000
+    return 1_000 if zahtev.odeljenja == ("IV5",) else 10_000
 
 
 def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
@@ -1308,6 +1329,7 @@ def _dodeli_prostorije(
     model = cp_model.CpModel()
     izbori: dict[int, dict[str, cp_model.BoolVar]] = {}
     intervali: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    kazne: list[cp_model.LinearExprT] = []
     fiksne = fiksne or {}
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
@@ -1336,6 +1358,9 @@ def _dodeli_prostorije(
                 f"j{jedinica.indeks}_{prostorija.oznaka}"
             )
             izbori[jedinica.indeks][prostorija.oznaka] = koristi
+            kazna = _kazna_sala_narodne_igre(zahtev, prostorija.oznaka)
+            if kazna:
+                kazne.append(kazna * koristi)
             intervali[prostorija.oznaka].append(
                 model.new_optional_fixed_size_interval_var(
                     start,
@@ -1347,6 +1372,8 @@ def _dodeli_prostorije(
         model.add_exactly_one(izbori[jedinica.indeks].values())
     for stavke in intervali.values():
         model.add_no_overlap(stavke)
+    if kazne:
+        model.minimize(sum(kazne))
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
@@ -1379,6 +1406,7 @@ def _dodeli_prostorije_obe(
     izbori_b: dict[int, dict[str, cp_model.BoolVar]] = {}
     intervali_a: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
+    kazne: list[cp_model.LinearExprT] = []
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
         p = promenljive[jedinica.indeks]
@@ -1397,6 +1425,9 @@ def _dodeli_prostorije_obe(
         for soba in moguce_a:
             koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_a")
             izbori_a[jedinica.indeks][soba.oznaka] = koristi
+            kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
+            if kazna:
+                kazne.append(kazna * koristi)
             intervali_a[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
                 start_a, jedinica.trajanje, koristi,
                 f"j{jedinica.indeks}_{soba.oznaka}_i_a",
@@ -1406,6 +1437,9 @@ def _dodeli_prostorije_obe(
             for soba in moguce_b:
                 koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_b")
                 izbori_b[jedinica.indeks][soba.oznaka] = koristi
+                kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
+                if kazna:
+                    kazne.append(kazna * koristi)
                 intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
                     start_b, jedinica.trajanje, koristi,
                     f"j{jedinica.indeks}_{soba.oznaka}_i_b",
@@ -1423,6 +1457,8 @@ def _dodeli_prostorije_obe(
         model.add_no_overlap(stavke)
     for stavke in intervali_b.values():
         model.add_no_overlap(stavke)
+    if kazne:
+        model.minimize(sum(kazne))
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
