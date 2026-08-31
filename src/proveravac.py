@@ -65,6 +65,9 @@ VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
+ISTORIJA = "Историја"
+ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
+ALEKSANDAR_GRUPE = frozenset({("II1", "II3"), ("II2", "II4"), ("II5",)})
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
@@ -272,8 +275,69 @@ def proveri(
     _proveri_dvocase(ulaz, casovi, izvestaj)
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
     _proveri_narodno_pozoriste(ulaz, casovi, izvestaj)
+    _proveri_aleksandra_boskovica(casovi, izvestaj, ulaz)
     _upozori_na_pauze_nastavnika(casovi, izvestaj)
     return izvestaj
+
+
+def _proveri_aleksandra_boskovica(
+    casovi: Sequence[Cas],
+    izvestaj: Izvestaj,
+    ulaz: Ulaz | None = None,
+) -> None:
+    """Aleksandar radi II razred: dva dana po tri uzastopna časa od 7. bloka."""
+
+    # U punoj proveri ovo pravilo važi samo ako je Aleksandar stvarno deo
+    # konkretnog ulaza. Direktni jedinični testovi mogu pozvati pomoćnu
+    # funkciju bez ulaza i tada se proveravaju prosleđeni Aleksandrovi časovi.
+    if ulaz is not None and not any(
+        zahtev.predmet == ISTORIJA and zahtev.nastavnik == ALEKSANDAR_BOSKOVIC
+        for zahtev in ulaz.zahtevi
+    ):
+        return
+
+    stavke = [
+        cas
+        for cas in casovi
+        if cas.predmet == ISTORIJA and cas.nastavnik == ALEKSANDAR_BOSKOVIC
+    ]
+    if len(stavke) != 6:
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} mora imati tačno 6 časova istorije; ima {len(stavke)}"
+        )
+        return
+    if any(cas.blok < 7 for cas in stavke):
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} može držati časove tek od 7. bloka"
+        )
+    if any(cas.dan == "субота" for cas in stavke):
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} šest časova mora rasporediti u dva radna dana"
+        )
+
+    po_danu: dict[str, list[Cas]] = defaultdict(list)
+    for cas in stavke:
+        po_danu[cas.dan].append(cas)
+    if len(po_danu) != 2:
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} mora raditi tačno dva dana nedeljno"
+        )
+    for dan, dnevni in sorted(po_danu.items()):
+        if len(dnevni) != 3:
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati tačno 3 časa"
+            )
+            continue
+        grupe = frozenset(cas.odeljenja for cas in dnevni)
+        if grupe != ALEKSANDAR_GRUPE:
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati po jedan čas u sve tri grupe II razreda"
+            )
+        blokovi = sorted(cas.blok for cas in dnevni)
+        if blokovi != list(range(blokovi[0], blokovi[0] + 3)):
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati 3 uzastopna časa"
+            )
 
 
 def _kanonizuj_casove(

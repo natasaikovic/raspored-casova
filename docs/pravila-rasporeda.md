@@ -244,3 +244,9 @@ odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
 
 - Izuzetak za peti cas jutarnje smene: samo Solfedjo 41 kod Marije Cvetkovic, Solfedjo 42 kod Sonje Pane Virijevic i Solfedjo 43 kod Jelene Mihailovic Krasic sme da bude u bloku 5 (11:40-12:25) kada je njihova smena jutarnja. Ovaj izuzetak ne vazi ni za jedan drugi predmet, nastavnika ili odeljenje.
 - Ista fizicka osoba je jedan rasporedni resurs bez obzira da li u konkretnom casu nastupa kao nastavnik ili korepetitor; ne sme istovremeno obavljati obe uloge na razlicitim casovima.
+
+### Istorija — Aleksandar Bošković
+
+- Aleksandar Bošković preuzima sve tri grupe II razreda iz istorije: `II1,II3`, `II2,II4` i `II5`, ukupno 6 časova nedeljno.
+- Zbog rada u drugoj školi dostupan je radnim danima tek od 7. bloka (od 13:30).
+- Njegov fond se raspoređuje u tačno dva radna dana: svakog izabranog dana ima po jedan čas u sve tri grupe, ukupno 3 uzastopna časa.
