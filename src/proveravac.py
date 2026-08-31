@@ -67,6 +67,7 @@ ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
 ISTORIJA = "Историја"
 ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
+DUSAN_ILIJIN = "Душан Илијин"
 ALEKSANDAR_GRUPE = frozenset({("II1", "II3"), ("II2", "II4"), ("II5",)})
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
@@ -275,9 +276,69 @@ def proveri(
     _proveri_dvocase(ulaz, casovi, izvestaj)
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
     _proveri_narodno_pozoriste(ulaz, casovi, izvestaj)
+    _proveri_istoriju_jedan_cas_dnevno(casovi, izvestaj)
+    _proveri_dusan_ilijin(casovi, izvestaj, ulaz)
     _proveri_aleksandra_boskovica(casovi, izvestaj, ulaz)
     _upozori_na_pauze_nastavnika(casovi, izvestaj)
     return izvestaj
+
+
+def _proveri_istoriju_jedan_cas_dnevno(
+    casovi: Sequence[Cas], izvestaj: Izvestaj
+) -> None:
+    """Nijedno odeljenje/grupa ne sme imati dva časa istorije istog dana."""
+
+    brojaci: Counter[tuple[str, str]] = Counter()
+    for cas in casovi:
+        if cas.predmet != ISTORIJA:
+            continue
+        for oznaka in cas.odeljenja:
+            brojaci[(oznaka, cas.dan)] += 1
+    for (oznaka, dan), broj in sorted(brojaci.items()):
+        if broj > 1:
+            izvestaj.greske.append(
+                f"историја за {oznaka}: у дану {dan} има {broj} часа; максимум је један"
+            )
+
+
+def _proveri_dusan_ilijin(
+    casovi: Sequence[Cas],
+    izvestaj: Izvestaj,
+    ulaz: Ulaz | None = None,
+) -> None:
+    """Dušan radi ponedeljkom, četvrtkom i petkom, uz najviše 2 bloka pauze."""
+
+    if ulaz is not None and not any(
+        zahtev.predmet == ISTORIJA and zahtev.nastavnik == DUSAN_ILIJIN
+        for zahtev in ulaz.zahtevi
+    ):
+        return
+
+    stavke = [
+        cas
+        for cas in casovi
+        if cas.predmet == ISTORIJA and cas.nastavnik == DUSAN_ILIJIN
+    ]
+    dozvoljeni_dani = {"понедељак", "четвртак", "петак"}
+    for cas in stavke:
+        if cas.dan not in dozvoljeni_dani:
+            izvestaj.greske.append(
+                f"{DUSAN_ILIJIN} može držati istoriju samo ponedeljkom, četvrtkom i petkom; "
+                f"pronađen je čas u danu {cas.dan}"
+            )
+
+    ukupno_pauze = 0
+    po_danu: dict[str, set[int]] = defaultdict(set)
+    for cas in stavke:
+        po_danu[cas.dan].add(cas.blok)
+    for blokovi in po_danu.values():
+        if not blokovi:
+            continue
+        ukupno_pauze += max(blokovi) - min(blokovi) + 1 - len(blokovi)
+    if ukupno_pauze > 2:
+        izvestaj.greske.append(
+            f"{DUSAN_ILIJIN} ima ukupno {ukupno_pauze} blokova pauze u nedelji; maksimum su 2"
+        )
 
 
 def _proveri_aleksandra_boskovica(

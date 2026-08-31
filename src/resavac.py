@@ -40,6 +40,7 @@ GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
 ISTORIJA = "Историја"
 ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
+DUSAN_ILIJIN = "Душан Илијин"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
@@ -577,6 +578,32 @@ def _dodaj_pravilo_aleksandra_boskovica(
         model.add(po_danu[5] == 0)
 
 
+def _dodaj_istoriju_jedan_cas_dnevno(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Svaki zahtev istorije ima najviše jedan čas u istom danu."""
+
+    po_zahtevu: dict[int, list[Jedinica]] = defaultdict(list)
+    for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        if zahtev.predmet == ISTORIJA:
+            po_zahtevu[jedinica.zahtev_indeks].append(jedinica)
+
+    for stavke in po_zahtevu.values():
+        for indeks_dana in range(len(DANI)):
+            prisustva = [
+                _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )[1][indeks_dana]
+                for jedinica in stavke
+            ]
+            model.add(sum(prisustva) <= 1)
+
+
 def _angazovanja_po_osobi(
     ulaz: Ulaz,
     jedinice: Sequence[Jedinica],
@@ -618,6 +645,7 @@ def _dodaj_kontinuitet_osoba(
         sorted(_angazovanja_po_osobi(ulaz, jedinice).items())
     ):
         dnevne_pauze: list[cp_model.BoolVar] = []
+        duzine_pauza: list[cp_model.IntVar] = []
         for indeks_dana in range(len(DANI)):
             prisutnosti = [
                 _promenljive_za_nedelju(
@@ -669,13 +697,16 @@ def _dodaj_kontinuitet_osoba(
             model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
             model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
-            if not izuzet_od_ogranicenja_pauza(osoba):
+            if not izuzet_od_ogranicenja_pauza(osoba) or osoba == DUSAN_ILIJIN:
                 model.add(duzina_pauze <= 2)
             dnevne_pauze.append(ima_pauzu)
+            duzine_pauza.append(duzina_pauze)
             kazne.append(500 * ima_pauzu)
             kazne.append(100 * duzina_pauze)
         if not izuzet_od_ogranicenja_pauza(osoba):
             model.add(sum(dnevne_pauze) <= 1)
+        if osoba == DUSAN_ILIJIN:
+            model.add(sum(duzine_pauza) <= 2)
 
 
 def _dodaj_jednakost_lokacije(
@@ -1253,6 +1284,13 @@ def napravi_model(
                         assert po_danu_b is not None
                         ukupno.append(jedinica.trajanje * po_danu_b[indeks_dana])
                     model.add(sum(ukupno) <= 4)
+
+    # Istorija: nijedna grupa ne sme imati dva časa istog dana.
+    _dodaj_istoriju_jedan_cas_dnevno(model, ulaz, jedinice, promenljive)
+    if sa_nedeljom_b:
+        _dodaj_istoriju_jedan_cas_dnevno(
+            model, ulaz, jedinice, promenljive, nedelja_b=True
+        )
 
     # Aleksandar Bošković: II razred, dva dana po tri uzastopna časa od 7. bloka.
     _dodaj_pravilo_aleksandra_boskovica(
