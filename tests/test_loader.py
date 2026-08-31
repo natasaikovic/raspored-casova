@@ -36,7 +36,7 @@ class TestStvarniUlaz:
 
         assert ulaz.skola is Skola.OSNOVNA
         assert len(ulaz.zahtevi) == 50
-        assert ulaz.ukupno_casova == 216
+        assert ulaz.ukupno_casova == 215
         assert len(ulaz.odeljenja) == 17
 
     def test_prepoznaje_smene(self):
@@ -188,7 +188,7 @@ class TestCelaInstitucija:
 
         assert ulaz.skola is None
         assert len(ulaz.zahtevi) == 244
-        assert ulaz.ukupno_casova == 864
+        assert ulaz.ukupno_casova == 863
         assert len(ulaz.odeljenja) == 45
 
     def test_srednja_radi_ceo_dan(self):

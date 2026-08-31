@@ -70,6 +70,11 @@ Za jedan čas opšteg predmeta potrebni su:
 
 ## Osnovna škola
 
+### Dnevno opterećenje
+
+Učenici osnovne baletske škole smeju da imaju najviše **4 časa dnevno**.
+Ovo je čvrsto pravilo i važi u obe smene i u obe nedelje rasporeda.
+
 ### Klasičan balet
 
 - Nedeljni fond Klasičnog baleta je **10 časova**.
@@ -111,9 +116,9 @@ Organizacija smena po razredima:
 - u trećem razredu odeljenje 33 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
 - četvrti razred nema odeljenje koje je uvek u popodnevnoj smeni.
 
-Pripremno odeljenje `П1` ima posebno vreme: nastava se održava ponedeljkom,
-sredom i petkom u bloku 13 (18:30–19:15). Nedeljni fond od 6 časova još treba
-uskladiti sa ova tri potvrđena termina.
+Pripremno odeljenje `П1` ima nedeljni fond od **3 časa**, koji se održavaju kao
+tri pojedinačna časa: ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15).
+Časovi se ne spajaju u dvočase.
 
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 Odeljenje 14 nema parnjaka u suprotnoj smeni, ali i dalje redovno menja smene

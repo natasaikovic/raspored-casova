@@ -113,12 +113,9 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
     rezultat: list[Jedinica] = []
     for zahtev_indeks, zahtev in enumerate(ulaz.zahtevi):
         predmet = ulaz.predmeti[zahtev.predmet]
-        if zahtev.smena is Smena.POSEBNA and zahtev.fond % 2:
-            raise ValueError(
-                f"{zahtev.gde}: посебна смена „{zahtev.smena_opis}“ "
-                "захтева паран фонд часова"
-            )
-        if predmet.igracki:
+        if zahtev.smena is Smena.POSEBNA:
+            trajanja = [1] * zahtev.fond
+        elif predmet.igracki:
             trajanja = [2] * (zahtev.fond // 2) + [1] * (zahtev.fond % 2)
         else:
             trajanja = [1] * zahtev.fond
@@ -163,7 +160,7 @@ def _dozvoljeni_poceci(
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis != poznati_opis:
             return ()
-        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 2)
+        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 1)
         return tuple(
             (dan, blok)
             for dan, blok in kandidati
@@ -1082,7 +1079,14 @@ def napravi_model(
                 promenljive,
             )
 
-            if odeljenje.skola is Skola.SREDNJA:
+            if odeljenje.skola is Skola.OSNOVNA:
+                ukupno = [
+                    jedinica.trajanje
+                    * promenljive[jedinica.indeks].po_danu[indeks_dana]
+                    for jedinica in stavke
+                ]
+                model.add(sum(ukupno) <= 4)
+            elif odeljenje.skola is Skola.SREDNJA:
                 igracki = []
                 opsti = []
                 ukupno = []
@@ -1105,7 +1109,8 @@ def napravi_model(
     # primenjujemo i na njihove B promenljive.
     if sa_nedeljom_b:
         for token, stavke in po_ucenickom_tokenu.items():
-            if not ulaz.odeljenja[token].smena.menja_se:
+            odeljenje = ulaz.odeljenja[token]
+            if not odeljenje.smena.menja_se:
                 continue
             for indeks_dana in range(len(DANI)):
                 _dodaj_dnevno_pravilo_lokacije(
@@ -1117,6 +1122,13 @@ def napravi_model(
                     promenljive,
                     nedelja_b=True,
                 )
+                if odeljenje.skola is Skola.OSNOVNA:
+                    ukupno = []
+                    for jedinica in stavke:
+                        po_danu_b = promenljive[jedinica.indeks].po_danu_b
+                        assert po_danu_b is not None
+                        ukupno.append(jedinica.trajanje * po_danu_b[indeks_dana])
+                    model.add(sum(ukupno) <= 4)
 
     # Nastavnik ili korepetitor sme imati najviše jednu nedeljnu pauzu, dugu
     # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni

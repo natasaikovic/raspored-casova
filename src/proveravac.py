@@ -492,16 +492,10 @@ def _proveri_smenu(
     elif smena is Smena.POSEBNA:
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis == poznati_opis:
-            upozorenje = (
-                "за П1 је привремено протумачено да шест часова значи "
-                "два часа понедељком, средом и петком у блоковима 13–14"
-            )
-            if upozorenje not in izvestaj.upozorenja:
-                izvestaj.upozorenja.append(upozorenje)
-            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok not in (13, 14):
+            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok != 13:
                 izvestaj.greske.append(
                     f"{cas.gde}: {zahtev.odeljenja[0]} сме само понедељком, "
-                    "средом и петком у блоковима 13–14"
+                    "средом и петком у блоку 13"
                 )
         else:
             izvestaj.greske.append(
@@ -681,7 +675,13 @@ def _proveri_dnevni_raspored(
                 po_bloku[cas.blok].append(cas)
             blokovi = sorted(po_bloku)
 
-            if ulaz.odeljenja[grupa].skola is Skola.SREDNJA:
+            if ulaz.odeljenja[grupa].skola is Skola.OSNOVNA:
+                if len(blokovi) > 4:
+                    izvestaj.greske.append(
+                        f"{grupa} има {len(blokovi)} часова у дану {dan}; "
+                        "максимум за основну школу је 4"
+                    )
+            elif ulaz.odeljenja[grupa].skola is Skola.SREDNJA:
                 igracki = sum(
                     1
                     for blok in blokovi

@@ -79,6 +79,5 @@ proveru.
 
 Pauze nastavnika i nepotpuni obrasci dvočasa osnovne škole trenutno se
 prijavljuju kao upozorenja, jer su u pravilima označeni kao poželjne osobine.
-Za posebnu smenu P1 proveravač privremeno tumači fond od šest časova kao
-dvočas ponedeljkom, sredom i petkom u blokovima 13–14 i prikazuje upozorenje,
-jer odgovor na to otvoreno pitanje još nije potvrđen.
+Za posebnu smenu P1 proveravač zahteva tri pojedinačna časa: ponedeljkom,
+sredom i petkom u bloku 13 (18:30–19:15).

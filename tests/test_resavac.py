@@ -63,6 +63,41 @@ def test_resava_i_odmah_proverava_mali_raspored():
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
 
 
+def test_p1_ima_tri_pojedinacna_casa_u_1830():
+    z = Zahtev(
+        predmet="Класичан балет",
+        razred="припремно",
+        odeljenja=("П1",),
+        fond=3,
+        fond_korepeticije=3,
+        nastavnik="Исидора",
+        korepetitor="Јован",
+        smena=Smena.POSEBNA,
+        smena_opis="стално од 18,30 часова понедељком средом петком",
+        red=2,
+    )
+    u = Ulaz(
+        (z,),
+        {"П1": Odeljenje("П1", "припремно", Smena.POSEBNA, Skola.OSNOVNA)},
+        {z.predmet: Predmet(z.predmet, True, True)},
+        Skola.OSNOVNA,
+    )
+
+    rezultat = resi_nedelju(
+        u, (SALA,), (), Smena.CRVENA,
+        vremensko_ogranicenje=5, broj_radnika=1,
+    )
+
+    assert rezultat.pronadjen
+    assert {(cas.dan, cas.blok) for cas in rezultat.casovi} == {
+        ("понедељак", 13),
+        ("среда", 13),
+        ("петак", 13),
+    }
+    assert rezultat.izvestaj is not None
+    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+
+
 def test_isti_nastavnik_ne_moze_u_dva_odeljenja_istovremeno():
     z1 = zahtev("Теорија 1", "11", 1, "Мила")
     z2 = zahtev("Теорија 2", "12", 1, "Мила")
@@ -157,6 +192,36 @@ def test_solver_zabranjuje_vise_od_sest_casova_osobe_dnevno():
     )
     for jedinica in jedinice:
         model.add(promenljive[jedinica.indeks].dan == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_zabranjuje_vise_od_cetiri_casa_obs_dnevno_u_nedelji_a():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(1, 6)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.PLAVA
+    )
+    for jedinica in jedinice:
+        model.add(promenljive[jedinica.indeks].dan == 0)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_zabranjuje_vise_od_cetiri_casa_obs_dnevno_u_nedelji_b():
+    zahtevi = [
+        zahtev(f"Теорија {i}", "11", 1, f"Наставник {i}")
+        for i in range(1, 6)
+    ]
+    model, jedinice, promenljive = napravi_model(
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA, sa_nedeljom_b=True
+    )
+    for jedinica in jedinice:
+        dan_b = promenljive[jedinica.indeks].dan_b
+        assert dan_b is not None
+        model.add(dan_b == 0)
 
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
