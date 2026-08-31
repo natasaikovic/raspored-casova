@@ -1,4 +1,4 @@
-name: Pokreni resavac sada
+name: Uvedi Aleksandra Boskovica
 
 on:
   push:
@@ -7,40 +7,321 @@ on:
     paths:
       - .github/workflows/run-solver-now.yml
 
+permissions:
+  contents: write
+
 jobs:
-  generisi:
+  primeni:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: popravi-prikaz-i-stroge-pauze
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-      - name: Instaliraj zavisnosti
-        run: python -m pip install -r requirements.txt
-      - name: Generisi obe nedelje
-        continue-on-error: true
+      - name: Primeni izmene
         run: |
-          mkdir -p izlaz
-          set -o pipefail
-          python -m src.resavac \
-            --ulazi ulazi \
-            --izlaz izlaz \
-            --vremensko-ogranicenje 1800 \
-            --broj-radnika 8 \
-            --seme 1 \
-            2>&1 | tee izlaz/solver.log
-      - name: Napravi HTML pregled
-        if: always()
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) Ulazni fondovi: Aleksandar preuzima kompletan II razred istorije.
+          p = Path('ulazi/ostali_casovi.csv')
+          t = p.read_text(encoding='utf-8')
+          zamene = {
+              'Историја,II,"II1,II3",2,,Душан Илијин,,цео дан': 'Историја,II,"II1,II3",2,,Александар Бошковић,,цео дан',
+              'Историја,II,"II2,II4",2,,Душан Илијин,,цео дан': 'Историја,II,"II2,II4",2,,Александар Бошковић,,цео дан',
+              'Историја,II,II5,2,,Душан Илијин,,цео дан': 'Историја,II,II5,2,,Александар Бошковић,,цео дан',
+          }
+          for staro, novo in zamene.items():
+              if staro not in t:
+                  raise SystemExit(f'Nedostaje očekivani red: {staro}')
+              t = t.replace(staro, novo, 1)
+          p.write_text(t, encoding='utf-8')
+
+          # 2) Dostupnost: svakog radnog dana može tek od 7. bloka.
+          p = Path('ulazi/nedostupnost.csv')
+          t = p.read_text(encoding='utf-8')
+          redovi = ''.join(
+              f'Александар Бошковић,{dan},1,6,друга школа; слободан од 13:30\n'
+              for dan in ('понедељак', 'уторак', 'среда', 'четвртак', 'петак')
+          )
+          if 'Александар Бошковић,' not in t:
+              if not t.endswith('\n'):
+                  t += '\n'
+              t += redovi
+          p.write_text(t, encoding='utf-8')
+
+          # 3) Rešavač: tačno dva dana, po tri uzastopna časa, po jedan u svakoj grupi.
+          p = Path('src/resavac.py')
+          t = p.read_text(encoding='utf-8')
+          stari = 'INFORMATIKA = "Рачунарство и информатика"\nREPERTOAR_KLASICNOG = "Репертоар класичног балета"'
+          novi = 'INFORMATIKA = "Рачунарство и информатика"\nISTORIJA = "Историја"\nALEKSANDAR_BOSKOVIC = "Александар Бошковић"\nREPERTOAR_KLASICNOG = "Репертоар класичног балета"'
+          if stari not in t:
+              raise SystemExit('Nije pronađen blok konstanti u resavac.py')
+          t = t.replace(stari, novi, 1)
+
+          marker = '\ndef _angazovanja_po_osobi(\n'
+          funkcija = r'''
+def _dodaj_pravilo_aleksandra_boskovica(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Rasporedi Aleksandrovih šest časova u dva kompaktna dana po tri."""
+
+    stavke = [
+        jedinica
+        for jedinica in jedinice
+        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet == ISTORIJA
+        and ulaz.zahtevi[jedinica.zahtev_indeks].nastavnik == ALEKSANDAR_BOSKOVIC
+    ]
+    if not stavke:
+        return
+    if len(stavke) != 6:
+        raise ValueError(
+            f"{ALEKSANDAR_BOSKOVIC}: očekuje se tačno 6 časova istorije"
+        )
+
+    po_zahtevu: dict[int, list[Jedinica]] = defaultdict(list)
+    for jedinica in stavke:
+        po_zahtevu[jedinica.zahtev_indeks].append(jedinica)
+    if len(po_zahtevu) != 3 or any(len(grupa) != 2 for grupa in po_zahtevu.values()):
+        raise ValueError(
+            f"{ALEKSANDAR_BOSKOVIC}: očekuju se tri grupe sa po 2 časa"
+        )
+
+    aktivni_dani: list[cp_model.BoolVar] = []
+    sufiks = "_b" if nedelja_b else ""
+    for indeks_dana in range(5):
+        aktivan = model.new_bool_var(f"aleksandar_d{indeks_dana}{sufiks}")
+        aktivni_dani.append(aktivan)
+        sva_prisustva = []
+        for grupa in po_zahtevu.values():
+            prisustva_grupe = []
+            for jedinica in grupa:
+                _, po_danu, _ = _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )
+                prisustva_grupe.append(po_danu[indeks_dana])
+                sva_prisustva.append(po_danu[indeks_dana])
+            # Svakog izabranog dana Aleksandar radi po jedan čas u svakoj grupi.
+            model.add(sum(prisustva_grupe) == aktivan)
+        model.add(sum(sva_prisustva) == 3 * aktivan)
+
+        prvi_kandidati = []
+        poslednji_kandidati = []
+        for jedinica in stavke:
+            blok, po_danu, _ = _promenljive_za_nedelju(
+                promenljive[jedinica.indeks], nedelja_b
+            )
+            prisutan = po_danu[indeks_dana]
+            prvi = model.new_int_var(
+                1, len(BLOKOVI) + 1,
+                f"aleksandar_j{jedinica.indeks}_d{indeks_dana}_prvi{sufiks}",
+            )
+            poslednji = model.new_int_var(
+                0, len(BLOKOVI),
+                f"aleksandar_j{jedinica.indeks}_d{indeks_dana}_poslednji{sufiks}",
+            )
+            model.add(prvi == blok).only_enforce_if(prisutan)
+            model.add(prvi == len(BLOKOVI) + 1).only_enforce_if(~prisutan)
+            model.add(poslednji == blok).only_enforce_if(prisutan)
+            model.add(poslednji == 0).only_enforce_if(~prisutan)
+            prvi_kandidati.append(prvi)
+            poslednji_kandidati.append(poslednji)
+        prvi_blok = model.new_int_var(
+            1, len(BLOKOVI) + 1, f"aleksandar_d{indeks_dana}_min{sufiks}"
+        )
+        poslednji_blok = model.new_int_var(
+            0, len(BLOKOVI), f"aleksandar_d{indeks_dana}_max{sufiks}"
+        )
+        model.add_min_equality(prvi_blok, prvi_kandidati)
+        model.add_max_equality(poslednji_blok, poslednji_kandidati)
+        model.add(poslednji_blok - prvi_blok == 2).only_enforce_if(aktivan)
+
+    model.add(sum(aktivni_dani) == 2)
+    for jedinica in stavke:
+        blok, po_danu, _ = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        model.add(blok >= 7)
+        model.add(po_danu[5] == 0)
+'''
+          if marker not in t:
+              raise SystemExit('Nije pronađeno mesto za Aleksandrovo pravilo')
+          t = t.replace(marker, '\n' + funkcija + marker, 1)
+
+          poziv_marker = '    # Nastavnik ili korepetitor sme imati najviše jednu nedeljnu pauzu, dugu\n'
+          poziv = '''    # Aleksandar Bošković: II razred, dva dana po tri uzastopna časa od 7. bloka.\n    _dodaj_pravilo_aleksandra_boskovica(\n        model, ulaz, jedinice, promenljive\n    )\n    if sa_nedeljom_b:\n        _dodaj_pravilo_aleksandra_boskovica(\n            model, ulaz, jedinice, promenljive, nedelja_b=True\n        )\n\n'''
+          if poziv_marker not in t:
+              raise SystemExit('Nije pronađeno mesto za poziv Aleksandrovog pravila')
+          t = t.replace(poziv_marker, poziv + poziv_marker, 1)
+          p.write_text(t, encoding='utf-8')
+
+          # 4) Proveravač: isto pravilo proverava nezavisno od rešavača.
+          p = Path('src/proveravac.py')
+          t = p.read_text(encoding='utf-8')
+          stari = 'INFORMATIKA = "Рачунарство и информатика"\nREPERTOAR_KLASICNOG = "Репертоар класичног балета"'
+          novi = 'INFORMATIKA = "Рачунарство и информатика"\nISTORIJA = "Историја"\nALEKSANDAR_BOSKOVIC = "Александар Бошковић"\nALEKSANDAR_GRUPE = frozenset({("II1", "II3"), ("II2", "II4"), ("II5",)})\nREPERTOAR_KLASICNOG = "Репертоар класичног балета"'
+          if stari not in t:
+              raise SystemExit('Nije pronađen blok konstanti u proveravac.py')
+          t = t.replace(stari, novi, 1)
+
+          poziv_marker = '    _proveri_narodno_pozoriste(ulaz, casovi, izvestaj)\n'
+          poziv = poziv_marker + '    _proveri_aleksandra_boskovica(casovi, izvestaj)\n'
+          if poziv_marker not in t:
+              raise SystemExit('Nije pronađeno mesto za poziv provere Aleksandra')
+          t = t.replace(poziv_marker, poziv, 1)
+
+          marker = '\ndef _kanonizuj_casove(\n'
+          funkcija = r'''
+def _proveri_aleksandra_boskovica(
+    casovi: Sequence[Cas],
+    izvestaj: Izvestaj,
+) -> None:
+    """Aleksandar radi II razred: dva dana po tri uzastopna časa od 7. bloka."""
+
+    stavke = [
+        cas
+        for cas in casovi
+        if cas.predmet == ISTORIJA and cas.nastavnik == ALEKSANDAR_BOSKOVIC
+    ]
+    if len(stavke) != 6:
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} mora imati tačno 6 časova istorije; ima {len(stavke)}"
+        )
+        return
+    if any(cas.blok < 7 for cas in stavke):
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} može držati časove tek od 7. bloka"
+        )
+    if any(cas.dan == "субота" for cas in stavke):
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} šest časova mora rasporediti u dva radna dana"
+        )
+
+    po_danu: dict[str, list[Cas]] = defaultdict(list)
+    for cas in stavke:
+        po_danu[cas.dan].append(cas)
+    if len(po_danu) != 2:
+        izvestaj.greske.append(
+            f"{ALEKSANDAR_BOSKOVIC} mora raditi tačno dva dana nedeljno"
+        )
+    for dan, dnevni in sorted(po_danu.items()):
+        if len(dnevni) != 3:
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati tačno 3 časa"
+            )
+            continue
+        grupe = frozenset(cas.odeljenja for cas in dnevni)
+        if grupe != ALEKSANDAR_GRUPE:
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati po jedan čas u sve tri grupe II razreda"
+            )
+        blokovi = sorted(cas.blok for cas in dnevni)
+        if blokovi != list(range(blokovi[0], blokovi[0] + 3)):
+            izvestaj.greske.append(
+                f"{ALEKSANDAR_BOSKOVIC} u danu {dan} mora imati 3 uzastopna časa"
+            )
+'''
+          if marker not in t:
+              raise SystemExit('Nije pronađeno mesto za funkciju provere Aleksandra')
+          t = t.replace(marker, '\n' + funkcija + marker, 1)
+          p.write_text(t, encoding='utf-8')
+
+          # 5) Dokumentacija.
+          p = Path('docs/pravila-rasporeda.md')
+          t = p.read_text(encoding='utf-8')
+          dodatak = '''\n### Istorija — Aleksandar Bošković\n\n- Aleksandar Bošković preuzima sve tri grupe II razreda iz istorije: `II1,II3`, `II2,II4` i `II5`, ukupno 6 časova nedeljno.\n- Zbog rada u drugoj školi dostupan je radnim danima tek od 7. bloka (od 13:30).\n- Njegov fond se raspoređuje u tačno dva radna dana: svakog izabranog dana ima po jedan čas u sve tri grupe, ukupno 3 uzastopna časa.\n'''
+          if '### Istorija — Aleksandar Bošković' not in t:
+              t += dodatak
+          p.write_text(t, encoding='utf-8')
+
+          # 6) Regresioni testovi za proveravač i ulazne podatke.
+          Path('tests/test_aleksandar_boskovic.py').write_text(r'''import csv
+from pathlib import Path
+
+from src.proveravac import (
+    ALEKSANDAR_BOSKOVIC,
+    Cas,
+    Izvestaj,
+    _proveri_aleksandra_boskovica,
+)
+
+
+def _cas(dan: str, blok: int, odeljenja: tuple[str, ...], red: int) -> Cas:
+    return Cas(
+        dan=dan,
+        blok=blok,
+        predmet="Историја",
+        odeljenja=odeljenja,
+        nastavnik=ALEKSANDAR_BOSKOVIC,
+        korepetitor=None,
+        prostorija="KM-уч2",
+        red=red,
+    )
+
+
+def test_ulaz_dodeljuje_aleksandru_sve_tri_grupe_drugog_razreda():
+    with Path("ulazi/ostali_casovi.csv").open(encoding="utf-8", newline="") as f:
+        redovi = list(csv.DictReader(f))
+    istorija = [
+        r for r in redovi
+        if r["предмет"] == "Историја" and r["наставник"] == ALEKSANDAR_BOSKOVIC
+    ]
+    assert len(istorija) == 3
+    assert {r["разред"] for r in istorija} == {"II"}
+    assert sum(int(r["недељни фонд часова"]) for r in istorija) == 6
+    assert {r["одељење"] for r in istorija} == {"II1,II3", "II2,II4", "II5"}
+
+
+def test_aleksandar_je_nedostupan_pre_sedmog_bloka_radnim_danima():
+    with Path("ulazi/nedostupnost.csv").open(encoding="utf-8", newline="") as f:
+        redovi = [r for r in csv.DictReader(f) if r["наставник"] == ALEKSANDAR_BOSKOVIC]
+    assert len(redovi) == 5
+    assert {r["дан"] for r in redovi} == {
+        "понедељак", "уторак", "среда", "четвртак", "петак"
+    }
+    assert all(r["од блока"] == "1" and r["до блока"] == "6" for r in redovi)
+
+
+def test_proveravac_prihvata_dva_dana_po_tri_uzastopna_casa():
+    casovi = []
+    red = 2
+    for dan in ("понедељак", "четвртак"):
+        for blok, grupa in zip(
+            (7, 8, 9), (("II1", "II3"), ("II2", "II4"), ("II5",))
+        ):
+            casovi.append(_cas(dan, blok, grupa, red))
+            red += 1
+    izvestaj = Izvestaj()
+    _proveri_aleksandra_boskovica(casovi, izvestaj)
+    assert izvestaj.greske == []
+
+
+def test_proveravac_odbija_rupu_u_aleksandrovom_trocasu():
+    casovi = [
+        _cas("понедељак", 7, ("II1", "II3"), 2),
+        _cas("понедељак", 8, ("II2", "II4"), 3),
+        _cas("понедељак", 10, ("II5",), 4),
+        _cas("четвртак", 7, ("II1", "II3"), 5),
+        _cas("четвртак", 8, ("II2", "II4"), 6),
+        _cas("четвртак", 9, ("II5",), 7),
+    ]
+    izvestaj = Izvestaj()
+    _proveri_aleksandra_boskovica(casovi, izvestaj)
+    assert any("3 uzastopna" in greska for greska in izvestaj.greske)
+''', encoding='utf-8')
+          PY
+      - name: Pokreni testove
+        run: python -m pip install -r requirements.txt && python -m pytest
+      - name: Commit izmene
         run: |
-          if [ -f izlaz/nedelja_a.csv ] && [ -f izlaz/nedelja_b.csv ]; then
-            python -m src.vizualizacija izlaz/nedelja_a.csv izlaz/nedelja_b.csv --izlaz izlaz/raspored.html
-          fi
-      - name: Sacuvaj rezultat
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: raspored-2026-27-sale
-          path: izlaz/
-          retention-days: 14
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ulazi/ostali_casovi.csv ulazi/nedostupnost.csv src/resavac.py src/proveravac.py docs/pravila-rasporeda.md tests/test_aleksandar_boskovic.py
+          git commit -m "Dodaj Aleksandra Boskovica kao nastavnika istorije"
+          git push origin HEAD:popravi-prikaz-i-stroge-pauze
