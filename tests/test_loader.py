@@ -65,6 +65,19 @@ class TestStvarniUlaz:
         assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 14
         assert ulaz.opterecenje_odeljenja()["41"] == 16
 
+    def test_etnomuzikologija_iv_je_u_odeljenju_narodne_igre(self):
+        ulaz = ucitaj("ulazi/srednja_baletska_skola.csv")
+
+        zahtevi = [
+            zahtev
+            for zahtev in ulaz.zahtevi
+            if zahtev.predmet == "Етномузикологија" and zahtev.razred == "IV"
+        ]
+
+        assert len(zahtevi) == 1
+        assert zahtevi[0].odeljenja == ("IV5",)
+        assert zahtevi[0].nastavnik == "Смиљка Ђорђевић"
+
     def test_nastavnici_smenjujucih_odeljenja_popunjavaju_jutarnji_prozor(self):
         """The six 20h teachers have no slack in a five-day morning week."""
         ulaz = ucitaj(OBS)
