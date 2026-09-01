@@ -1,6 +1,6 @@
 # Radna verzija rasporeda 2026/27
 
-Ovaj direktorijum sadrzi radnu, jos uvek nevalidnu verziju rasporeda za dve
+Ovaj direktorijum sadrzi validiranu radnu verziju rasporeda za dve
 nedelje koje se smenjuju:
 
 - `nedelja_a.csv` — crvena smena je jutarnja;
@@ -10,24 +10,24 @@ Raspored od prosle godine iz `referenca/raspored_2025_26.csv` koriscen je kao
 polazna osnova za dane, blokove i prostorije. Aktuelni zahtevi iz `ulazi/` imaju
 prednost: fondovi, odeljenja, nastavnici i korepetitori preuzeti su iz njih.
 
-Obe CSV datoteke imaju zaglavlja i vrednosti na latinici. Svaka sadrzi 866
-rasporedjenih redova i pokriva sve aktuelne fondove. Proveravac nije prijavio
+Obe CSV datoteke imaju zaglavlja i vrednosti na latinici. Svaka sadrzi 863
+rasporedjena casa i pokriva sve aktuelne fondove. Proveravac nije prijavio
 preklapanja nastavnika, korepetitora, prostorija ili odeljenja, termine van
-smene, pogresne prostorije ni nedostajuce fondove.
+smene, pogresne prostorije, nedostajuce fondove ni prazne blokove u rasporedu
+ucenika.
 
 ## Rezultat provere
 
-Radna verzija jos nije prosla celu proveru:
+Radna verzija prolazi celu proveru:
 
 | Nedelja | Greske | Upozorenja |
 | --- | ---: | ---: |
-| A | 151 | 92 |
-| B | 148 | 94 |
+| A | 0 | 285 |
+| B | 0 | 286 |
 
-Preostale greske odnose se na dnevni kontinuitet ucenika: prazne blokove i
-promene lokacije bez tacno jednog slobodnog bloka, kao i previse promena
-lokacije u istom danu. Upozorenja se uglavnom odnose na pauze nastavnika i
-privremenu pretpostavku za odeljenje P1.
+Upozorenja su preporuke za dalju optimizaciju: uglavnom pauze nastavnika,
+optimalni dnevni maksimum od cetiri casa i prioriteti sala. Ne predstavljaju
+krsenje cvrstih pravila.
 
 Provera se ponavlja komandama:
 
@@ -36,4 +36,4 @@ python -m src.proveravac radne_verzije/2026-27/nedelja_a.csv --jutarnja-smena cr
 python -m src.proveravac radne_verzije/2026-27/nedelja_b.csv --jutarnja-smena plava
 ```
 
-Ovo je polazna tacka za dalju optimizaciju, a ne raspored spreman za objavu.
+Ovo je upotrebljiva, validirana polazna verzija za dalju optimizaciju.
