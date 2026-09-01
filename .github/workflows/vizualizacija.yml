@@ -3,7 +3,7 @@ name: Vizuelizacija rasporeda
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, popravi-prikaz-i-stroge-pauze]
     paths:
       - "radne_verzije/**/*.csv"
       - "src/vizualizacija.py"
