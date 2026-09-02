@@ -8,6 +8,10 @@ on:
       - ".github/workflows/generisi-raspored.yml"
   workflow_dispatch:
 
+concurrency:
+  group: generisi-raspored-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   actions: read
   contents: read
