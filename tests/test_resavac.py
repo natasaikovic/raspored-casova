@@ -2,6 +2,7 @@ from pathlib import Path
 
 from ortools.sat.python import cp_model
 
+from src import resavac
 from src.model import (
     Nedostupnost,
     Odeljenje,
@@ -62,6 +63,39 @@ def test_resava_i_odmah_proverava_mali_raspored():
     assert rezultat.izvestaj is not None
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
 
+
+
+def test_main_ne_menja_postojeci_par_ako_nedelja_b_ne_uspe(
+    tmp_path: Path, monkeypatch,
+):
+    nedelja_a = tmp_path / "nedelja_a.csv"
+    nedelja_b = tmp_path / "nedelja_b.csv"
+    nedelja_a.write_text("stari A", encoding="utf-8")
+    nedelja_b.write_text("stari B", encoding="utf-8")
+    uspesan_a = resavac.Rezultat(
+        "dopustivo", (object(),), resavac.Izvestaj(), 0.0
+    )
+    neuspesan_b = resavac.Rezultat("vremensko ograničenje", (), None, None)
+
+    monkeypatch.setattr(
+        resavac, "ucitaj_standardne_ulaze", lambda _putanja: (None, (), ())
+    )
+    monkeypatch.setattr(
+        resavac, "resi_obe_nedelje", lambda *_args, **_kwargs: (uspesan_a, neuspesan_b)
+    )
+    monkeypatch.setattr(
+        resavac,
+        "sacuvaj_csv",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("CSV ne sme biti sačuvan")
+        ),
+    )
+
+    status = resavac.main(["--izlaz", str(tmp_path)])
+
+    assert status == 1
+    assert nedelja_a.read_text(encoding="utf-8") == "stari A"
+    assert nedelja_b.read_text(encoding="utf-8") == "stari B"
 
 def test_p1_ima_tri_pojedinacna_casa_u_1830():
     z = Zahtev(
