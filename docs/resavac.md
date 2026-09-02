@@ -26,7 +26,7 @@ ogledalo:
 - srednja škola, odeljenja `13`, `23` i `33`, kao i P1, ostaju identični u obe
   nedelje jer su pri rešavanju B fiksirani na rezultat A.
 
-Svaka nedelja dobija celo zadato vremensko ograničenje. Resursi i učenička
+Obe nedelje dele jedno ukupno zadato vremensko ograničenje. Resursi i učenička
 preklapanja proveravaju se zasebno za A i B, a oba dobijena CSV fajla zatim
 prolaze kroz nezavisni proveravač. Prošlogodišnja referenca ne sadrži dve verzije
 rasporeda istog odeljenja, pa ne daje osnov da se nametne jača simetrija.
@@ -53,13 +53,9 @@ Rešavač ne sme da prekrši:
 Oznake `?` i `korepetitor br.1` tretiraju se kao ista buduća osoba, iako su u
 ulazima privremeno zapisane različito.
 
-Rešavanje svake nedelje ima dve faze. Glavni model bira termine i lokacije i
-kontroliše zbirni kapacitet sala i učionica na svakoj lokaciji. Kada su termini
-poznati, manji pomoćni model dodeljuje konkretne prostorije bez preklapanja.
-Time se uklanjaju hiljade simetričnih izbora konkretnih sala iz glavne
-pretrage, a CSV i dalje sadrži proverenu konkretnu prostoriju za svaki čas.
-Posebna pravila, uključujući obaveznu `KM-uč1` za informatiku i termine
-`NP-sala`, važe i u drugoj fazi.
+Model istovremeno bira termine, lokacije i konkretne prostorije. Posebna
+pravila, uključujući obaveznu `KM-uč1` za informatiku i termine `NP-sala`, važe
+u obe faze.
 
 ## Optimizacija i provera
 
@@ -84,9 +80,11 @@ statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
 grešku. CSV ostaje sačuvan kao kandidat za sledeću iteraciju, ali se ne smatra
 konačnim rasporedom.
 
-Postojeći fajlovi u `radne_verzije/2026-27/` koriste se samo kao početni CP-SAT
-hintovi. Oni ne postaju ograničenja i solver sme potpuno da promeni svaki termin
-i prostoriju. Za pokretanje bez njih koristi se `--bez-hintova`.
+Glavni model se rešava dvofazno: kratka prva faza bez funkcije cilja traži
+dopustivo rešenje, a druga faza uključuje postojeći cilj i dobija rešenje prve
+faze preko običnih CP-SAT `add_hint` poziva. Hint se ne učitava iz fajla ili
+artifacta. Ako optimizacija ne završi, dopustivo rešenje prve faze se ipak
+proverava i čuva kao CSV i HTML pregled.
 
 Podrazumevano vremensko ograničenje je pet minuta za zajednički model obe
 nedelje. Može se promeniti:

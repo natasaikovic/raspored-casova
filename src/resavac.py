@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import time
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -33,6 +34,7 @@ from .model import (
 )
 from .pismo import kljuc_pisma, u_latinicu
 from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
+from .vizualizacija import napravi_html
 
 
 VERSKA = "Верска настава"
@@ -578,6 +580,7 @@ def napravi_model(
     hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
     samo_lokacije: bool = False,
+    sa_ciljem: bool = True,
 ) -> tuple[
     cp_model.CpModel,
     tuple[Jedinica, ...],
@@ -1158,13 +1161,13 @@ def napravi_model(
             for lokacija, koristi in p.lokacije_b.items():
                 if lokacija != "Кнез Милетина 8":
                     troskovi.append(3 * koristi)
-    model.minimize(sum(troskovi))
+    if sa_ciljem:
+        model.minimize(sum(troskovi))
     _dodaj_hintove(model, ulaz, jedinice_zahteva, promenljive, hintovi)
     return model, jedinice, promenljive
 
-
 def _kanonizuj_hintove(ulaz: Ulaz, hintovi: Sequence[Cas]) -> tuple[Cas, ...]:
-    """Poveži latinični radni raspored sa kanonskim vrednostima ulaza."""
+    """Poveži latinični prethodni raspored sa kanonskim vrednostima ulaza."""
 
     def mapa(vrednosti: Iterable[str]) -> dict[str, str]:
         return {kljuc_pisma(v): v for v in vrednosti}
@@ -1200,7 +1203,7 @@ def _dodaj_hintove(
     promenljive: dict[int, PromenljiveJedinice],
     hintovi: Sequence[Cas],
 ) -> None:
-    """Dodaj nepotpune CP-SAT hintove iz postojeće radne verzije."""
+    """Dodaj nepotpune CP-SAT hintove iz prethodnog rasporeda."""
 
     if not hintovi:
         return
@@ -1229,7 +1232,6 @@ def _dodaj_hintove(
                             i for i in neiskorisceni
                             if redovi[i].dan == prvi.dan
                             and redovi[i].blok == prvi.blok + pomeraj
-                            and redovi[i].prostorija == prvi.prostorija
                         ),
                         None,
                     )
@@ -1256,16 +1258,6 @@ def _dodaj_hintove(
             model.add_hint(p.dan, dan)
             model.add_hint(p.blok, cas.blok)
             model.add_hint(p.start, start_hinta)
-            kanonska_prostorija = next(
-                (
-                    oznaka for oznaka in p.prostorije
-                    if kljuc_pisma(oznaka) == kljuc_pisma(cas.prostorija)
-                ),
-                None,
-            )
-            if kanonska_prostorija is not None:
-                for oznaka, koristi in p.prostorije.items():
-                    model.add_hint(koristi, int(oznaka == kanonska_prostorija))
 
 
 def _status_tekst(status: cp_model.CpSolverStatus) -> str:
@@ -1470,6 +1462,106 @@ def _izvuci_casove(
     return tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
 
 
+def _resi_u_dve_faze(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    jutarnja_smena: Smena,
+    vremensko_ogranicenje: float,
+    broj_radnika: int,
+    seme: int,
+    hintovi: Sequence[Cas] = (),
+    sa_nedeljom_b: bool = False,
+) -> tuple[
+    cp_model.CpSolver | None,
+    tuple[Jedinica, ...],
+    dict[int, PromenljiveJedinice],
+    str,
+]:
+    """Prvo nađi dopustivo rešenje, zatim ga koristi kao hint optimizaciji."""
+
+    pocetak = time.monotonic()
+    limit_prve = max(60.0, vremensko_ogranicenje - 300.0)
+    model_1, jedinice_1, promenljive_1 = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        jutarnja_smena,
+        sa_nedeljom_b=sa_nedeljom_b,
+        samo_lokacije=True,
+        sa_ciljem=False,
+        hintovi=hintovi,
+    )
+    solver_1 = cp_model.CpSolver()
+    solver_1.parameters.max_time_in_seconds = min(limit_prve, vremensko_ogranicenje)
+    solver_1.parameters.num_search_workers = broj_radnika
+    solver_1.parameters.random_seed = seme
+    status_1 = solver_1.solve(model_1)
+    trajanje_prve = time.monotonic() - pocetak
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        preostalo = vremensko_ogranicenje - trajanje_prve
+        if preostalo > 0:
+            print(
+                "FAZA 1 — prvi rok je istekao; nastavljam do ukupnog "
+                f"ograničenja ({preostalo:.1f} s preostalo)"
+            )
+            solver_1.parameters.max_time_in_seconds = preostalo
+            status_1 = solver_1.solve(model_1)
+            trajanje_prve = time.monotonic() - pocetak
+    print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        status = _status_tekst(status_1)
+        print(f"FAZA 1 — neuspeh/timeout: {status}")
+        print("FAZA 2 — trajanje: 0.000 s")
+        return None, jedinice_1, promenljive_1, f"neuspeh/timeout (faza 1): {status}"
+    print("FAZA 1 — dopustivo rešenje pronađeno")
+
+    model_2, jedinice_2, promenljive_2 = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        jutarnja_smena,
+        sa_nedeljom_b=sa_nedeljom_b,
+        samo_lokacije=True,
+        sa_ciljem=True,
+    )
+    for indeks in range(len(model_1.proto.variables)):
+        prethodna = model_1.get_int_var_from_proto_index(indeks)
+        sledeca = model_2.get_int_var_from_proto_index(indeks)
+        model_2.add_hint(sledeca, solver_1.value(prethodna))
+
+    preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+    if preostalo <= 0:
+        print("FAZA 2 — timeout pre početka optimizacije")
+        return (
+            solver_1,
+            jedinice_1,
+            promenljive_1,
+            "dopustivo (faza 1); faza 2: timeout",
+        )
+
+    solver_2 = cp_model.CpSolver()
+    solver_2.parameters.max_time_in_seconds = preostalo
+    solver_2.parameters.num_search_workers = broj_radnika
+    solver_2.parameters.random_seed = seme
+    status_2 = solver_2.solve(model_2)
+    trajanje_druge = time.monotonic() - pocetak - trajanje_prve
+    print(f"FAZA 2 — trajanje: {max(0.0, trajanje_druge):.3f} s")
+    if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        status = _status_tekst(status_2)
+        print(f"FAZA 2 — optimizovano rešenje: {status}")
+        return solver_2, jedinice_2, promenljive_2, f"optimizovano (faza 2): {status}"
+
+    status = _status_tekst(status_2)
+    print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
+    return (
+        solver_1,
+        jedinice_1,
+        promenljive_1,
+        f"dopustivo (faza 1); faza 2 neuspeh/timeout: {status}",
+    )
+
+
 def resi_nedelju(
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
@@ -1483,22 +1575,19 @@ def resi_nedelju(
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
-    model, jedinice, promenljive = napravi_model(
+    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
         jutarnja_smena,
+        vremensko_ogranicenje,
+        broj_radnika,
+        seme,
         hintovi,
         sa_nedeljom_b,
-        samo_lokacije=True,
     )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
-    solver.parameters.num_search_workers = broj_radnika
-    solver.parameters.random_seed = seme
-    status = solver.solve(model)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return Rezultat(_status_tekst(status), (), None, None)
+    if solver is None:
+        return Rezultat(status_tekst, (), None, None)
 
     dodela = _dodeli_prostorije(
         solver, ulaz, prostorije, jedinice, promenljive,
@@ -1511,7 +1600,8 @@ def resi_nedelju(
         dodeljene_prostorije=dodela,
     )
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
-    return Rezultat(_status_tekst(status), casovi, izvestaj, solver.objective_value)
+    cilj = solver.objective_value if "faza 2" in status_tekst and "optimizovano" in status_tekst else None
+    return Rezultat(status_tekst, casovi, izvestaj, cilj)
 
 
 def replace_red(cas: Cas, red: int) -> Cas:
@@ -1531,22 +1621,18 @@ def resi_obe_nedelje(
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
-    model, jedinice, promenljive = napravi_model(
+    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
         Smena.CRVENA,
+        vremensko_ogranicenje,
+        broj_radnika,
+        seme,
         hintovi,
-        sa_nedeljom_b=True,
-        samo_lokacije=True,
+        True,
     )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = max(1.0, vremensko_ogranicenje)
-    solver.parameters.num_search_workers = broj_radnika
-    solver.parameters.random_seed = seme
-    status = solver.solve(model)
-    status_tekst = _status_tekst(status)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+    if solver is None:
         prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
     dodele = _dodeli_prostorije_obe(
@@ -1565,7 +1651,7 @@ def resi_obe_nedelje(
         solver, ulaz, jedinice, promenljive, nedelja_b=True,
         dodeljene_prostorije=dodela_b,
     )
-    cilj = solver.objective_value
+    cilj = solver.objective_value if "optimizovano" in status_tekst else None
     return Rezultat(
         status_tekst,
         casovi_a,
@@ -1629,17 +1715,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--broj-radnika", type=int, default=8)
     parser.add_argument("--seme", type=int, default=1)
     parser.add_argument(
-        "--bez-hintova",
-        action="store_true",
-        help="ne koristi postojeće radne verzije kao početne hintove",
+        "--hintovi", type=Path, default=None,
+        help="CSV sa prethodnim rasporedom koji se koristi kao CP-SAT hint",
     )
     argumenti = parser.parse_args(argv)
 
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze(argumenti.ulazi)
     hintovi: tuple[Cas, ...] = ()
-    putanja_hinta = Path("radne_verzije/2026-27/nedelja_a.csv")
-    if not argumenti.bez_hintova and putanja_hinta.exists():
-        hintovi = ucitaj_resenje(putanja_hinta)
+    if argumenti.hintovi is not None and argumenti.hintovi.exists():
+        hintovi = ucitaj_resenje(argumenti.hintovi)
+        print(f"HINT: učitan je {argumenti.hintovi}; hint ide u fazu 1.")
+    elif argumenti.hintovi is not None:
+        print(f"HINT: {argumenti.hintovi} ne postoji; rešavač radi bez hintova.")
+    else:
+        print("HINT: nije prosleđen fajl; rešavač radi без hintova.")
     rezultat_a, rezultat_b = resi_obe_nedelje(
         ulaz,
         prostorije,
@@ -1664,6 +1753,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.izvestaj.ispravan:
             izlazni_status = 1
+    if rezultat_a.pronadjen and rezultat_b.pronadjen:
+        napravi_html(
+            argumenti.izlaz / "nedelja_a.csv",
+            argumenti.izlaz / "nedelja_b.csv",
+            argumenti.izlaz / "raspored.html",
+        )
+        print(f"HTML: {argumenti.izlaz / 'raspored.html'}")
     return izlazni_status
 
 
