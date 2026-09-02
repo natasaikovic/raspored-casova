@@ -44,10 +44,13 @@ jobs:
         run: |
           mkdir -p izlaz .hint-artifact
           echo "HINT: tražim poslednji uspešan artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
-          run_id="$(gh api \
+          if ! run_id="$(gh api \
             "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&status=success&per_page=100" \
-            --jq '.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id' \
-            | head -n 1)"
+            --jq '[.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id] | .[0] // empty')"; then
+            echo "HINT: lista uspešnih pokretanja nije dostupna; rešavač radi bez hinta." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
 
           if [ -z "${run_id}" ]; then
             echo "HINT: uspešan artefakt nije pronađen; rešavač radi bez hinta." | tee -a izlaz/solver.log
