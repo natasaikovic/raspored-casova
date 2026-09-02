@@ -54,6 +54,9 @@ Rešavač ne sme da prekrši:
 - poseban raspored istorije II razreda kod Aleksandra Boškovića: svih šest
   časova je posle 13:30 i složeno u dva radna dana po tri uzastopna časa,
   sa po jednim časom svake od tri grupe u oba dana.
+- istoriju kod Dušana Ilijina ponedeljkom, četvrtkom i petkom, tako da su dva
+  časa svake grupe različitim danima, a zbir praznih blokova između njegovog
+  prvog i poslednjeg časa po danima nije veći od dva nedeljno.
 
 Oznake `?` i `korepetitor br.1` tretiraju se kao ista buduća osoba, iako su u
 ulazima privremeno zapisane različito.
@@ -76,10 +79,12 @@ gimnazije, dve celine moraju biti neposredno jedna uz drugu. Za druge promene
 lokacije između njih postoji tačno jedan slobodan blok za put. Druga promena
 lokacije, povratak na prvu lokaciju i svaka druga praznina nisu dozvoljeni.
 
-Samo Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše jedne
-pauze nedeljno, duge najviše dva bloka. Za sve ostale nastavnike i
-korepetitore broj i trajanje pauza nisu čvrsti, ali svaka pauza i dalje
-pogoršava cilj solvera. Isto pravilo primenjuje nezavisni proveravač.
+Ivana Ljujić i Jelena Prvulović imaju čvrsto ograničenje od najviše jedne
+pauze nedeljno, duge najviše dva bloka. Dušan Ilijin može imati više pauza,
+ali njihov zbir po praznim blokovima u celoj nedelji ne sme biti veći od dva.
+Za sve ostale nastavnike i korepetitore broj i trajanje pauza nisu čvrsti, ali
+svaka pauza i dalje pogoršava cilj solvera. Isto pravilo primenjuje nezavisni
+proveravač.
 Svaka osoba ima čvrsti dnevni maksimum od šest časova, dok cilj dodatno
 kažnjava peti i šesti čas kako bi optimalno dnevno angažovanje bilo do četiri.
 

@@ -198,10 +198,9 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   ograničenja.
 - Za **Ivanu Ljujić** i **Jelenu Prvulović** ostaje čvrsto pravilo: najviše
   jedna pauza nedeljno, duga najviše dva časovna bloka.
-- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Od njegovog fonda
-  Istorije dva časa za grupu IV3,IV5 preuzima privremeno označeni `nastavnik
-  istorije br.2`, čiji identitet još nije poznat. Dušanov fond je time 18
-  časova, što omogućava najviše šest časova dnevno.
+- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Predaje istoriju
+  i grupi IV3,IV5, koja je ranije bila označena privremenim nazivom `nastavnik
+  istorije br.2`. Njegov ukupan fond istorije je 14 časova.
 - Kosta Milanović je korepetitor na časovima koji su ranije bili označeni
   privremenim nazivom `корепетитор` u osnovnoj i srednjoj školi.
 
@@ -265,3 +264,10 @@ odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
 - Aleksandar Bošković preuzima sve tri grupe II razreda iz istorije: `II1,II3`, `II2,II4` i `II5`, ukupno 6 časova nedeljno.
 - Zbog rada u drugoj školi dostupan je radnim danima tek od 7. bloka (od 13:30).
 - Njegov fond se raspoređuje u tačno dva radna dana: svakog izabranog dana ima po jedan čas u sve tri grupe, ukupno 3 uzastopna časa.
+
+### Istorija — Dušan Ilijin
+
+- Dušan Ilijin predaje istoriju i spojenoj grupi IV3,IV5 (ranije označeno kao „nastavnik istorije br.2“).
+- U školi je isključivo ponedeljkom, četvrtkom i petkom; utorkom i sredom radi u drugoj školi.
+- Nijedna grupa ne sme imati dva časa istorije u istom danu; ovo je čvrsto pravilo za istoriju.
+- Dušan Ilijin sme imati ukupno najviše dva prazna bloka između svojih časova u toku cele nedelje.
