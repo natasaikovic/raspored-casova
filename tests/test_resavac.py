@@ -296,7 +296,7 @@ def test_obs_klasicni_balet_ima_dvocas_svakog_radnog_dana():
     assert rezultat.izvestaj is not None and rezultat.izvestaj.ispravan
 
 
-def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
+def test_sekvencijalno_resavanje_b_invertuje_smenu_i_fiksira_srednju_iz_a():
     osnovna = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     srednja = Zahtev(
         predmet="Савремена игра",
