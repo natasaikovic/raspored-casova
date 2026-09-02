@@ -4,7 +4,7 @@ from pathlib import Path
 from ortools.sat.python import cp_model
 
 from src.model import Odeljenje, Predmet, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev
-from src.proveravac import ALEKSANDAR_BOSKOVIC, Cas, Izvestaj, _proveri_aleksandra_boskovica
+from src.proveravac import ALEKSANDAR_BOSKOVIC, Cas, Izvestaj, _proveri_aleksandra_boskovica, proveri
 from src.resavac import napravi_model
 
 
@@ -12,7 +12,7 @@ def _cas(dan, blok, odeljenja, red):
     return Cas(dan, blok, "Историја", odeljenja, ALEKSANDAR_BOSKOVIC, None, "KM-уч2", red)
 
 
-def _model_aleksandra():
+def _ulaz_aleksandra():
     grupe = (("II1", "II3"), ("II2", "II4"), ("II5",))
     zahtevi = tuple(
         Zahtev("Историја", "II", grupa, 2, 0, ALEKSANDAR_BOSKOVIC, None, Smena.CEO_DAN, "цео дан", i + 2)
@@ -22,15 +22,19 @@ def _model_aleksandra():
         oznaka: Odeljenje(oznaka, "II", Smena.CEO_DAN, Skola.SREDNJA)
         for grupa in grupe for oznaka in grupa
     }
-    ulaz = Ulaz(zahtevi, odeljenja, {"Историја": Predmet("Историја", False, False)}, Skola.SREDNJA)
+    return Ulaz(zahtevi, odeljenja, {"Историја": Predmet("Историја", False, False)}, Skola.SREDNJA)
+
+
+def _model_aleksandra(sa_nedeljom_b=False):
     ucionica = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
-    return napravi_model(ulaz, (ucionica,), (), Smena.CRVENA)
+    return napravi_model(_ulaz_aleksandra(), (ucionica,), (), Smena.CRVENA, sa_nedeljom_b=sa_nedeljom_b)
 
 
-def _fiksiraj(model, jedinice, promenljive, dani_i_blokovi):
+def _fiksiraj(model, jedinice, promenljive, dani_i_blokovi, nedelja_b=False):
     for jedinica, (dan, blok) in zip(jedinice, dani_i_blokovi):
-        model.add(promenljive[jedinica.indeks].dan == dan)
-        model.add(promenljive[jedinica.indeks].blok == blok)
+        p = promenljive[jedinica.indeks]
+        model.add((p.dan_b if nedelja_b else p.dan) == dan)
+        model.add((p.blok_b if nedelja_b else p.blok) == blok)
 
 
 def test_ulaz_dodeljuje_aleksandru_sve_tri_grupe_drugog_razreda():
@@ -92,6 +96,16 @@ def test_proveravac_odbija_tri_dana_i_ponovljenu_grupu():
     assert any("sve tri grupe" in greska for greska in izvestaj.greske)
 
 
+def test_javni_proveravac_aktivira_pravilo_samo_kad_je_aleksandar_u_ulazu():
+    ucionica = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
+    sa_aleksandrom = proveri(_ulaz_aleksandra(), (ucionica,), (), ())
+    assert any("mora imati tačno 6" in greska for greska in sa_aleksandrom.greske)
+
+    bez_aleksandra = Ulaz((), {}, {}, Skola.SREDNJA)
+    izvestaj = proveri(bez_aleksandra, (ucionica,), (), ())
+    assert not any(ALEKSANDAR_BOSKOVIC in greska for greska in izvestaj.greske)
+
+
 def test_solver_prihvata_dva_dana_sa_sve_tri_grupe_uzastopno():
     model, jedinice, promenljive = _model_aleksandra()
     _fiksiraj(model, jedinice, promenljive, [(0, 7), (3, 7), (0, 8), (3, 8), (0, 9), (3, 9)])
@@ -113,4 +127,22 @@ def test_solver_odbija_tri_radna_dana():
 def test_solver_odbija_rupu_u_trocasu():
     model, jedinice, promenljive = _model_aleksandra()
     _fiksiraj(model, jedinice, promenljive, [(0, 7), (3, 7), (0, 8), (3, 8), (0, 10), (3, 9)])
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_primenjuje_pravilo_i_na_nedelju_b():
+    termini = [(0, 7), (3, 7), (0, 8), (3, 8), (0, 9), (3, 9)]
+    model, jedinice, promenljive = _model_aleksandra(sa_nedeljom_b=True)
+    _fiksiraj(model, jedinice, promenljive, termini, nedelja_b=True)
+    assert cp_model.CpSolver().solve(model) in (cp_model.FEASIBLE, cp_model.OPTIMAL)
+
+    model, jedinice, promenljive = _model_aleksandra(sa_nedeljom_b=True)
+    model.add(promenljive[jedinice[0].indeks].blok_b == 6)
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_solver_odbija_dve_sesije_iste_grupe_u_aktivnom_danu():
+    model, jedinice, promenljive = _model_aleksandra()
+    model.add(promenljive[jedinice[0].indeks].dan == 0)
+    model.add(promenljive[jedinice[1].indeks].dan == 0)
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
