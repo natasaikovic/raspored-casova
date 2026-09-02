@@ -17,6 +17,8 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 ## Blokira solver
 
+Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, pa nije spojeno.
+
 - **Nedostupnost nastavnika.** `ulazi/nedostupnost.csv` je prazan, a zna se
   da neki nastavnici ne rade određenim danima i da nastavnici opštih predmeta
   rade i u drugim školama. Najvažniji podatak koji fali: šest nastavnika
