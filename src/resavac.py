@@ -1570,6 +1570,7 @@ def resi_nedelju(
     vremensko_ogranicenje: float = 300,
     broj_radnika: int = 8,
     seme: int = 1,
+    hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
