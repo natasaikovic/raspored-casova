@@ -225,7 +225,7 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 
 - Predmeti se uglavnom održavaju kao dvočasi (za srednju vidi tačna pravila
   gore; za osnovnu iz prošlogodišnjeg rasporeda sledi isto — igrački dvočasi).
-- Prvo treba rasporediti osnovnu školu, a zatim srednju školu.
+- Obe škole i obe nedelje rešavaju se zajedno, u istom modelu.
 - Učenici ne smeju imati prazne časove.
 - Izuzetak je promena lokacije koja nije Knez Miletina ↔ Sportska gimnazija,
   kada učenici moraju imati tačno jedan slobodan blok za put. Između Knez
@@ -233,6 +233,19 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Poželjno je da odeljenja koja naizmenično menjaju smene budu simetrično raspoređena.
 - Za nastavnike i korepetitore kontinuitet časova je snažan prioritet; jedna
   pauza do dva bloka nedeljno je izuzetak, ne uobičajena organizacija rada.
+
+## Dvofazno rešavanje
+
+Isti model se rešava u dve faze unutar jednog ukupnog vremenskog ograničenja.
+Prva, kratka faza nema funkciju cilja i traži bilo koji raspored koji zadovoljava
+sva čvrsta pravila. Druga faza uključuje postojeću funkciju cilja i kao obične
+CP-SAT hintove dobija vrednosti rešenja prve faze. Hint se ne učitava iz CSV-a,
+artifacta niti drugog fajla i nije dodatno ograničenje modela.
+
+Ako druga faza ne stigne da poboljša raspored, dopustivo rešenje prve faze ostaje
+rezultat i moraju se sačuvati oba CSV fajla i HTML pregled. Zaustavljanje posle
+prvog pronađenog rešenja nije dokaz validacije: oba izlaza i dalje prolaze kroz
+nezavisni proveravač.
 
 ## Napomene za dalju razradu
 

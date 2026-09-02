@@ -61,6 +61,22 @@ def test_resava_i_odmah_proverava_mali_raspored():
     assert rezultat.casovi[0].blok + 1 == rezultat.casovi[1].blok
     assert rezultat.izvestaj is not None
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+    assert "faza 2" in rezultat.status
+
+
+def test_prva_faza_nema_cilj_a_druga_ga_ima():
+    z = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
+    u = ulaz([z])
+
+    bez_cilja, _, _ = napravi_model(
+        u, (SALA,), (), Smena.CRVENA, sa_ciljem=False
+    )
+    sa_ciljem, _, _ = napravi_model(
+        u, (SALA,), (), Smena.CRVENA, sa_ciljem=True
+    )
+
+    assert not bez_cilja.has_objective()
+    assert sa_ciljem.has_objective()
 
 
 def test_p1_ima_tri_pojedinacna_casa_u_1830():

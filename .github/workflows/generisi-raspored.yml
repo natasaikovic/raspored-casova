@@ -29,7 +29,7 @@ jobs:
           from src.resavac import napravi_model, ucitaj_standardne_ulaze
           ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze('ulazi')
           model, _, _ = napravi_model(
-              ulaz, prostorije, nedostupnosti, Smena.CRVENA, (), sa_nedeljom_b=False
+              ulaz, prostorije, nedostupnosti, Smena.CRVENA, sa_nedeljom_b=False
           )
           greska = model.validate()
           if greska:
