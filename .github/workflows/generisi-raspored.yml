@@ -6,11 +6,6 @@ on:
       - "ulazi/**/*.csv"
       - "src/*.py"
       - ".github/workflows/generisi-raspored.yml"
-  pull_request:
-    paths:
-      - "ulazi/**/*.csv"
-      - "src/*.py"
-      - ".github/workflows/generisi-raspored.yml"
   workflow_dispatch:
 
 permissions:
