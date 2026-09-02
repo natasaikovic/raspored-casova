@@ -45,7 +45,7 @@ jobs:
           python -m src.resavac \
             --ulazi ulazi \
             --izlaz izlaz \
-            --vremensko-ogranicenje ${{ github.ref_name == 'main' && '1800' || '600' }} \
+            --vremensko-ogranicenje 1800 \
             --broj-radnika 8 \
             --seme 1 \
             2>&1 | tee izlaz/solver.log
