@@ -1679,22 +1679,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         seme=argumenti.seme,
         hintovi=(),
     )
-    izlazni_status = 0
-    for ime, rezultat in (
+    rezultati = (
         ("nedelja_a.csv", rezultat_a),
         ("nedelja_b.csv", rezultat_b),
-    ):
+    )
+    neuspeh = False
+    for ime, rezultat in rezultati:
         print(f"{ime}: {rezultat.status}")
         if not rezultat.pronadjen:
-            izlazni_status = 1
+            neuspeh = True
             continue
-        putanja = argumenti.izlaz / ime
-        sacuvaj_csv(putanja, rezultat.casovi)
         assert rezultat.izvestaj is not None
         print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.izvestaj.ispravan:
-            izlazni_status = 1
-    return izlazni_status
+            neuspeh = True
+
+    # A i B su jedan izlazni par: ako bilo koja nedelja ne uspe, ne menjaj
+    # nijedan postojeći CSV i tako ne ostavljaj nov A uz zastareo B.
+    if neuspeh:
+        return 1
+    for ime, rezultat in rezultati:
+        sacuvaj_csv(argumenti.izlaz / ime, rezultat.casovi)
+    return 0
 
 
 if __name__ == "__main__":
