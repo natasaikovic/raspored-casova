@@ -144,6 +144,11 @@ popunjena.
 
 - tri sale;
 - jedna učionica.
+- Predmeti **Narodna igra – glavni predmet** i **Repertoar narodne igre**
+  održavaju se isključivo u salama `SG-1`, `SG-2` i `SG-3`.
+- Za **Narodnu igru – glavni predmet** prioritet je `SG-1`. Ako ona nije
+  dostupna, `SG-2` ili `SG-3` prvenstveno se dodeljuju odeljenju `IV5`, koje
+  ima najmanje učenika; odstupanje za druga odeljenja je lošije rešenje.
 
 ### Narodno pozorište
 
@@ -182,10 +187,8 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom);
   nastavnici opštih predmeta često rade i u drugim školama.
 - Nedostupnost se beleži u `ulazi/nedostupnost.csv`
-  (`наставник,дан,од блока,до блока,напомена`); prazan fajl = svi dostupni.
-  **Ovo je najvažniji podatak koji trenutno fali**: šest nastavnika osnovne ima
-  tačno 20 časova, a jutarnja smena ima 4 bloka × 5 dana = 20, pa svaki
-  nepoznati slobodan dan obara rešivost.
+  (`наставник,дан,од блока,до блока,напомена`). Fajl sadrži potvrđene
+  nedostupnosti; prazan fajl bi značio da su svi dostupni.
 - Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
   blokova između angažovanja kad god je to moguće.
 - Optimalno dnevno angažovanje nastavnika i korepetitora je najviše četiri

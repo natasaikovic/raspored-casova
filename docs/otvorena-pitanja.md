@@ -19,14 +19,6 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, pa nije spojeno.
 
-- **Nedostupnost nastavnika.** `ulazi/nedostupnost.csv` je prazan, a zna se
-  da neki nastavnici ne rade određenim danima i da nastavnici opštih predmeta
-  rade i u drugim školama. Najvažniji podatak koji fali: šest nastavnika
-  osnovne ima tačno 20 časova naspram 20 jutarnjih blokova (4 × 5), pa svaki
-  nepoznati slobodan dan obara rešivost. Popunjava administrator, kako saznaje.
-
-  Odgovor upisati u: `ulazi/nedostupnost.csv`.
-
 - **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
   delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
   još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj

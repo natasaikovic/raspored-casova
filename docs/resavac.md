@@ -41,6 +41,8 @@ Rešavač ne sme da prekrši:
 - subotom završetak najkasnije do 15:05, uz snažnu prednost završetka do 13:15
   i korišćenja sala Sportske gimnazije;
 - tip prostorije i posebnu učionicu za informatiku;
+- sale `SG-1`, `SG-2` ili `SG-3` za Narodnu igru – glavni predmet i
+  Repertoar narodne igre;
 - dvočase igračkih predmeta i jedan glavni dvočas srednje škole dnevno;
 - najviše četiri časa dnevno za odeljenja osnovne škole;
 - najviše četiri igračka i četiri opšta časa srednjeg odeljenja dnevno;
@@ -55,7 +57,10 @@ ulazima privremeno zapisane različito.
 
 Model istovremeno bira termine, lokacije i konkretne prostorije. Posebna
 pravila, uključujući obaveznu `KM-uč1` za informatiku i termine `NP-sala`, važe
-u obe faze.
+u obe faze. Pri dodeli konkretnih prostorija Narodna igra – glavni predmet
+preferira `SG-1`; odstupanje na `SG-2` ili `SG-3` manje se kažnjava za `IV5`
+nego za ostala odeljenja. Prioritet se primenjuje i pri zasebnoj dodeli jedne
+nedelje i pri zajedničkoj dodeli prostorija za obe nedelje.
 
 ## Optimizacija i provera
 
