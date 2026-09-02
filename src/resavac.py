@@ -40,6 +40,8 @@ from .vizualizacija import napravi_html
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
 INFORMATIKA = "Рачунарство и информатика"
+ISTORIJA = "Историја"
+ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
@@ -474,6 +476,93 @@ def _dodaj_dnevno_pravilo_lokacije(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
     kazne.append(300 * menja_lokaciju)
+
+
+def _dodaj_pravilo_aleksandra_boskovica(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Rasporedi Aleksandrovih šest časova u dva kompaktna dana po tri."""
+
+    stavke = [
+        jedinica
+        for jedinica in jedinice
+        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet == ISTORIJA
+        and ulaz.zahtevi[jedinica.zahtev_indeks].nastavnik == ALEKSANDAR_BOSKOVIC
+    ]
+    if not stavke:
+        return
+    if len(stavke) != 6:
+        raise ValueError(
+            f"{ALEKSANDAR_BOSKOVIC}: očekuje se tačno 6 časova istorije"
+        )
+
+    po_zahtevu: dict[int, list[Jedinica]] = defaultdict(list)
+    for jedinica in stavke:
+        po_zahtevu[jedinica.zahtev_indeks].append(jedinica)
+    if len(po_zahtevu) != 3 or any(len(grupa) != 2 for grupa in po_zahtevu.values()):
+        raise ValueError(
+            f"{ALEKSANDAR_BOSKOVIC}: očekuju se tri grupe sa po 2 časa"
+        )
+
+    aktivni_dani: list[cp_model.BoolVar] = []
+    sufiks = "_b" if nedelja_b else ""
+    for indeks_dana in range(5):
+        aktivan = model.new_bool_var(f"aleksandar_d{indeks_dana}{sufiks}")
+        aktivni_dani.append(aktivan)
+        sva_prisustva = []
+        for grupa in po_zahtevu.values():
+            prisustva_grupe = []
+            for jedinica in grupa:
+                _, po_danu, _ = _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )
+                prisustva_grupe.append(po_danu[indeks_dana])
+                sva_prisustva.append(po_danu[indeks_dana])
+            model.add(sum(prisustva_grupe) == aktivan)
+        model.add(sum(sva_prisustva) == 3 * aktivan)
+
+        prvi_kandidati = []
+        poslednji_kandidati = []
+        for jedinica in stavke:
+            blok, po_danu, _ = _promenljive_za_nedelju(
+                promenljive[jedinica.indeks], nedelja_b
+            )
+            prisutan = po_danu[indeks_dana]
+            prvi = model.new_int_var(
+                1, len(BLOKOVI) + 1,
+                f"aleksandar_j{jedinica.indeks}_d{indeks_dana}_prvi{sufiks}",
+            )
+            poslednji = model.new_int_var(
+                0, len(BLOKOVI),
+                f"aleksandar_j{jedinica.indeks}_d{indeks_dana}_poslednji{sufiks}",
+            )
+            model.add(prvi == blok).only_enforce_if(prisutan)
+            model.add(prvi == len(BLOKOVI) + 1).only_enforce_if(~prisutan)
+            model.add(poslednji == blok).only_enforce_if(prisutan)
+            model.add(poslednji == 0).only_enforce_if(~prisutan)
+            prvi_kandidati.append(prvi)
+            poslednji_kandidati.append(poslednji)
+        prvi_blok = model.new_int_var(
+            1, len(BLOKOVI) + 1, f"aleksandar_d{indeks_dana}_min{sufiks}"
+        )
+        poslednji_blok = model.new_int_var(
+            0, len(BLOKOVI), f"aleksandar_d{indeks_dana}_max{sufiks}"
+        )
+        model.add_min_equality(prvi_blok, prvi_kandidati)
+        model.add_max_equality(poslednji_blok, poslednji_kandidati)
+        model.add(poslednji_blok - prvi_blok == 2).only_enforce_if(aktivan)
+
+    model.add(sum(aktivni_dani) == 2)
+    for jedinica in stavke:
+        blok, po_danu, _ = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        model.add(blok >= 7)
+        model.add(po_danu[5] == 0)
 
 
 def _angazovanja_po_osobi(
@@ -1153,6 +1242,15 @@ def napravi_model(
                         assert po_danu_b is not None
                         ukupno.append(jedinica.trajanje * po_danu_b[indeks_dana])
                     model.add(sum(ukupno) <= 4)
+
+    # Aleksandar Bošković: II razred, dva dana po tri uzastopna časa od 7. bloka.
+    _dodaj_pravilo_aleksandra_boskovica(
+        model, ulaz, jedinice, promenljive
+    )
+    if sa_nedeljom_b:
+        _dodaj_pravilo_aleksandra_boskovica(
+            model, ulaz, jedinice, promenljive, nedelja_b=True
+        )
 
     # Nastavnik ili korepetitor sme imati najviše jednu nedeljnu pauzu, dugu
     # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni

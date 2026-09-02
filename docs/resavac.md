@@ -51,6 +51,9 @@ Rešavač ne sme da prekrši:
 - najviše jednu promenu lokacije po odeljenju u toku dana;
 - istovremenost Verske nastave i Građanskog vaspitanja;
 - nedostupnost nastavnika iz `ulazi/nedostupnost.csv`.
+- poseban raspored istorije II razreda kod Aleksandra Boškovića: svih šest
+  časova je posle 13:30 i složeno u dva radna dana po tri uzastopna časa,
+  sa po jednim časom svake od tri grupe u oba dana.
 
 Oznake `?` i `korepetitor br.1` tretiraju se kao ista buduća osoba, iako su u
 ulazima privremeno zapisane različito.
