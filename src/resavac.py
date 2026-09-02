@@ -1,8 +1,7 @@
 """CP-SAT rešavač rasporeda časova.
 
-Rešavač proizvodi isti CSV koji čita :mod:`src.proveravac`. Model bira obe
-nedelje zajedno. Srednja škola i stalne smene ostaju iste, dok naizmenične
-smene osnovne škole u B koriste inverz smene iz A.
+Rešavač proizvodi isti CSV koji čita :mod:`src.proveravac`. Model prvo bira nedelju A, a zatim nedelju B. Srednja škola i stalne smene
+ostaju iste, dok naizmenične smene osnovne škole u B koriste inverz smene iz A.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ from .model import (
     Zahtev,
 )
 from .pismo import kljuc_pisma, u_latinicu
-from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
+from .proveravac import Cas, Izvestaj, proveri
 
 
 VERSKA = "Верска настава"
@@ -1529,55 +1528,95 @@ def resi_obe_nedelje(
     seme: int = 1,
     hintovi: Sequence[Cas] = (),
 ) -> tuple[Rezultat, Rezultat]:
-    """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
+    """Reši prvo A, pa B uz fiksiranje rasporeda stalnih smena iz A."""
 
-    model, jedinice, promenljive = napravi_model(
+    model_a, jedinice_a, promenljive_a = napravi_model(
         ulaz,
         prostorije,
         nedostupnosti,
         Smena.CRVENA,
         hintovi,
-        sa_nedeljom_b=True,
+        sa_nedeljom_b=False,
         samo_lokacije=True,
     )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = max(1.0, vremensko_ogranicenje)
-    solver.parameters.num_search_workers = broj_radnika
-    solver.parameters.random_seed = seme
-    status = solver.solve(model)
-    status_tekst = _status_tekst(status)
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        prazan = Rezultat(status_tekst, (), None, None)
+    solver_a = cp_model.CpSolver()
+    solver_a.parameters.max_time_in_seconds = max(1.0, vremensko_ogranicenje)
+    solver_a.parameters.num_search_workers = broj_radnika
+    solver_a.parameters.random_seed = seme
+    status_a = solver_a.solve(model_a)
+    status_a_tekst = _status_tekst(status_a)
+    if status_a not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        prazan = Rezultat(status_a_tekst, (), None, None)
         return prazan, prazan
-    dodele = _dodeli_prostorije_obe(
-        solver, ulaz, prostorije, jedinice, promenljive,
+
+    dodela_a = _dodeli_prostorije(
+        solver_a, ulaz, prostorije, jedinice_a, promenljive_a,
         broj_radnika=broj_radnika,
     )
-    if dodele is None:
+    if dodela_a is None:
         prazan = Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
         return prazan, prazan
-    dodela_a, dodela_b = dodele
     casovi_a = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive,
+        solver_a, ulaz, jedinice_a, promenljive_a,
         dodeljene_prostorije=dodela_a,
     )
-    casovi_b = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive, nedelja_b=True,
-        dodeljene_prostorije=dodela_b,
-    )
-    cilj = solver.objective_value
-    return Rezultat(
-        status_tekst,
+    rezultat_a = Rezultat(
+        status_a_tekst,
         casovi_a,
         proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
-        cilj,
-    ), Rezultat(
-        status_tekst,
-        casovi_b,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
-        cilj,
+        solver_a.objective_value,
     )
 
+    model_b, jedinice_b, promenljive_b = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        Smena.PLAVA,
+        (),
+        sa_nedeljom_b=False,
+        samo_lokacije=True,
+    )
+    fiksne_prostorije_b: dict[int, str] = {}
+    for jedinica_a, jedinica_b in zip(jedinice_a, jedinice_b):
+        assert jedinica_a == jedinica_b
+        zahtev = ulaz.zahtevi[jedinica_a.zahtev_indeks]
+        if zahtev.smena.menja_se:
+            continue
+        p_a = promenljive_a[jedinica_a.indeks]
+        p_b = promenljive_b[jedinica_b.indeks]
+        model_b.add(p_b.start == solver_a.value(p_a.start))
+        for lokacija, koristi_b in p_b.lokacije.items():
+            model_b.add(
+                koristi_b == int(solver_a.boolean_value(p_a.lokacije[lokacija]))
+            )
+        fiksne_prostorije_b[jedinica_b.indeks] = dodela_a[jedinica_a.indeks]
+
+    solver_b = cp_model.CpSolver()
+    solver_b.parameters.max_time_in_seconds = max(1.0, vremensko_ogranicenje)
+    solver_b.parameters.num_search_workers = broj_radnika
+    solver_b.parameters.random_seed = seme + 1
+    status_b = solver_b.solve(model_b)
+    status_b_tekst = _status_tekst(status_b)
+    if status_b not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return rezultat_a, Rezultat(status_b_tekst, (), None, None)
+
+    dodela_b = _dodeli_prostorije(
+        solver_b, ulaz, prostorije, jedinice_b, promenljive_b,
+        fiksne=fiksne_prostorije_b,
+        broj_radnika=broj_radnika,
+    )
+    if dodela_b is None:
+        return rezultat_a, Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
+    casovi_b = _izvuci_casove(
+        solver_b, ulaz, jedinice_b, promenljive_b,
+        dodeljene_prostorije=dodela_b,
+    )
+    return rezultat_a, Rezultat(
+        status_b_tekst,
+        casovi_b,
+        proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+        solver_b.objective_value,
+    )
 
 def sacuvaj_csv(putanja: str | Path, casovi: Sequence[Cas]) -> None:
     """Sačuvaj rešenje na latinici, u formatu nezavisnog proveravača."""
@@ -1628,18 +1667,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--vremensko-ogranicenje", type=float, default=300)
     parser.add_argument("--broj-radnika", type=int, default=8)
     parser.add_argument("--seme", type=int, default=1)
-    parser.add_argument(
-        "--bez-hintova",
-        action="store_true",
-        help="ne koristi postojeće radne verzije kao početne hintove",
-    )
     argumenti = parser.parse_args(argv)
 
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze(argumenti.ulazi)
-    hintovi: tuple[Cas, ...] = ()
-    putanja_hinta = Path("radne_verzije/2026-27/nedelja_a.csv")
-    if not argumenti.bez_hintova and putanja_hinta.exists():
-        hintovi = ucitaj_resenje(putanja_hinta)
     rezultat_a, rezultat_b = resi_obe_nedelje(
         ulaz,
         prostorije,
@@ -1647,7 +1677,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         vremensko_ogranicenje=argumenti.vremensko_ogranicenje,
         broj_radnika=argumenti.broj_radnika,
         seme=argumenti.seme,
-        hintovi=hintovi,
+        hintovi=(),
     )
     izlazni_status = 0
     for ime, rezultat in (
