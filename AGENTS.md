@@ -20,29 +20,21 @@ potrebne.
 
 Za svaku traženu izmenu agent treba da:
 
-1. **Pre početka rada proveri da li već postoji otvoren pull request.**
-2. U repozitorijumu održava **najviše jedan otvoren pull request u svakom
-   trenutku**.
-3. Ako pull request već postoji, ne otvara novi i ne započinje odvojenu granu
-   dok prethodni nije razrešen:
-   - ako administrator kaže da je zadovoljan izmenama, agent sam spaja
-     (mergeuje) postojeći pull request;
-   - ako administrator kaže da izmene više nisu potrebne ili da treba odustati,
-     agent zatvara postojeći pull request bez spajanja;
-   - ako nije jasno da li postojeći rad treba prihvatiti ili odbaciti, agent
-     ukratko objasni šta je ostalo otvoreno i pita administratora da izabere
-     između završavanja i odustajanja. Ne nagađa i ne odbacuje izmene
-     samovoljno.
-4. Kada nema otvorenog pull requesta, napravi novu granu, uradi tražene izmene,
-   pokrene odgovarajuće provere i **sam otvori pull request**.
-5. Po otvaranju pull requesta administratoru pošalje kratak sažetak promena,
+1. Napravi novu granu, uradi tražene izmene, pokrene odgovarajuće provere i
+   **sam otvori pull request**. Više pull requestova sme biti otvoreno
+   istovremeno, pod uslovom da se tiču različitih izmena i da im se grane ne
+   preklapaju u istim delovima koda.
+2. Po otvaranju pull requesta administratoru pošalje kratak sažetak promena,
    rezultate provera i, kada postoji, direktan link ili prikaz rezultata koji
    može da pregleda. Ne traži od administratora da koristi git ili GitHub.
-6. Dok administrator traži dorade iste izmene, agent ih dodaje u isti otvoreni
-   pull request; ne otvara dodatni.
-7. **Ne spaja pull request pre odobrenja administratora.** Kada administrator
-   jasno kaže da je zadovoljan, da je dobro ili zatraži spajanje, agent
-   samostalno mergeuje pull request i potvrđuje da je posao završen.
+3. Dok administrator traži dorade iste izmene, dodaje ih u isti otvoreni pull
+   request; ne otvara dodatni za istu stvar.
+4. Sam spaja pull request čim su ispunjeni uslovi iz odeljka „Uslovi za
+   spajanje pull requesta", bez traženja posebnog odobrenja. Ako administrator
+   kaže da izmene više nisu potrebne, zatvara pull request bez spajanja. Ako
+   nije jasno da li rad treba prihvatiti ili odbaciti, ukratko objasni šta je
+   ostalo otvoreno i pita administratora — ne nagađa i ne odbacuje izmene
+   samovoljno.
 
 ### Odgovori na otvorena pitanja
 
@@ -51,13 +43,10 @@ sme reći da je odgovor „zabeležen“ ako ga je samo zapamtio u razgovoru. Od
 je zabeležen tek kada su odgovarajući CSV, dokumentacija, kod ili testovi
 izmenjeni i commitovani na grani otvorenog pull requesta.
 
-- Pre prvog odgovora proveriti postoji li otvoren pull request; ako ne postoji,
-  odmah napraviti granu i, čim prvi odgovor bude commitovan, otvoriti jedan
-  pull request za odgovore.
-- Svaki potvrđeni odgovor uneti kao **zaseban commit** u taj isti pull request.
+- Svaki potvrđeni odgovor uneti kao **zaseban commit**.
 - Jedan odgovor sme u istom commitu menjati više datoteka kada zajedno čine
   jednu domensku odluku.
-- Posle svakog sledećeg odgovora odmah ažurirati isti pull request, umesto da se
+- Posle svakog odgovora odmah commitovati odgovarajuće izmene, umesto da se
   odgovori skupljaju samo u razgovoru.
 - Rešeno pitanje obrisati iz `docs/otvorena-pitanja.md`, potvrđeni podatak uneti
   na predviđeno mesto, a svaku novu nedoumicu nastalu iz odgovora dodati kao
@@ -117,6 +106,48 @@ izmenjeni i commitovani na grani otvorenog pull requesta.
   napraviti sledeći potreban commit preko normalnog GitHub pristupa ili
   eksplicitno pokrenuti proveru; ne tumačiti `action_required` kao neuspeh
   solvera ili testova.
+
+## Workflow „Generisi raspored"
+
+Ovaj workflow rešava obe nedelje i traje oko 30 minuta. Rezultat je artifact
+`raspored-2026-27` sa `solver.log` i CSV fajlovima.
+
+- Agent NIKADA ne pretpostavlja da run još traje. Posle 40 minuta stanje se
+  proverava komandom:
+
+  `gh run list -R natasaikovic/raspored-casova -L 5`
+
+  `gh run download <ID> -R natasaikovic/raspored-casova -D <folder>`
+
+- U `solver.log` se gledaju četiri stvari: red `HINT:` (da li je topli start
+  preuzet), `FAZA 1 — trajanje`, `FAZA 2 — trajanje`, i za obe nedelje
+  „Raspored je ispravan" sa brojem upozorenja.
+
+- Faza 1 ima gornju granicu od 1500 s pri ukupnom budžetu od 1800 s. Ako se
+  faza 1 približi toj granici, faza 2 ostaje bez vremena za optimizaciju i broj
+  upozorenja raste. To je znak da treba prvo rešiti raspodelu vremena, a ne
+  dodavati nova pravila.
+
+- Zabranjeno: `stop_after_first_solution`, i spuštanje
+  `--vremensko-ogranicenje` ispod 1800 na grani `main`.
+
+- Jedan push po izmeni. Više pushova u kratkom razmaku pokreće više paralelnih
+  run-ova od po 30 minuta i troši CI bez koristi.
+
+### Uslovi za spajanje pull requesta
+
+Pull request sa izmenom pravila ili ulaznih podataka sme se spojiti tek kada:
+
+1. svi testovi prolaze;
+2. `solver.log` daje „Raspored je ispravan" za OBE nedelje;
+3. broj upozorenja za obe nedelje je upisan u opis pull requesta — ne
+   ostavljati „biće dopunjeno";
+4. ako je zbir upozorenja porastao za više od 10 u odnosu na prethodni
+   `main`, u opisu stoji objašnjenje odakle skok dolazi.
+
+Agent sam spaja pull request čim su uslovi 1–4 ispunjeni i ne traži posebno
+odobrenje. Pull request koji menja samo dokumentaciju ne pokreće solver, pa
+za njega važe samo uslov 1 i zeleni testovi.
 
 
 ## Prikaz rasporeda korisniku
