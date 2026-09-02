@@ -62,6 +62,10 @@ GRADJANSKO = "Грађанско васпитање"
 ALTERNATIVNI_PREDMETI = frozenset({VERSKA, GRADJANSKO})
 INFORMATIKA = "Рачунарство и информатика"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
+NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
+REPERTOAR_NARODNE = "Репертоар народне игре"
+SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
+SPORTSKA_GIMNAZIJA = "Спортска гимназија"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
@@ -245,6 +249,7 @@ def proveri(
         for odeljenje in zahtev.odeljenja
     }
     pogodjeni: dict[int, tuple[Zahtev, ...]] = {}
+    upozorene_sesije_narodne_igre: set[tuple[object, ...]] = set()
 
     for cas in casovi:
         zahtevi_casa = _proveri_red(
@@ -255,6 +260,7 @@ def proveri(
             nedostupnosti,
             jutarnja_smena,
             izvestaj,
+            upozorene_sesije_narodne_igre,
         )
         if zahtevi_casa:
             pogodjeni[cas.red] = zahtevi_casa
@@ -313,6 +319,7 @@ def _proveri_red(
     nedostupnosti: Sequence[Nedostupnost],
     jutarnja_smena: Smena,
     izvestaj: Izvestaj,
+    upozorene_sesije_narodne_igre: set[tuple[object, ...]],
 ) -> tuple[Zahtev, ...]:
     if cas.dan not in DANI:
         izvestaj.greske.append(
@@ -388,6 +395,38 @@ def _proveri_red(
             izvestaj.greske.append(
                 f"{cas.gde}: {INFORMATIKA} мора бити у просторији KM-уч1"
             )
+        if cas.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
+            if prostorija.lokacija != SPORTSKA_GIMNAZIJA:
+                izvestaj.greske.append(
+                    f"{cas.gde}: „{cas.predmet}“ мора бити у Спортској гимназији"
+                )
+            elif cas.prostorija not in SG_SALE:
+                izvestaj.greske.append(
+                    f"{cas.gde}: „{cas.predmet}“ мора бити у SG-1, SG-2 или SG-3"
+                )
+        if (
+            cas.predmet == NARODNA_IGRA_GLAVNI
+            and cas.prostorija in {"SG-2", "SG-3"}
+        ):
+            sesija = (
+                cas.dan, cas.predmet, cas.odeljenja, cas.nastavnik,
+                cas.korepetitor, cas.prostorija,
+            )
+            if sesija not in upozorene_sesije_narodne_igre:
+                upozorene_sesije_narodne_igre.add(sesija)
+                odeljenje = cas.odeljenja[0] if len(cas.odeljenja) == 1 else "?"
+                if odeljenje == "IV5":
+                    izvestaj.upozorenja.append(
+                        f"{cas.gde}: {NARODNA_IGRA_GLAVNI} за IV5 користи "
+                        f"{cas.prostorija} као дозвољени изузетак; "
+                        "приоритет је SG-1"
+                    )
+                else:
+                    izvestaj.upozorenja.append(
+                        f"{cas.gde}: {NARODNA_IGRA_GLAVNI} за {odeljenje} "
+                        f"користи {cas.prostorija} као изузетак; ако је могуће, "
+                        "изузетак треба дати IV5, а остала одељења држати у SG-1"
+                    )
         if cas.prostorija == "NP-сала":
             if cas.predmet != REPERTOAR_KLASICNOG:
                 izvestaj.greske.append(
