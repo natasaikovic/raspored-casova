@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -36,19 +37,67 @@ jobs:
               raise SystemExit(greska)
           print('MODEL=ISPRAVAN')
           PY
+      - name: Preuzmi hint iz poslednjeg uspešnog artefakta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p izlaz .hint-artifact
+          echo "HINT: tražim poslednji uspešan artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
+          run_id="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&status=success&per_page=100" \
+            --jq '.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id' \
+            | head -n 1)"
+
+          if [ -z "${run_id}" ]; then
+            echo "HINT: uspešan artefakt nije pronađen; rešavač radi bez hinta." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+
+          echo "HINT: последњи успешан run је ${run_id}; преузимам артефакт." | tee -a izlaz/solver.log
+          if ! gh run download "${run_id}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name raspored-2026-27 \
+            --dir .hint-artifact; then
+            echo "HINT: преузимање артефакта није успело; решавач ради без хинта." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+
+          hint_file="$(find .hint-artifact -type f -name nedelja_a.csv -print -quit)"
+          if [ -z "${hint_file}" ]; then
+            echo "HINT: недеља_a.csv није пронађен у артефакту; решавач ради без хинта." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+          else
+            echo "HINT_FILE=${hint_file}" >> "${GITHUB_ENV}"
+            echo "HINT: преузет је ${hint_file}; прослеђује се solveru ако CLI подржава --hintovi." | tee -a izlaz/solver.log
+          fi
       - name: Generisi obe nedelje
         id: solver
         continue-on-error: true
         run: |
           mkdir -p izlaz
           set -o pipefail
+          hint_args=()
+          if [ -n "${HINT_FILE:-}" ]; then
+            if python -m src.resavac --help 2>&1 | grep -q -- "--hintovi"; then
+              hint_args=(--hintovi "${HINT_FILE}")
+              echo "HINT: fajl je prosleđen kroz --hintovi i koristiće se u fazi 1." | tee -a izlaz/solver.log
+            else
+              echo "HINT: trenutni src/resavac.py nema --hintovi; radi se bez hinta." | tee -a izlaz/solver.log
+            fi
+          else
+            echo "HINT: solver se pokreće bez hinta." | tee -a izlaz/solver.log
+          fi
           python -m src.resavac \
             --ulazi ulazi \
             --izlaz izlaz \
             --vremensko-ogranicenje 1800 \
             --broj-radnika 8 \
             --seme 1 \
-            2>&1 | tee izlaz/solver.log
+            "${hint_args[@]}" \
+            2>&1 | tee -a izlaz/solver.log
       - name: Napravi HTML pregled
         if: always()
         run: |
