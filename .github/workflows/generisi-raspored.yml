@@ -60,7 +60,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --name raspored-2026-27 \
             --dir .hint-artifact; then
-            echo "HINT: преузимање артефакта није успело; решавач ради без хинта." | tee -a izlaz/solver.log
+            echo "HINT: preuzimanje artefakta nije uspelo; resavac radi bez hintova." | tee -a izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
             exit 0
           fi
@@ -71,7 +71,7 @@ jobs:
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
           else
             echo "HINT_FILE=${hint_file}" >> "${GITHUB_ENV}"
-            echo "HINT: преузет је ${hint_file}; prosledjuje se solveru ako CLI podrzava --hintovi." | tee -a izlaz/solver.log
+            echo "HINT: preuzet je ${hint_file}; prosledjuje se solveru ako CLI podrzava --hintovi." | tee -a izlaz/solver.log
           fi
       - name: Generisi obe nedelje
         id: solver
