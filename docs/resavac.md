@@ -14,10 +14,9 @@ ujutru). Oba fajla su na latinici i imaju format opisan u
 
 ## Odnos nedelja A i B
 
-Nedelje se rešavaju zajedno u jednom modelu. Time izbor dobrog rasporeda za A
-ne može naknadno da učini B nemogućom. Časovi srednje škole, stalnih smena i P1
-dele isti dan, blok i prostoriju u obe nedelje. Naizmenične smene nisu strogo
-ogledalo:
+Nedelje se rešavaju sekvencijalno: prvo nedelja A, pa nedelja B. Kada je A
+pronađena, časovi srednje škole, stalnih smena i P1 fiksiraju se u B na isti
+dan, blok i prostoriju. Naizmenične smene nisu strogo ogledalo:
 
 - smena iz ulaznog CSV-a određuje dozvoljene blokove odeljenja u nedelji A;
 - njena inverzna smena određuje dozvoljene blokove u nedelji B;
@@ -84,12 +83,9 @@ statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
 grešku. CSV ostaje sačuvan kao kandidat za sledeću iteraciju, ali se ne smatra
 konačnim rasporedom.
 
-Postojeći fajlovi u `radne_verzije/2026-27/` koriste se samo kao početni CP-SAT
-hintovi. Oni ne postaju ograničenja i solver sme potpuno da promeni svaki termin
-i prostoriju. Za pokretanje bez njih koristi se `--bez-hintova`.
-
-Podrazumevano vremensko ograničenje je pet minuta za zajednički model obe
-nedelje. Može se promeniti:
+Postojeći fajlovi u `radne_verzije/2026-27/` ne učitavaju se kao hintovi.
+Podrazumevano vremensko ograničenje je pet minuta za svaku nedelju. Može se
+promeniti:
 
 ```bash
 python -m src.resavac \
