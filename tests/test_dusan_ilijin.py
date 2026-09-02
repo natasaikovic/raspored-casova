@@ -76,7 +76,7 @@ def test_dusan_preuzima_iv3_iv5() -> None:
 
 
 def test_dusan_ima_ukupan_fond_14() -> None:
-    with Path("ulazi/ostali_casovi.csv").open(encoding="utf-8", newline="") as f:
+    with Path("ulazi/ostali_casovi.csv").open(encoding="utf-8-sig", newline="") as f:
         redovi = [
             red
             for red in csv.DictReader(f)
@@ -119,7 +119,7 @@ def test_dusan_sme_najvise_dva_bloka_pauze() -> None:
         ),
         izvestaj,
     )
-    assert any("maksimum su 2" in g for g in izvestaj.greske)
+    assert any("максимум су 2" in g for g in izvestaj.greske)
 
 
 def test_proveravac_prihvata_tacno_dva_bloka_pauze() -> None:
@@ -155,13 +155,13 @@ def test_javni_proveravac_povezuje_oba_pravila_istorije() -> None:
         _cas("четвртак", 2, ("III1",), red=3),
     )
     izvestaj = proveri(ulaz, (ucionica,), (), tri_prazna)
-    assert any("maksimum su 2" in greska for greska in izvestaj.greske)
+    assert any("максимум су 2" in greska for greska in izvestaj.greske)
 
 
 def test_dusan_ne_sme_utorkom_ni_sredom() -> None:
     izvestaj = Izvestaj()
     _proveri_dusan_ilijin((_cas("уторак", 4, ("IV3", "IV5")),), izvestaj)
-    assert any("ponedeljkom, četvrtkom i petkom" in g for g in izvestaj.greske)
+    assert any("понедељком, четвртком и петком" in g for g in izvestaj.greske)
 
 
 @pytest.mark.parametrize("nedelja_b", [False, True])

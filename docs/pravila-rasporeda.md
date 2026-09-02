@@ -198,10 +198,9 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
   ograničenja.
 - Za **Ivanu Ljujić** i **Jelenu Prvulović** ostaje čvrsto pravilo: najviše
   jedna pauza nedeljno, duga najviše dva časovna bloka.
-- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Od njegovog fonda
-  Istorije dva časa za grupu IV3,IV5 preuzima privremeno označeni `nastavnik
-  istorije br.2`, čiji identitet još nije poznat. Dušanov fond je time 18
-  časova, što omogućava najviše šest časova dnevno.
+- Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Predaje istoriju
+  i grupi IV3,IV5, koja je ranije bila označena privremenim nazivom `nastavnik
+  istorije br.2`. Njegov ukupan fond istorije je 14 časova.
 - Kosta Milanović je korepetitor na časovima koji su ranije bili označeni
   privremenim nazivom `корепетитор` u osnovnoj i srednjoj školi.
 

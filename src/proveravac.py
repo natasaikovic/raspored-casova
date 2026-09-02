@@ -322,8 +322,8 @@ def _proveri_dusan_ilijin(
     for cas in stavke:
         if cas.dan not in dozvoljeni_dani:
             izvestaj.greske.append(
-                f"{DUSAN_ILIJIN} može držati istoriju samo ponedeljkom, četvrtkom i petkom; "
-                f"pronađen je čas u danu {cas.dan}"
+                f"{DUSAN_ILIJIN} може држати историју само понедељком, четвртком и петком; "
+                f"пронађен је час у дану {cas.dan}"
             )
 
     ukupno_pauze = 0
@@ -336,7 +336,7 @@ def _proveri_dusan_ilijin(
         ukupno_pauze += max(blokovi) - min(blokovi) + 1 - len(blokovi)
     if ukupno_pauze > 2:
         izvestaj.greske.append(
-            f"{DUSAN_ILIJIN} ima ukupno {ukupno_pauze} blokova pauze u nedelji; maksimum su 2"
+            f"{DUSAN_ILIJIN} има укупно {ukupno_pauze} блокова паузе у недељи; максимум су 2"
         )
 
 
