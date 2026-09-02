@@ -55,7 +55,7 @@ jobs:
             exit 0
           fi
 
-          echo "HINT: последњи успешан run је ${run_id}; преузимам артефакт." | tee -a izlaz/solver.log
+          echo "HINT: poslednji uspesan run je ${run_id}; preuzimam artefakt." | tee -a izlaz/solver.log
           if ! gh run download "${run_id}" \
             --repo "${GITHUB_REPOSITORY}" \
             --name raspored-2026-27 \
@@ -67,11 +67,11 @@ jobs:
 
           hint_file="$(find .hint-artifact -type f -name nedelja_a.csv -print -quit)"
           if [ -z "${hint_file}" ]; then
-            echo "HINT: недеља_a.csv није пронађен у артефакту; решавач ради без хинта." | tee -a izlaz/solver.log
+            echo "HINT: nedelja_a.csv nije pronadjen u artefaktu; resavac radi bez hintova." | tee -a izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
           else
             echo "HINT_FILE=${hint_file}" >> "${GITHUB_ENV}"
-            echo "HINT: преузет је ${hint_file}; прослеђује се solveru ако CLI подржава --hintovi." | tee -a izlaz/solver.log
+            echo "HINT: преузет је ${hint_file}; prosledjuje se solveru ako CLI podrzava --hintovi." | tee -a izlaz/solver.log
           fi
       - name: Generisi obe nedelje
         id: solver
