@@ -189,6 +189,7 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Nedostupnost se beleži u `ulazi/nedostupnost.csv`
   (`наставник,дан,од блока,до блока,напомена`). Fajl sadrži potvrđene
   nedostupnosti; prazan fajl bi značio da su svi dostupni.
+- Granice opsega su uključive: „od X do Y“ uključuje i blok X i blok Y.
 - Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
   blokova između angažovanja kad god je to moguće.
 - Optimalno dnevno angažovanje nastavnika i korepetitora je najviše četiri
@@ -257,18 +258,3 @@ Od prvobitnog spiska ostali su prioriteti sala i dostupnost nastavnika po danima
 Informatika ima jednu specijalnu učionicu (prošle godine `KM-uč1`); smene po
 odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
 
-- Izuzetak za peti cas jutarnje smene: samo Solfedjo 41 kod Marije Cvetkovic, Solfedjo 42 kod Sonje Pane Virijevic i Solfedjo 43 kod Jelene Mihailovic Krasic sme da bude u bloku 5 (11:40-12:25) kada je njihova smena jutarnja. Ovaj izuzetak ne vazi ni za jedan drugi predmet, nastavnika ili odeljenje.
-- Ista fizicka osoba je jedan rasporedni resurs bez obzira da li u konkretnom casu nastupa kao nastavnik ili korepetitor; ne sme istovremeno obavljati obe uloge na razlicitim casovima.
-
-### Istorija — Aleksandar Bošković
-
-- Aleksandar Bošković preuzima sve tri grupe II razreda iz istorije: `II1,II3`, `II2,II4` i `II5`, ukupno 6 časova nedeljno.
-- Zbog rada u drugoj školi dostupan je radnim danima tek od 7. bloka (od 13:30).
-- Njegov fond se raspoređuje u tačno dva radna dana: svakog izabranog dana ima po jedan čas u sve tri grupe, ukupno 3 uzastopna časa.
-
-### Istorija — Dušan Ilijin
-
-- Dušan Ilijin predaje istoriju i spojenoj grupi IV3,IV5 (ranije označeno kao „nastavnik istorije br.2“).
-- U školi je isključivo ponedeljkom, četvrtkom i petkom; utorkom i sredom radi u drugoj školi.
-- Nijedna grupa ne sme imati dva časa istorije u istom danu; ovo je čvrsto pravilo za istoriju.
-- Dušan Ilijin sme imati ukupno najviše dva prazna bloka između svojih časova u toku cele nedelje.
