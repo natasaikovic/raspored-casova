@@ -69,7 +69,9 @@ REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
+KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
+NARODNO_POZORISTE = "Народно позориште"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
@@ -890,9 +892,23 @@ def _proveri_dnevni_raspored(
                 if menja:
                     promene += 1
                     neposredan_prelaz = {lokacija_pre, lokacija_posle} == {
-                        "Кнез Милетина 8", "Спортска гимназија"
+                        KNEZ_MILETINA, SPORTSKA_GIMNAZIJA
                     }
-                    ocekivani_razmak = 1 if neposredan_prelaz else 2
+                    put_ka_np = (
+                        lokacija_pre in {KNEZ_MILETINA, SPORTSKA_GIMNAZIJA}
+                        and lokacija_posle == NARODNO_POZORISTE
+                        and prethodni == 8
+                        and sledeci == 10
+                    )
+                    if not neposredan_prelaz and not put_ka_np:
+                        izvestaj.greske.append(
+                            f"{grupa} мења локацију са {lokacija_pre} на "
+                            f"{lokacija_posle} у дану {dan}; празан блок је "
+                            "дозвољен само у блоку 9 пре наставе у "
+                            "Народном позоришту у блоку 10"
+                        )
+                        continue
+                    ocekivani_razmak = 2 if put_ka_np else 1
                     if razmak < ocekivani_razmak:
                         izvestaj.greske.append(
                             f"{grupa} мења локацију без слободног блока: {dan}, "
@@ -902,7 +918,7 @@ def _proveri_dnevni_raspored(
                         opis = (
                             "са паузом између Кнез Милетине и Спортске гимназије"
                             if neposredan_prelaz
-                            else "са паузом дужом од једног блока"
+                            else "са недозвољеном паузом"
                         )
                         izvestaj.greske.append(
                             f"{grupa} мења локацију {opis}: {dan}, "

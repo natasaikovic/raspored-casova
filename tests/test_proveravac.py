@@ -346,7 +346,7 @@ def test_prazan_cas_bez_promene_lokacije_je_greska():
     assert any("има празан час без промене локације" in g for g in izvestaj.greske)
 
 
-def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
+def test_putni_blok_nije_dozvoljen_izmedju_drugih_lokacija():
     z1 = zahtev("Историја", ["11"], 1, "Ана")
     z2 = zahtev("Солфеђо", ["11"], 1, "Ива", red=3)
     ulaz = napravi_ulaz([z1, z2])
@@ -356,13 +356,13 @@ def test_promena_lokacije_trazi_tacno_jedan_slobodan_blok():
     )
     casovi = (
         Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),
-        Cas("понедељак", 4, z2.predmet, ("11",), "Ива", None, "U3", 3),
+        Cas("понедељак", 3, z2.predmet, ("11",), "Ива", None, "U3", 3),
     )
 
     izvestaj = proveri(ulaz, prostorije, (), casovi)
 
     assert any(
-        "мења локацију са паузом дужом од једног блока" in g
+        "празан блок је дозвољен само у блоку 9" in g
         for g in izvestaj.greske
     )
 
