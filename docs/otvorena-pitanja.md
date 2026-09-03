@@ -29,8 +29,6 @@ Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, 
 
 ## Pravila koja treba raščistiti
 
-- **Solfedjo 43.** Excel navodi III razred, a CSV IV razred. Koji razred je tačan?
-
 - **Kadrovske rupe.** Dijani Jovanović (18 časova) sme da se doda. U
   referenci je nerazrešen par `Kristina / Ana` (2 časa petkom).
 

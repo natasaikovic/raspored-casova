@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .izuzeci import dozvoljen_peti_cas_solfedja, izuzet_od_ogranicenja_pauza
+from .izuzeci import dozvoljen_peti_cas, izuzet_od_ogranicenja_pauza
 from .loader import (
     UlazGreska,
     ucitaj_nedostupnost,
@@ -645,7 +645,7 @@ def _proveri_smenu(
     if smena in (Smena.CRVENA, Smena.PLAVA):
         if smena is jutarnja:
             dozvoljeni = PRVA_SMENA
-            if dozvoljen_peti_cas_solfedja(
+            if dozvoljen_peti_cas(
                 cas.predmet, cas.nastavnik, cas.odeljenja
             ):
                 dozvoljeni = PRVA_SMENA + (5,)

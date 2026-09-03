@@ -24,6 +24,16 @@ def dozvoljen_peti_cas_solfedja(predmet: str, nastavnik: str, odeljenja) -> bool
     )
 
 
+def dozvoljen_peti_cas(predmet: str, nastavnik: str, odeljenja) -> bool:
+    """Da li konkretan cas sme u peti blok jutarnje smene."""
+
+    return dozvoljen_peti_cas_solfedja(predmet, nastavnik, odeljenja) or (
+        predmet == "Историјско балске игре"
+        and nastavnik == "Теодора Мартиновски"
+        and tuple(odeljenja) == ("41",)
+    )
+
+
 def izuzet_od_ogranicenja_pauza(osoba: str) -> bool:
     """Da li osoba sme imati više pauza ili pauzu dužu od dva bloka."""
 
