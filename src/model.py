@@ -134,6 +134,39 @@ class Prostorija:
     napomena: str
 
 
+class NivoPravilaProstorije(Enum):
+    """Strength of a subject-to-room rule, from hard to exceptional."""
+
+    OBAVEZNO = "обавезно"
+    PRVI = "први"
+    DRUGI = "други"
+    IZUZETNO = "изузетно"
+    ZABRANJENO = "забрањено"
+
+
+@dataclass(frozen=True)
+class PraviloProstorije:
+    """One room rule copied from a priority cell in the source workbook."""
+
+    prostorija: str
+    nivo: NivoPravilaProstorije
+    predmet: str
+    odeljenja: tuple[str, ...]
+    oblik_casa: str | None
+    napomena: str
+
+
+@dataclass(frozen=True)
+class DostupnostProstorije:
+    """Inclusive block range in which a room is available (whitelist)."""
+
+    prostorija: str
+    dan: str
+    od_bloka: int
+    do_bloka: int
+    napomena: str
+
+
 @dataclass(frozen=True)
 class Nedostupnost:
     """A block range in a day when a teacher cannot be scheduled."""

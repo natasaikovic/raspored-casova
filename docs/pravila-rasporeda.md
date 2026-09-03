@@ -126,61 +126,9 @@ iz nedelje u nedelju; zahtev za simetriju na njega se ne primenjuje.
 
 ## Učionice, sale i lokacije
 
-Spisak prostorija je u `ulazi/prostorije.csv` (18 prostorija, izvučene iz
-prošlogodišnjeg rasporeda — nisu se menjale). Kolona `приоритет` još nije
-popunjena.
-
-### Knez Miletina
-
-- šest redovnih sala;
-- sala br. 8, koja se obavezno koristi za **Primenjenu gimnastiku**, a za
-  druge predmete samo u nuždi;
-- četiri učionice;
-- jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
-  samo u nuždi;
-- jedna videoteka, koja se koristi isključivo za predmet **Gluma**.
-
-### Sportska gimnazija
-
-- tri sale;
-- jedna učionica.
-- Predmeti **Narodna igra – glavni predmet** i **Repertoar narodne igre**
-  održavaju se isključivo u salama `SG-1`, `SG-2` i `SG-3`.
-- Za **Narodnu igru – glavni predmet** prioritet je `SG-1`. Ako ona nije
-  dostupna, `SG-2` ili `SG-3` prvenstveno se dodeljuju odeljenju `IV5`, koje
-  ima najmanje učenika; odstupanje za druga odeljenja je lošije rešenje.
-
-### Narodno pozorište
-
-- jedna sala;
-- može se koristiti samo od 16:00 do 17:40;
-- koristi se samo za predmet **Repertoar klasičnog baleta**;
-- `IV1` ima u toj sali **dva dvočasa nedeljno**;
-- `IV2` ima u toj sali **dva dvočasa nedeljno**;
-- preostali **peti termin** u nedelji popunjava se jednim dvočasom predmeta
-  Repertoar klasičnog baleta za **`III1` ili `III2`**; solver sme da izabere
-  koje od ta dva odeljenja koristi taj termin ako to olakšava raspored.
-
-Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
-
-### Posebne prostorije i prioriteti
-
-- Informatika se održava u specijalnoj učionici.
-- Gluma se održava isključivo u videoteci.
-- Primenjena gimnastika se održava u sali br. 8; sala br. 8 za ostale
-  predmete ima najniži prioritet.
-- Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
-  glavni predmet**.
-- Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
-- Sala br. 2 prioritetno se koristi za **Karakterne igre**.
-- Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
-  savremene igre** i **Improvizacije**.
-- Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
-- Učenici smeju promeniti lokaciju najviše jednom u toku dana.
-- Pri promeni lokacije **Knez Miletina ↔ Sportska gimnazija**, časovi moraju
-  biti neposredno jedan za drugim, bez putnog bloka.
-- Pri drugim promenama lokacije između časova mora postojati tačno jedan
-  slobodan blok za put.
+Inventar, prioriteti, posebne namene, dostupnost i trenutno važeća pravila
+promene lokacije i termina u Narodnom pozorištu opisani su u zasebnom dokumentu
+[Pravila prostorija](pravila-prostorija.md).
 
 ## Nastavnici i korepetitori
 

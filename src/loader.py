@@ -9,6 +9,7 @@ not discover the next error after each round trip.
 from __future__ import annotations
 
 import csv
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
@@ -18,9 +19,12 @@ from dataclasses import replace
 from .model import (
     BLOKOVI,
     DANI,
+    DostupnostProstorije,
     Nedostupnost,
+    NivoPravilaProstorije,
     Odeljenje,
     Predmet,
+    PraviloProstorije,
     Prostorija,
     Skola,
     Smena,
@@ -418,6 +422,175 @@ def ucitaj_prostorije(putanja: str | Path) -> tuple[Prostorija, ...]:
     if greske:
         raise UlazGreska(greske)
     return tuple(prostorije)
+
+
+KOLONE_PRAVILA_PROSTORIJA = (
+    "просторија",
+    "ниво",
+    "предмет",
+    "одељења",
+    "облик часа",
+    "напомена",
+)
+DOZVOLJENI_OBLICI_CASA = frozenset({"", "двочас"})
+ODELJENJE_RE = re.compile(r"^(?:П1|[1-4][1-5]|(?:I|II|III|IV)[1-5](?:[АБ])?)$")
+
+
+def ucitaj_pravila_prostorija(
+    putanja: str | Path,
+) -> tuple[PraviloProstorije, ...]:
+    """Parse standalone room rules without consulting the active room catalog."""
+    redovi = _procitaj_redove(Path(putanja), KOLONE_PRAVILA_PROSTORIJA)
+    greske: list[str] = []
+    pravila: list[PraviloProstorije] = []
+    vidjeno: dict[tuple[str, ...], int] = {}
+    nivoi = {nivo.value: nivo for nivo in NivoPravilaProstorije}
+
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        prostorija = red["просторија"]
+        predmet = red["предмет"]
+        if not prostorija:
+            greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
+        if not predmet:
+            greske.append(f"ред {broj_reda}: „предмет“ не сме бити празно")
+
+        sirovi_nivo = red["ниво"]
+        nivo = nivoi.get(sirovi_nivo)
+        if nivo is None:
+            dozvoljeni = ", ".join(f"„{ime}“" for ime in nivoi)
+            greske.append(
+                f"ред {broj_reda}: непознат ниво „{sirovi_nivo}“; "
+                f"дозвољено је {dozvoljeni}"
+            )
+
+        sirova_odeljenja = red["одељења"]
+        odeljenja: tuple[str, ...] = ()
+        if sirova_odeljenja:
+            delovi = tuple(deo.strip() for deo in sirova_odeljenja.split(","))
+            if any(not deo for deo in delovi):
+                greske.append(
+                    f"ред {broj_reda}: „одељења“ има празну ознаку"
+                )
+            nepoznata = [deo for deo in delovi if deo and not ODELJENJE_RE.fullmatch(deo)]
+            if nepoznata:
+                greske.append(
+                    f"ред {broj_reda}: неисправна ознака одељења "
+                    + ", ".join(f"„{oznaka}“" for oznaka in nepoznata)
+                )
+            if len(set(delovi)) != len(delovi):
+                greske.append(
+                    f"ред {broj_reda}: „одељења“ садрже дуплу ознаку"
+                )
+            odeljenja = tuple(deo for deo in delovi if deo)
+
+        oblik = red["облик часа"]
+        if oblik not in DOZVOLJENI_OBLICI_CASA:
+            greske.append(
+                f"ред {broj_reda}: непознат облик часа „{oblik}“; "
+                "дозвољено је празно или „двочас“"
+            )
+
+        kljuc = (prostorija, sirovi_nivo, predmet, sirova_odeljenja, oblik)
+        if kljuc in vidjeno:
+            greske.append(
+                f"ред {broj_reda}: правило већ постоји у реду {vidjeno[kljuc]}"
+            )
+        else:
+            vidjeno[kljuc] = broj_reda
+
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        pravila.append(
+            PraviloProstorije(
+                prostorija=prostorija,
+                nivo=nivo,
+                predmet=predmet,
+                odeljenja=odeljenja,
+                oblik_casa=oblik or None,
+                napomena=red["напомена"],
+            )
+        )
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(pravila)
+
+
+KOLONE_DOSTUPNOSTI_PROSTORIJA = (
+    "просторија",
+    "дан",
+    "од блока",
+    "до блока",
+    "напомена",
+)
+
+
+def ucitaj_dostupnost_prostorija(
+    putanja: str | Path,
+) -> tuple[DostupnostProstorije, ...]:
+    """Parse room availability as whitelist ranges, independently of the catalog."""
+    putanja = Path(putanja)
+    try:
+        redovi = _procitaj_redove(putanja, KOLONE_DOSTUPNOSTI_PROSTORIJA)
+    except UlazGreska as greska:
+        if greska.greske == ["датотека нема ниједан ред са подацима"]:
+            return ()
+        raise
+
+    greske: list[str] = []
+    dostupnosti: list[DostupnostProstorije] = []
+    vidjeno: dict[tuple[str, str, str, str], int] = {}
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        prostorija = red["просторија"]
+        if not prostorija:
+            greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
+        dan = red["дан"]
+        if dan not in DANI:
+            dozvoljeni = ", ".join(DANI)
+            greske.append(
+                f"ред {broj_reda}: непознат дан „{dan}“; дозвољено је {dozvoljeni}"
+            )
+        od_bloka = _ceo_broj(
+            red["од блока"], "од блока", broj_reda, greske, obavezan=True
+        )
+        do_bloka = _ceo_broj(
+            red["до блока"], "до блока", broj_reda, greske, obavezan=True
+        )
+        if od_bloka is not None and do_bloka is not None:
+            if not (1 <= od_bloka <= do_bloka <= len(BLOKOVI)):
+                greske.append(
+                    f"ред {broj_reda}: блокови {od_bloka}–{do_bloka} нису "
+                    f"растући опсег између 1 и {len(BLOKOVI)}"
+                )
+
+        kljuc = (
+            prostorija,
+            dan,
+            red["од блока"],
+            red["до блока"],
+        )
+        if kljuc in vidjeno:
+            greske.append(
+                f"ред {broj_reda}: доступност већ постоји у реду {vidjeno[kljuc]}"
+            )
+        else:
+            vidjeno[kljuc] = broj_reda
+
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        dostupnosti.append(
+            DostupnostProstorije(
+                prostorija=prostorija,
+                dan=dan,
+                od_bloka=od_bloka,
+                do_bloka=do_bloka,
+                napomena=red["напомена"],
+            )
+        )
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(dostupnosti)
 
 
 KOLONE_NEDOSTUPNOSTI = ("наставник", "дан", "од блока", "до блока", "напомена")

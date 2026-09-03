@@ -19,13 +19,31 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, pa nije spojeno.
 
-- **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
-  delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
-  još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj
-  gimnaziji. Treba proveriti i da li je jedan broj 1–3 dovoljan pored
-  prioriteta koji zavisi od predmeta.
-
-  Odgovor upisati u: `ulazi/prostorije.csv`.
+- **Naziv repertoara za SG-1.** Excel navodi `Repertoar savremene igre` za
+  odeljenja narodnog odseka (`I5`–`IV5`). Da li je to tačno ili treba da piše
+  `Repertoar narodne igre`?
+- **Dve sale Narodnog pozorišta.** Da li su `NP-1` i `NP-2` dve zasebne sale
+  koje mogu istovremeno da rade sredom? Kako se one odnose prema staroj zbirnoj
+  oznaci `NP-sala` i pet postojećih nedeljnih termina?
+- **Kraj termina u Narodnom pozorištu.** Excel navodi 17:30, a blok 11 traje
+  do 17:40. Da li dostupnost važi do 17:40 ili treba drugačije definisati blok?
+- **Sale SG-2 i SG-3.** Da li su ravnopravne alternative za predmete navedene
+  uz `SG-1` i da li je `SG-1` čvrsta obaveza ili samo najviši prioritet?
+- **Izuzetna upotreba KM-8.** Da li `KM-8`, pored obavezne Primenjene
+  gimnastike, sme izuzetno da se koristi i za druge predmete?
+- **Pretežno OBŠ u KM-3 i KM-6.** Da li je to samo meki prioritet i koji
+  predmeti ili odeljenja imaju prednost u tim salama?
+- **Najbrojnije grupe u KM-uč7.** Da li Excel napomena `I-1,2,3 i I-4,5`
+  označava dve spojene grupe `I1,I2,I3` i `I4,I5`, i da li je KM-uč7 za njih
+  obavezna ili samo prioritetna?
+- **Biblioteka.** Da li se četiri navedena predmeta u `IV5` održavaju kao
+  jedna spojena grupa ili odvojeno, i da li su svi ostali predmeti zaista
+  strogo zabranjeni?
+- **Naziv informatike.** Da li u Excelu navedeno `Informatika i računarstvo`
+  znači postojeći predmet `Računarstvo i informatika`?
+- **Dve muzičke učionice.** Da li su `KM-uč2` i `SG-muzuč` ravnopravne
+  alternative za Solfeđo i Tradicionalno pevanje ili lokacija zavisi od
+  odeljenja?
 
 ## Pravila koja treba raščistiti
 
