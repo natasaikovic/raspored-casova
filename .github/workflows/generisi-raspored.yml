@@ -47,38 +47,50 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p izlaz .hint-artifact
-          echo "HINT: tražim poslednji uspešan artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
-          if ! run_id="$(gh api \
+          echo "HINT: tražim poslednji upotrebljiv artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
+          run_ids_file=".hint-artifact/run_ids.txt"
+          if ! gh api \
             "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&status=success&per_page=100" \
-            --jq '[.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id] | .[0] // empty')"; then
+            --jq '.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id' \
+            > "${run_ids_file}"; then
             echo "HINT: lista uspešnih pokretanja nije dostupna; rešavač radi bez hinta." | tee -a izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
             exit 0
           fi
+          mapfile -t run_ids < "${run_ids_file}"
 
-          if [ -z "${run_id}" ]; then
+          if [ "${#run_ids[@]}" -eq 0 ]; then
             echo "HINT: uspešan artefakt nije pronađen; rešavač radi bez hinta." | tee -a izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
             exit 0
           fi
 
-          echo "HINT: poslednji uspesan run je ${run_id}; preuzimam artefakt." | tee -a izlaz/solver.log
-          if ! gh run download "${run_id}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --name raspored-2026-27 \
-            --dir .hint-artifact; then
-            echo "HINT: preuzimanje artefakta nije uspelo; resavac radi bez hintova." | tee -a izlaz/solver.log
-            echo "HINT_FILE=" >> "${GITHUB_ENV}"
-            exit 0
-          fi
+          hint_file=""
+          for run_id in "${run_ids[@]}"; do
+            candidate_dir=".hint-artifact/${run_id}"
+            mkdir -p "${candidate_dir}"
+            echo "HINT: proveravam uspešan run ${run_id}." | tee -a izlaz/solver.log
+            if ! gh run download "${run_id}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --name raspored-2026-27 \
+              --dir "${candidate_dir}"; then
+              echo "HINT: run ${run_id} nema dostupan ispravan artefakt; preskačem ga." | tee -a izlaz/solver.log
+              continue
+            fi
 
-          hint_file="$(find .hint-artifact -type f -name nedelja_a.csv -print -quit)"
-          if [ -z "${hint_file}" ]; then
-            echo "HINT: nedelja_a.csv nije pronadjen u artefaktu; resavac radi bez hintova." | tee -a izlaz/solver.log
-            echo "HINT_FILE=" >> "${GITHUB_ENV}"
-          else
+            hint_file="$(find "${candidate_dir}" -type f -name nedelja_a.csv -print -quit)"
+            if [ -n "${hint_file}" ]; then
+              echo "HINT: run ${run_id} sadrži ${hint_file}; koristiće se za topli start." | tee -a izlaz/solver.log
+              break
+            fi
+            echo "HINT: run ${run_id} nema nedelja_a.csv; preskačem ga." | tee -a izlaz/solver.log
+          done
+
+          if [ -n "${hint_file}" ]; then
             echo "HINT_FILE=${hint_file}" >> "${GITHUB_ENV}"
-            echo "HINT: preuzet je ${hint_file}; prosledjuje se solveru ako CLI podrzava --hintovi." | tee -a izlaz/solver.log
+          else
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            echo "HINT: nijedan pregledani uspešan run nema nedelja_a.csv; rešavač radi bez hinta." | tee -a izlaz/solver.log
           fi
       - name: Generisi obe nedelje
         id: solver
@@ -123,6 +135,17 @@ jobs:
           find izlaz -maxdepth 1 -type f -printf '%f %s bytes\n' | sort || true
           echo "=== POSLEDNJIH 120 LINIJA SOLVERA ==="
           tail -n 120 izlaz/solver.log || true
+      - name: Proveri da li su obe nedelje napravljene
+        if: always()
+        run: |
+          nedostaju=()
+          [ -f izlaz/nedelja_a.csv ] || nedostaju+=("izlaz/nedelja_a.csv")
+          [ -f izlaz/nedelja_b.csv ] || nedostaju+=("izlaz/nedelja_b.csv")
+          if [ "${#nedostaju[@]}" -gt 0 ]; then
+            echo "Nedostaju obavezni izlazi: ${nedostaju[*]}" | tee -a izlaz/solver.log
+            exit 1
+          fi
+          echo "Oba nedeljna CSV izlaza su napravljena." | tee -a izlaz/solver.log
       - name: Sacuvaj rezultat
         if: always()
         uses: actions/upload-artifact@v4
