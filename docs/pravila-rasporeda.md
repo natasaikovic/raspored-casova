@@ -264,7 +264,7 @@ odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
   U istom bloku sme da bude i Istorijsko balske igre kod Teodore Martinovski,
   ali isključivo za odeljenje 41. Time se ne menja čvrsti dnevni maksimum od
   četiri stvarna časa za učenike osnovne škole niti zabrana praznih časova:
-  Klasičan balet u blokovima 3–4 može neposredno da prati ovaj čas u bloku 5,
+  Ovaj čas u bloku 5 može neposredno da prati Klasičan balet u blokovima 3–4,
   dok raspored Klasičnog baleta u blokovima 2–3 ne može da ostavi blok 4 prazan.
   Izuzetak ne važi ni za jedan drugi predmet, nastavnika ili odeljenje.
 - Ista fizicka osoba je jedan rasporedni resurs bez obzira da li u konkretnom casu nastupa kao nastavnik ili korepetitor; ne sme istovremeno obavljati obe uloge na razlicitim casovima.
