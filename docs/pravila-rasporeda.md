@@ -201,8 +201,9 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Dušan Ilijin radi u školi ponedeljkom, četvrtkom i petkom. Predaje istoriju
   i grupi IV3,IV5, koja je ranije bila označena privremenim nazivom `nastavnik
   istorije br.2`. Njegov ukupan fond istorije je 14 časova.
-- Kosta Milanović je korepetitor na časovima koji su ranije bili označeni
-  privremenim nazivom `корепетитор` u osnovnoj i srednjoj školi.
+- Kosta Milanović je korepetitor za Repertoar klasičnog baleta u odeljenjima
+  IV1 i IV2, a Mirjana Anđelković za Primenjenu gimnastiku u odeljenjima 24,
+  31, 32 i 34 i Istorijsko balske igre u odeljenjima 41, 42 i 43.
 
 ## Vremenski blokovi
 
