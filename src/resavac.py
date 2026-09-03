@@ -1906,23 +1906,17 @@ def _resi_u_dve_faze(
         )
         status_1 = solver_1.solve(model_1)
     trajanje_prve = time.monotonic() - pocetak
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        preostalo = vremensko_ogranicenje - trajanje_prve
-        if preostalo > 0:
-            print(
-                "FAZA 1 — prvi rok je istekao; nastavljam do ukupnog "
-                f"ograničenja ({preostalo:.1f} s preostalo)"
-            )
-            solver_1.parameters.max_time_in_seconds = preostalo
-            status_1 = solver_1.solve(model_1)
-            trajanje_prve = time.monotonic() - pocetak
     print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+    prva_ima_resenje = status_1 in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if status_1 not in (cp_model.UNKNOWN, cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_1)
-        print(f"FAZA 1 — neuspeh/timeout: {status}")
+        print(f"FAZA 1 — neuspeh: {status}")
         print("FAZA 2 — trajanje: 0.000 s")
-        return None, jedinice_1, promenljive_1, f"neuspeh/timeout (faza 1): {status}"
-    print("FAZA 1 — dopustivo rešenje pronađeno")
+        return None, jedinice_1, promenljive_1, f"neuspeh (faza 1): {status}"
+    if prva_ima_resenje:
+        print("FAZA 1 — dopustivo rešenje pronađeno")
+    else:
+        print("FAZA 1 — timeout bez rešenja; faza 2 nastavlja sa CSV hintovima")
 
     model_2, jedinice_2, promenljive_2 = napravi_model(
         ulaz,
@@ -1932,15 +1926,20 @@ def _resi_u_dve_faze(
         sa_nedeljom_b=sa_nedeljom_b,
         samo_lokacije=True,
         sa_ciljem=True,
+        hintovi=() if prva_ima_resenje else hintovi,
+        hintovi_b=() if prva_ima_resenje else hintovi_b,
     )
-    for indeks in range(len(model_1.proto.variables)):
-        prethodna = model_1.get_int_var_from_proto_index(indeks)
-        sledeca = model_2.get_int_var_from_proto_index(indeks)
-        model_2.add_hint(sledeca, solver_1.value(prethodna))
+    if prva_ima_resenje:
+        for indeks in range(len(model_1.proto.variables)):
+            prethodna = model_1.get_int_var_from_proto_index(indeks)
+            sledeca = model_2.get_int_var_from_proto_index(indeks)
+            model_2.add_hint(sledeca, solver_1.value(prethodna))
 
     preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
     if preostalo <= 0:
         print("FAZA 2 — timeout pre početka optimizacije")
+        if not prva_ima_resenje:
+            return None, jedinice_2, promenljive_2, "neuspeh/timeout u obe faze"
         return (
             solver_1,
             jedinice_1,
@@ -1961,6 +1960,14 @@ def _resi_u_dve_faze(
         return solver_2, jedinice_2, promenljive_2, f"optimizovano (faza 2): {status}"
 
     status = _status_tekst(status_2)
+    if not prva_ima_resenje:
+        print(f"FAZA 2 — neuspeh/timeout: {status}; nema dopustivog rešenja")
+        return (
+            None,
+            jedinice_2,
+            promenljive_2,
+            f"neuspeh/timeout u obe faze; faza 2: {status}",
+        )
     print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
     return (
         solver_1,
