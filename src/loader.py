@@ -214,8 +214,9 @@ def _ceo_broj(
     broj_reda: int,
     greske: list[str],
     obavezan: bool = False,
+    proveri_pozitivnost: bool = True,
 ) -> int | None:
-    """Parse a non-negative integer cell; empty means zero unless required."""
+    """Parse an integer cell; normally require a non-negative/positive value."""
     if not vrednost:
         if obavezan:
             greske.append(f"ред {broj_reda}: „{kolona}“ не сме бити празно")
@@ -228,7 +229,7 @@ def _ceo_broj(
             f"ред {broj_reda}: „{kolona}“ мора бити цео број, а пише „{vrednost}“"
         )
         return None
-    if broj < 0 or (obavezan and broj == 0):
+    if proveri_pozitivnost and (broj < 0 or (obavezan and broj == 0)):
         greske.append(f"ред {broj_reda}: „{kolona}“ мора бити већи од нуле")
         return None
     return broj
@@ -449,11 +450,16 @@ def ucitaj_pravila_prostorija(
     for broj_reda, red in enumerate(redovi, start=2):
         pocetni_broj_gresaka = len(greske)
         prostorija = red["просторија"]
-        predmet = red["предмет"]
+        predmet = " ".join(red["предмет"].split())
         if not prostorija:
             greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
         if not predmet:
             greske.append(f"ред {broj_reda}: „предмет“ не сме бити празно")
+        elif ";" in predmet:
+            greske.append(
+                f"ред {broj_reda}: „предмет“ мора садржати један канонски "
+                "назив, без листе раздвојене тачком и запетом"
+            )
 
         sirovi_nivo = red["ниво"]
         nivo = nivoi.get(sirovi_nivo)
@@ -491,7 +497,13 @@ def ucitaj_pravila_prostorija(
                 "дозвољено је празно или „двочас“"
             )
 
-        kljuc = (prostorija, sirovi_nivo, predmet, sirova_odeljenja, oblik)
+        kljuc = (
+            prostorija,
+            nivo.value if nivo is not None else sirovi_nivo,
+            predmet,
+            oblik or "",
+            tuple(sorted(set(odeljenja))),
+        )
         if kljuc in vidjeno:
             greske.append(
                 f"ред {broj_reda}: правило већ постоји у реду {vidjeno[kljuc]}"
@@ -552,17 +564,32 @@ def ucitaj_dostupnost_prostorija(
                 f"ред {broj_reda}: непознат дан „{dan}“; дозвољено је {dozvoljeni}"
             )
         od_bloka = _ceo_broj(
-            red["од блока"], "од блока", broj_reda, greske, obavezan=True
+            red["од блока"], "од блока", broj_reda, greske, obavezan=True,
+            proveri_pozitivnost=False,
         )
         do_bloka = _ceo_broj(
-            red["до блока"], "до блока", broj_reda, greske, obavezan=True
+            red["до блока"], "до блока", broj_reda, greske, obavezan=True,
+            proveri_pozitivnost=False,
         )
-        if od_bloka is not None and do_bloka is not None:
-            if not (1 <= od_bloka <= do_bloka <= len(BLOKOVI)):
-                greske.append(
-                    f"ред {broj_reda}: блокови {od_bloka}–{do_bloka} нису "
-                    f"растући опсег између 1 и {len(BLOKOVI)}"
-                )
+        if od_bloka is not None and not (1 <= od_bloka <= len(BLOKOVI)):
+            greske.append(
+                f"ред {broj_reda}: „од блока“ мора бити између 1 и "
+                f"{len(BLOKOVI)}, а пише {od_bloka}"
+            )
+        if do_bloka is not None and not (1 <= do_bloka <= len(BLOKOVI)):
+            greske.append(
+                f"ред {broj_reda}: „до блока“ мора бити између 1 и "
+                f"{len(BLOKOVI)}, а пише {do_bloka}"
+            )
+        if (
+            od_bloka is not None
+            and do_bloka is not None
+            and od_bloka > do_bloka
+        ):
+            greske.append(
+                f"ред {broj_reda}: „од блока“ ({od_bloka}) мора бити мање "
+                f"или једнако „до блока“ ({do_bloka})"
+            )
 
         kljuc = (
             prostorija,

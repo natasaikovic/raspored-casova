@@ -10,15 +10,14 @@ način na koji će ih raspoređivač tumačiti. Normalizovani podaci su u
 
 Izvor je dostavljena Excel tabela za školsku 2026/27, list `Prostorije`.
 Svaka od 24 popunjene ćelije u kolonama od `obavezno` do `zabranjeno`
-normalizovana je u jedan red. Ti redovi predstavljaju 57 atomskih preslikavanja
-predmeta i odeljenja na prostoriju. Više predmeta u jednom izvornom pravilu
-razdvaja se tačkom i zapetom; `*` znači sve predmete, uz izuzetke navedene u
-napomeni.
+razložena je na atomska pravila. Fajl zato ima tačno 57 redova sa podacima:
+jedan kanonski predmet i najviše jedno konkretno odeljenje po redu. Prazno
+odeljenje znači sva odeljenja, a predmet `*` znači sve predmete, uz izuzetke
+navedene u napomeni.
 
-Kolona `odeljenja` je CSV-lista oznaka. Prazna vrednost znači sva odeljenja.
-Oznake su usklađene sa postojećim ulazima (`IV1`, a ne Excel zapis `IV-1`).
-Kolona `oblik časa` je prazna kada pravilo važi za sve oblike, a `dvočas`
-kada je Excel izričito ograničio pravilo na dvočas.
+Oznake odeljenja usklađene su sa postojećim ulazima (`IV1`, a ne Excel zapis
+`IV-1`). Kolona `oblik časa` je prazna kada pravilo važi za sve oblike, a
+`dvočas` kada je Excel izričito ograničio pravilo na dvočas.
 
 Nazivi predmeta su usklađeni sa aktivnim ulazima gde je značenje jasno, na
 primer `Računarstvo i informatika`. Sporni navod za `SG-1` ostavljen je kao
@@ -68,10 +67,24 @@ pretežno za osnovnu školu; `KM-4` je najveća sala u Knez Miletinoj; `KM-5` je
 veća; `KM-8` je mala; `KM-uč7` je najveća učionica i namenjena najbrojnijim
 grupama; `SG-1` je najveća sala u Sportskoj gimnaziji.
 
-## Trenutno važeća pravila dok se pitanja ne razreše
+## Trenutno važeća, ranije potvrđena pravila
 
-Nova pravila još nisu povezana sa solverom i sama po sebi ne menjaju raspored.
-Do razrešenja pitanja i posebne implementacije i dalje važe postojeća pravila:
+Sledeća pravila su važila i pre dostavljanja nove Excel tabele i ostaju aktivna:
+
+- `KM-8` se obavezno koristi za `Primenjenu gimnastiku`, a za druge predmete
+  samo u nuždi;
+- `KM-biblioteka` je najmanja učionica i koristi se za opšte predmete samo u
+  nuždi;
+- `KM-videoteka` koristi se isključivo za predmet `Gluma` (u aktivnom ulazu
+  kanonski naziv predmeta je `Gluma i vokal`);
+- `KM-4` je najveća sala i prioritetno se koristi za `Klasičan balet – glavni
+  predmet`;
+- sale `KM-1`, `KM-2` i `KM-5` jednake su veličine i koriste se za srednju
+  školu;
+- `KM-2` prioritetno se koristi za `Karakterne igre`;
+- `KM-5` prioritetno se koristi za `Savremenu igru – glavni predmet`,
+  `Repertoar savremene igre` i `Improvizacije`;
+- bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće;
 
 - predmeti `Narodna igra – glavni predmet` i `Repertoar narodne igre` koriste
   sale `SG-1`, `SG-2` i `SG-3`; za glavni predmet prioritet je `SG-1`, a
@@ -83,6 +96,11 @@ Do razrešenja pitanja i posebne implementacije i dalje važe postojeća pravila
   Sportske gimnazije časovi su neposredno jedan za drugim, a za svaku drugu
   promenu lokacije postoji tačno jedan slobodan blok za put.
 
-Loaderi za nove CSV fajlove trenutno samo parsiraju i samostalno validiraju
-podatke. Solver i proveravač ih još ne učitavaju; njihovo povezivanje je zaseban
-naredni korak, posle odgovora na [otvorena pitanja](otvorena-pitanja.md).
+## Novi Excel podaci još nisu aktivni
+
+Pravila iz `pravila_prostorija.csv` i whitelist iz
+`dostupnost_prostorija.csv` trenutno se samo parsiraju i samostalno validiraju.
+Solver i proveravač ih još ne učitavaju, pa ti novi podaci sami po sebi ne
+menjaju raspored i ne zamenjuju ranije potvrđena pravila iz prethodnog odeljka.
+Njihovo povezivanje je zaseban naredni korak, posle odgovora na
+[otvorena pitanja](otvorena-pitanja.md).

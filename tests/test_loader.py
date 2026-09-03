@@ -289,11 +289,29 @@ class TestPravilaProstorija:
     def test_ucitava_sva_pravila_iz_excel_tabele(self):
         pravila = ucitaj_pravila_prostorija("ulazi/pravila_prostorija.csv")
 
-        assert len(pravila) == 24
+        assert len(pravila) == 57
+        assert all(";" not in pravilo.predmet for pravilo in pravila)
+        assert all(len(pravilo.odeljenja) <= 1 for pravilo in pravila)
         assert {pravilo.nivo for pravilo in pravila} == set(NivoPravilaProstorije)
         assert {p.prostorija for p in pravila if p.prostorija.startswith("NP-")} == {
             "NP-1", "NP-2",
         }
+
+        sg1_repertoar = {
+            p.odeljenja
+            for p in pravila
+            if p.prostorija == "SG-1"
+            and p.predmet == "Репертоар савремене игре"
+        }
+        assert sg1_repertoar == {("I5",), ("II5",), ("III5",), ("IV5",)}
+        sg1_klasicni = [
+            p
+            for p in pravila
+            if p.prostorija == "SG-1"
+            and p.predmet == "Класичан балет – главни предмет"
+        ]
+        assert len(sg1_klasicni) == 1
+        assert sg1_klasicni[0].odeljenja == ()
 
     def test_prazna_odeljenja_znace_sva_a_lista_se_parsira(self):
         pravila = ucitaj_pravila_prostorija("ulazi/pravila_prostorija.csv")
@@ -301,10 +319,12 @@ class TestPravilaProstorija:
         sva = next(p for p in pravila if p.prostorija == "KM-8")
         lista = next(
             p for p in pravila
-            if p.prostorija == "KM-2" and p.nivo is NivoPravilaProstorije.OBAVEZNO
+            if p.prostorija == "KM-2"
+            and p.nivo is NivoPravilaProstorije.OBAVEZNO
+            and p.odeljenja == ("IV1",)
         )
         assert sva.odeljenja == ()
-        assert lista.odeljenja == ("IV1", "III2", "II1", "II2", "I1", "I2")
+        assert lista.odeljenja == ("IV1",)
         assert lista.oblik_casa == "двочас"
 
     def test_skuplja_obavezna_polja_nivo_odeljenja_i_oblik(self, tmp_path):
@@ -338,6 +358,34 @@ class TestPravilaProstorija:
         assert "садрже дуплу ознаку" in str(greska.value)
         assert "правило већ постоји у реду 2" in str(greska.value)
 
+    def test_duplo_pravilo_prepoznaje_bez_obzira_na_redosled_odeljenja(
+        self, tmp_path
+    ):
+        putanja = tmp_path / "pravila.csv"
+        putanja.write_text(
+            self.ZAGLAVLJE
+            + 'KM-2,први,Карактерне игре,"I1,I2",двочас,прво\n'
+            + 'KM-2,први,  Карактерне   игре  ,"I2, I1",двочас,друго\n',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska) as greska:
+            ucitaj_pravila_prostorija(putanja)
+
+        assert greska.value.greske == [
+            "ред 3: правило већ постоји у реду 2"
+        ]
+
+    def test_odbija_vise_predmeta_u_jednom_pravilu(self, tmp_path):
+        putanja = tmp_path / "pravila.csv"
+        putanja.write_text(
+            self.ZAGLAVLJE + "KM-2,први,Солфеђо; Традиционално певање,,двочас,\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska, match="један канонски назив"):
+            ucitaj_pravila_prostorija(putanja)
+
     def test_ne_zahteva_da_np_prostorije_budu_u_starom_katalogu(self):
         oznake = {p.oznaka for p in ucitaj_prostorije("ulazi/prostorije.csv")}
         pravila = ucitaj_pravila_prostorija("ulazi/pravila_prostorija.csv")
@@ -363,17 +411,23 @@ class TestDostupnostProstorija:
     def test_skuplja_praznu_prostoriju_los_dan_i_los_opseg(self, tmp_path):
         putanja = tmp_path / "dostupnost.csv"
         putanja.write_text(
-            self.ZAGLAVLJE + ",недеља,0,15,\n",
+            self.ZAGLAVLJE
+            + ",недеља,0,15,\n"
+            + "NP-1,среда,12,3,\n",
             encoding="utf-8",
         )
 
         with pytest.raises(UlazGreska) as greska:
             ucitaj_dostupnost_prostorija(putanja)
 
-        assert len(greska.value.greske) == 3
+        assert len(greska.value.greske) == 5
         assert "„просторија“ не сме бити празно" in str(greska.value)
         assert "непознат дан „недеља“" in str(greska.value)
-        assert "„од блока“ мора бити већи од нуле" in str(greska.value)
+        assert "„од блока“ мора бити између 1 и 14, а пише 0" in str(greska.value)
+        assert "„до блока“ мора бити између 1 и 14, а пише 15" in str(greska.value)
+        assert "„од блока“ (12) мора бити мање или једнако „до блока“ (3)" in str(
+            greska.value
+        )
 
     def test_odbija_necele_brojeve_i_duplikat(self, tmp_path):
         putanja = tmp_path / "dostupnost.csv"
