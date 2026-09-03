@@ -1,0 +1,334 @@
+from dataclasses import replace
+
+import pytest
+from ortools.sat.python import cp_model
+
+from src.model import Odeljenje, Predmet, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev
+from src.proveravac import Cas, proveri
+from src.resavac import (
+    _dodeli_prostorije,
+    _kazna_sale_km8,
+    _moguce_prostorije,
+    napravi_model,
+)
+
+
+PG = "Примењена гимнастика"
+DRUGA_IGRA = "Друга игра"
+KM = "Кнез Милетина 8"
+SG = "Спортска гимназија"
+
+SALE = (
+    Prostorija("KM-1", KM, TipProstorije.SALA, None, ""),
+    Prostorija("KM-8", KM, TipProstorije.SALA, 3, ""),
+    Prostorija("SG-1", SG, TipProstorije.SALA, None, ""),
+    Prostorija("SG-2", SG, TipProstorije.SALA, None, ""),
+    Prostorija("SG-3", SG, TipProstorije.SALA, None, ""),
+)
+
+
+def _zahtev(predmet, nastavnik, korepetitor, red):
+    return Zahtev(
+        predmet=predmet,
+        razred="први",
+        odeljenja=("11",),
+        fond=2,
+        fond_korepeticije=2,
+        nastavnik=nastavnik,
+        korepetitor=korepetitor,
+        smena=Smena.CRVENA,
+        smena_opis=Smena.CRVENA.value,
+        red=red,
+        datoteka="test.csv",
+    )
+
+
+def _ulaz(sa_drugim=True):
+    zahtevi = [_zahtev(PG, "Бранислава", "Ђорђина", 2)]
+    if sa_drugim:
+        zahtevi.append(_zahtev(DRUGA_IGRA, "Мила", "Ива", 3))
+    predmeti = {
+        zahtev.predmet: Predmet(zahtev.predmet, True, True)
+        for zahtev in zahtevi
+    }
+    return Ulaz(
+        tuple(zahtevi),
+        {"11": Odeljenje("11", "први", Smena.CRVENA, Skola.OSNOVNA)},
+        predmeti,
+        Skola.OSNOVNA,
+    )
+
+
+def _casovi_pg(prostorija, sa_drugim_u_sg=False):
+    casovi = [
+        Cas("понедељак", 1, PG, ("11",), "Бранислава", "Ђорђина", prostorija, 2),
+        Cas("понедељак", 2, PG, ("11",), "Бранислава", "Ђорђина", prostorija, 3),
+    ]
+    if sa_drugim_u_sg:
+        casovi.extend(
+            (
+                Cas("понедељак", 3, DRUGA_IGRA, ("11",), "Мила", "Ива", "SG-1", 4),
+                Cas("понедељак", 4, DRUGA_IGRA, ("11",), "Мила", "Ива", "SG-1", 5),
+            )
+        )
+    return tuple(casovi)
+
+
+def test_solver_kandidati_pg_su_posebne_sale_a_drugi_moze_u_km8_u_nuzdi():
+    ulaz = _ulaz()
+    pg, drugi = ulaz.zahtevi
+
+    assert {p.oznaka for p in _moguce_prostorije(pg, ulaz, SALE)} == {
+        "KM-8", "SG-2", "SG-3",
+    }
+    assert "KM-8" in {
+        p.oznaka for p in _moguce_prostorije(drugi, ulaz, SALE)
+    }
+    assert _kazna_sale_km8(pg, "KM-8") == 0
+    assert _kazna_sale_km8(drugi, "KM-8") == 100_000
+
+
+@pytest.mark.parametrize(
+    ("prostorija", "sa_drugim_u_sg"),
+    (("KM-8", False), ("SG-2", True), ("SG-3", True)),
+)
+def test_proveravac_prihvata_dozvoljenu_salu(prostorija, sa_drugim_u_sg):
+    ulaz = _ulaz(sa_drugim_u_sg)
+    izvestaj = proveri(
+        ulaz, SALE, (), _casovi_pg(prostorija, sa_drugim_u_sg)
+    )
+    assert izvestaj.ispravan, izvestaj.tekst()
+
+
+@pytest.mark.parametrize("prostorija", ("SG-1", "KM-1"))
+def test_proveravac_odbija_pg_u_drugoj_sali(prostorija):
+    izvestaj = proveri(_ulaz(False), SALE, (), _casovi_pg(prostorija))
+    assert any("мора бити у KM-8, SG-2 или SG-3" in g for g in izvestaj.greske)
+
+
+def test_proveravac_upozorava_za_drugi_predmet_u_km8():
+    ulaz = _ulaz()
+    casovi = (
+        Cas("понедељак", 1, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 2),
+        Cas("понедељак", 2, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 3),
+        Cas("уторак", 1, DRUGA_IGRA, ("11",), "Мила", "Ива", "KM-8", 4),
+        Cas("уторак", 2, DRUGA_IGRA, ("11",), "Мила", "Ива", "KM-8", 5),
+    )
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+    assert izvestaj.ispravan, izvestaj.tekst()
+    assert any("дозвољен само у нужди" in u for u in izvestaj.upozorenja)
+    assert sum("дозвољен само у нужди" in u for u in izvestaj.upozorenja) == 1
+
+
+def test_proveravac_drugi_sg_cas_odredjuje_salu_pg():
+    sa_sg = proveri(_ulaz(), SALE, (), _casovi_pg("KM-8", True))
+    assert any("други час у Спортској гимназији" in g for g in sa_sg.greske)
+
+    bez_sg = proveri(_ulaz(False), SALE, (), _casovi_pg("SG-2"))
+    assert any("нема други час у Спортској гимназији" in g for g in bez_sg.greske)
+
+
+@pytest.mark.parametrize(("lokacija_drugog", "ocekivana_pg"), ((SG, SG), (KM, KM)))
+def test_solver_drugi_sg_cas_odredjuje_lokaciju_pg(lokacija_drugog, ocekivana_pg):
+    ulaz = _ulaz()
+    model, jedinice, promenljive = napravi_model(
+        ulaz,
+        SALE,
+        (),
+        Smena.CRVENA,
+        samo_lokacije=True,
+        sa_ciljem=False,
+    )
+    po_predmetu = {
+        ulaz.zahtevi[j.zahtev_indeks].predmet: j for j in jedinice
+    }
+    pg = promenljive[po_predmetu[PG].indeks]
+    drugi = promenljive[po_predmetu[DRUGA_IGRA].indeks]
+    model.add(pg.dan == 0)
+    model.add(drugi.dan == 0)
+    model.add(drugi.lokacije[lokacija_drugog] == 1)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    status = solver.solve(model)
+
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert solver.boolean_value(pg.lokacije[ocekivana_pg])
+
+
+def _ulaz_kapaciteta(vrste, menjaju_se=False):
+    smena = Smena.CRVENA if menjaju_se else Smena.CEO_DAN
+    zahtevi = []
+    odeljenja = {}
+    predmeti = {}
+    for indeks, vrsta in enumerate(vrste):
+        predmet = PG if vrsta == "pg" else f"Игра {indeks}"
+        oznaka = f"O{indeks}"
+        korepetitor = f"Корепетитор {indeks}" if vrsta == "pg" else None
+        zahtevi.append(
+            Zahtev(
+                predmet=predmet,
+                razred="први",
+                odeljenja=(oznaka,),
+                fond=1,
+                fond_korepeticije=1 if korepetitor else 0,
+                nastavnik=f"Наставник {indeks}",
+                korepetitor=korepetitor,
+                smena=smena,
+                smena_opis=smena.value,
+                red=indeks + 2,
+                datoteka="test.csv",
+            )
+        )
+        odeljenja[oznaka] = Odeljenje(
+            oznaka, "први", smena, Skola.OSNOVNA
+        )
+        predmeti[predmet] = Predmet(
+            predmet, korepetitor is not None, True
+        )
+    return Ulaz(tuple(zahtevi), odeljenja, predmeti, Skola.OSNOVNA)
+
+
+def _fiksiraj_sve(model, jedinice, promenljive, lokacija, blok=1, nedelja_b=False):
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        dan = p.dan_b if nedelja_b else p.dan
+        vreme = p.blok_b if nedelja_b else p.blok
+        lokacije = p.lokacije_b if nedelja_b else p.lokacije
+        assert dan is not None and vreme is not None and lokacije is not None
+        model.add(dan == 0)
+        model.add(vreme == blok)
+        model.add(lokacije[lokacija] == 1)
+
+
+def test_location_model_km8_je_dozvoljena_za_drugi_predmet_u_nuzdi():
+    ulaz = _ulaz_kapaciteta(("drugi", "drugi"))
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    _fiksiraj_sve(model, jedinice, promenljive, KM)
+
+    assert cp_model.CpSolver().solve(model) in (
+        cp_model.OPTIMAL,
+        cp_model.FEASIBLE,
+    )
+
+
+def test_location_model_dve_pg_ne_mogu_istovremeno_u_km8():
+    ulaz = _ulaz_kapaciteta(("pg", "pg"))
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    _fiksiraj_sve(model, jedinice, promenljive, KM)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_location_model_tri_pg_ne_mogu_istovremeno_u_sg2_i_sg3():
+    vrste = tuple(vrsta for _ in range(3) for vrsta in ("pg", "drugi"))
+    osnovni_ulaz = _ulaz_kapaciteta(vrste)
+    zahtevi = tuple(
+        replace(zahtev, odeljenja=(f"O{indeks // 2}",))
+        for indeks, zahtev in enumerate(osnovni_ulaz.zahtevi)
+    )
+    odeljenja = {
+        f"O{indeks}": Odeljenje(
+            f"O{indeks}", "први", Smena.CEO_DAN, Skola.OSNOVNA
+        )
+        for indeks in range(3)
+    }
+    ulaz = Ulaz(zahtevi, odeljenja, osnovni_ulaz.predmeti, Skola.OSNOVNA)
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE, (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        predmet = ulaz.zahtevi[jedinica.zahtev_indeks].predmet
+        model.add(p.dan == 0)
+        model.add(p.blok == (1 if predmet == PG else 2))
+        model.add(p.lokacije[SG] == 1)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+def test_location_model_dozvoljava_jednu_pg_i_sest_drugih_u_km():
+    sale = tuple(
+        Prostorija(f"KM-{broj}", KM, TipProstorije.SALA, None, "")
+        for broj in range(1, 7)
+    ) + (Prostorija("KM-8", KM, TipProstorije.SALA, 3, ""),)
+    ulaz = _ulaz_kapaciteta(("pg",) + ("drugi",) * 6)
+    model, jedinice, promenljive = napravi_model(
+        ulaz, sale, (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    _fiksiraj_sve(model, jedinice, promenljive, KM)
+    solver = cp_model.CpSolver()
+
+    assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    dodela = _dodeli_prostorije(
+        solver, ulaz, sale, jedinice, promenljive, broj_radnika=1
+    )
+    assert dodela is not None
+    assert set(dodela.values()) == {f"KM-{broj}" for broj in range(1, 7)} | {
+        "KM-8"
+    }
+
+
+def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
+    ulaz = _ulaz_kapaciteta(("drugi", "drugi"), menjaju_se=True)
+    model, jedinice, promenljive = napravi_model(
+        ulaz,
+        SALE[:2],
+        (),
+        Smena.CRVENA,
+        sa_nedeljom_b=True,
+        samo_lokacije=True,
+        sa_ciljem=False,
+    )
+    for jedinica, blok in zip(jedinice, (1, 2)):
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        model.add(p.blok == blok)
+        model.add(p.lokacije[KM] == 1)
+    _fiksiraj_sve(model, jedinice, promenljive, KM, blok=9, nedelja_b=True)
+
+    assert cp_model.CpSolver().solve(model) in (
+        cp_model.OPTIMAL,
+        cp_model.FEASIBLE,
+    )
+
+
+def test_location_model_dve_informatike_dele_jedinu_specijalnu_ucionicu():
+    predmet = "Рачунарство и информатика"
+    ulaz = _ulaz_kapaciteta(("drugi", "drugi"))
+    zahtevi = tuple(
+        Zahtev(
+            predmet=predmet,
+            razred=z.razred,
+            odeljenja=z.odeljenja,
+            fond=z.fond,
+            fond_korepeticije=0,
+            nastavnik=z.nastavnik,
+            korepetitor=None,
+            smena=z.smena,
+            smena_opis=z.smena_opis,
+            red=z.red,
+            datoteka=z.datoteka,
+        )
+        for z in ulaz.zahtevi
+    )
+    ulaz = Ulaz(
+        zahtevi,
+        ulaz.odeljenja,
+        {predmet: Predmet(predmet, False, False)},
+        ulaz.skola,
+    )
+    ucionice = (
+        Prostorija("KM-уч1", KM, TipProstorije.UCIONICA, None, ""),
+        Prostorija("KM-уч2", KM, TipProstorije.UCIONICA, None, ""),
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz, ucionice, (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    _fiksiraj_sve(model, jedinice, promenljive, KM)
+
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE

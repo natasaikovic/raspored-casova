@@ -68,8 +68,10 @@ ALEKSANDAR_GRUPE = frozenset({("II1", "II3"), ("II2", "II4"), ("II5",)})
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
+PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 KNEZ_MILETINA = "Кнез Милетина 8"
+SALE_PRIMENJENE_GIMNASTIKE = frozenset({"KM-8", "SG-2", "SG-3"})
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
 NARODNO_POZORISTE = "Народно позориште"
 KOREPETITOR_BR_1 = "корепетитор br.1"
@@ -256,6 +258,7 @@ def proveri(
     }
     pogodjeni: dict[int, tuple[Zahtev, ...]] = {}
     upozorene_sesije_narodne_igre: set[tuple[object, ...]] = set()
+    upozorene_sesije_km8: set[tuple[object, ...]] = set()
 
     for cas in casovi:
         zahtevi_casa = _proveri_red(
@@ -267,6 +270,7 @@ def proveri(
             jutarnja_smena,
             izvestaj,
             upozorene_sesije_narodne_igre,
+            upozorene_sesije_km8,
         )
         if zahtevi_casa:
             pogodjeni[cas.red] = zahtevi_casa
@@ -447,6 +451,7 @@ def _proveri_red(
     jutarnja_smena: Smena,
     izvestaj: Izvestaj,
     upozorene_sesije_narodne_igre: set[tuple[object, ...]],
+    upozorene_sesije_km8: set[tuple[object, ...]],
 ) -> tuple[Zahtev, ...]:
     if cas.dan not in DANI:
         izvestaj.greske.append(
@@ -522,6 +527,24 @@ def _proveri_red(
             izvestaj.greske.append(
                 f"{cas.gde}: {INFORMATIKA} мора бити у просторији KM-уч1"
             )
+        if (
+            cas.predmet == PRIMENJENA_GIMNASTIKA
+            and cas.prostorija not in SALE_PRIMENJENE_GIMNASTIKE
+        ):
+            izvestaj.greske.append(
+                f"{cas.gde}: {PRIMENJENA_GIMNASTIKA} мора бити у KM-8, SG-2 или SG-3"
+            )
+        if cas.prostorija == "KM-8" and cas.predmet != PRIMENJENA_GIMNASTIKA:
+            sesija = (
+                cas.dan, cas.predmet, cas.odeljenja, cas.nastavnik,
+                cas.korepetitor, cas.prostorija,
+            )
+            if sesija not in upozorene_sesije_km8:
+                upozorene_sesije_km8.add(sesija)
+                izvestaj.upozorenja.append(
+                    f"{cas.gde}: KM-8 треба чувати за предмет "
+                    f"{PRIMENJENA_GIMNASTIKA}; други предмет је дозвољен само у нужди"
+                )
         if cas.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
             if prostorija.lokacija != SPORTSKA_GIMNAZIJA:
                 izvestaj.greske.append(
@@ -836,6 +859,9 @@ def _proveri_dnevni_raspored(
         for cas in stavke:
             po_danu[cas.dan].append(cas)
         for dan, dnevni in po_danu.items():
+            _proveri_salu_primenjene_gimnastike(
+                grupa, dan, dnevni, prostorije, izvestaj
+            )
             po_bloku: dict[int, list[Cas]] = defaultdict(list)
             for cas in dnevni:
                 po_bloku[cas.blok].append(cas)
@@ -933,6 +959,49 @@ def _proveri_dnevni_raspored(
                 izvestaj.greske.append(
                     f"{grupa} мења локацију {promene} пута у дану {dan}; максимум је једном"
                 )
+
+
+def _proveri_salu_primenjene_gimnastike(
+    grupa: str,
+    dan: str,
+    dnevni: Sequence[Cas],
+    prostorije: dict[str, Prostorija],
+    izvestaj: Izvestaj,
+) -> None:
+    """PG prati SG samo kada odeljenje tog dana ima neki drugi čas u SG."""
+
+    primenjene = [c for c in dnevni if c.predmet == PRIMENJENA_GIMNASTIKA]
+    if not primenjene:
+        return
+    ima_drugi_u_sg = any(
+        c.predmet != PRIMENJENA_GIMNASTIKA
+        and c.prostorija in prostorije
+        and prostorije[c.prostorija].lokacija == SPORTSKA_GIMNAZIJA
+        for c in dnevni
+    )
+    dozvoljene = {"SG-2", "SG-3"} if ima_drugi_u_sg else {"KM-8"}
+    pogresne_sesije: set[tuple[object, ...]] = set()
+    for cas in primenjene:
+        sesija = (
+            cas.predmet,
+            cas.odeljenja,
+            cas.nastavnik,
+            cas.korepetitor,
+            cas.prostorija,
+        )
+        if cas.prostorija in dozvoljene or sesija in pogresne_sesije:
+            continue
+        pogresne_sesije.add(sesija)
+        if ima_drugi_u_sg:
+            izvestaj.greske.append(
+                f"{grupa}: {PRIMENJENA_GIMNASTIKA} у дану {dan} мора бити у "
+                "SG-2 или SG-3 јер одељење има други час у Спортској гимназији"
+            )
+        else:
+            izvestaj.greske.append(
+                f"{grupa}: {PRIMENJENA_GIMNASTIKA} у дану {dan} мора бити у KM-8 "
+                "јер одељење нема други час у Спортској гимназији"
+            )
 
 
 def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:
