@@ -189,6 +189,7 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Nedostupnost se beleži u `ulazi/nedostupnost.csv`
   (`наставник,дан,од блока,до блока,напомена`). Fajl sadrži potvrđene
   nedostupnosti; prazan fajl bi značio da su svi dostupni.
+- Granice opsega su uključive: „od X do Y“ uključuje i blok X i blok Y.
 - Časovi **nastavnika i korepetitora treba da budu povezani**, bez praznih
   blokova između angažovanja kad god je to moguće.
 - Optimalno dnevno angažovanje nastavnika i korepetitora je najviše četiri
