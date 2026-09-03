@@ -88,8 +88,17 @@ jobs:
 
           if [ -n "${hint_file}" ]; then
             echo "HINT_FILE=${hint_file}" >> "${GITHUB_ENV}"
+            hint_file_b="$(dirname "${hint_file}")/nedelja_b.csv"
+            if [ -f "${hint_file_b}" ]; then
+              echo "HINT_FILE_B=${hint_file_b}" >> "${GITHUB_ENV}"
+              echo "HINT: nađen je i ${hint_file_b} za nedelju B." | tee -a izlaz/solver.log
+            else
+              echo "HINT_FILE_B=" >> "${GITHUB_ENV}"
+              echo "HINT: artefakt nema nedelja_b.csv; naizmenična odeljenja u B nemaju hint." | tee -a izlaz/solver.log
+            fi
           else
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            echo "HINT_FILE_B=" >> "${GITHUB_ENV}"
             echo "HINT: nijedan pregledani uspešan run nema nedelja_a.csv; rešavač radi bez hinta." | tee -a izlaz/solver.log
           fi
       - name: Generisi obe nedelje
@@ -103,6 +112,10 @@ jobs:
             if python -m src.resavac --help 2>&1 | grep -q -- "--hintovi"; then
               hint_args=(--hintovi "${HINT_FILE}")
               echo "HINT: fajl je prosleđen kroz --hintovi i koristiće se u fazi 1." | tee -a izlaz/solver.log
+              if [ -n "${HINT_FILE_B:-}" ] && python -m src.resavac --help 2>&1 | grep -q -- "--hintovi-b"; then
+                hint_args+=(--hintovi-b "${HINT_FILE_B}")
+                echo "HINT: nedelja B je prosleđena kroz --hintovi-b." | tee -a izlaz/solver.log
+              fi
             else
               echo "HINT: trenutni src/resavac.py nema --hintovi; radi se bez hinta." | tee -a izlaz/solver.log
             fi
@@ -113,7 +126,7 @@ jobs:
             --ulazi ulazi \
             --izlaz izlaz \
             --vremensko-ogranicenje 1800 \
-            --broj-radnika 8 \
+            --broj-radnika 4 \
             --seme 1 \
             "${hint_args[@]}" \
             2>&1 | tee -a izlaz/solver.log
