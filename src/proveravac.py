@@ -258,6 +258,7 @@ def proveri(
     }
     pogodjeni: dict[int, tuple[Zahtev, ...]] = {}
     upozorene_sesije_narodne_igre: set[tuple[object, ...]] = set()
+    upozorene_sesije_km8: set[tuple[object, ...]] = set()
 
     for cas in casovi:
         zahtevi_casa = _proveri_red(
@@ -269,6 +270,7 @@ def proveri(
             jutarnja_smena,
             izvestaj,
             upozorene_sesije_narodne_igre,
+            upozorene_sesije_km8,
         )
         if zahtevi_casa:
             pogodjeni[cas.red] = zahtevi_casa
@@ -449,6 +451,7 @@ def _proveri_red(
     jutarnja_smena: Smena,
     izvestaj: Izvestaj,
     upozorene_sesije_narodne_igre: set[tuple[object, ...]],
+    upozorene_sesije_km8: set[tuple[object, ...]],
 ) -> tuple[Zahtev, ...]:
     if cas.dan not in DANI:
         izvestaj.greske.append(
@@ -532,9 +535,16 @@ def _proveri_red(
                 f"{cas.gde}: {PRIMENJENA_GIMNASTIKA} мора бити у KM-8, SG-2 или SG-3"
             )
         if cas.prostorija == "KM-8" and cas.predmet != PRIMENJENA_GIMNASTIKA:
-            izvestaj.greske.append(
-                f"{cas.gde}: KM-8 је искључиво за предмет {PRIMENJENA_GIMNASTIKA}"
+            sesija = (
+                cas.dan, cas.predmet, cas.odeljenja, cas.nastavnik,
+                cas.korepetitor, cas.prostorija,
             )
+            if sesija not in upozorene_sesije_km8:
+                upozorene_sesije_km8.add(sesija)
+                izvestaj.upozorenja.append(
+                    f"{cas.gde}: KM-8 треба чувати за предмет "
+                    f"{PRIMENJENA_GIMNASTIKA}; други предмет је дозвољен само у нужди"
+                )
         if cas.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
             if prostorija.lokacija != SPORTSKA_GIMNAZIJA:
                 izvestaj.greske.append(
