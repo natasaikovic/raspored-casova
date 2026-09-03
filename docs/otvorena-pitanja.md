@@ -19,6 +19,22 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 
 Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, pa nije spojeno.
 
+- **Teodora Martinovski — nerešiv konflikt fonda i dostupnosti.** Posle
+  preuzimanja Klasičnog baleta u odeljenjima `21` i `41`, Teodora ima ukupno
+  23 časa. Od toga je 21 čas u crvenoj smeni: `KB 21` (10), `KB 41` (10) i
+  `Istorijsko balske igre 41` (1). Crvena jutarnja smena od ponedeljka do petka
+  ima samo 20 blokova, a dva svakodnevna dvočasa `KB 21` i `KB 41` popunjavaju
+  svih 20. Zato za `Istorijsko balske igre 41` ne ostaje nijedan termin, dok je
+  Teodora subotom nedostupna u blokovima 1–14.
+
+  Potrebno je potvrditi jednu od mogućnosti, bez unapred izabranog rešenja:
+
+  - da Teodora bude dostupna subotom za najmanje jedan čas;
+  - da `Istorijsko balske igre 41` preuzme drugi nastavnik;
+  - da se deo fonda `KB 21` ili `KB 41` poveri drugom nastavniku;
+  - da se za Teodoru i odeljenje `41` odobri tačno definisan izuzetak od
+    jutarnje smene.
+
 - **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
   delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
   još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj

@@ -60,8 +60,10 @@ class TestStvarniUlaz:
         ulaz = ucitaj(OBS)
 
         nastavnici = ulaz.opterecenje_nastavnika()
-        assert next(iter(nastavnici.items())) == ("Бранислава Порчић", 22)
+        assert next(iter(nastavnici.items())) == ("Теодора Мартиновски", 23)
+        assert nastavnici["Бранислава Порчић"] == 22
         assert nastavnici["Александра Ула Ускоковић"] == 20
+        assert nastavnici["Теодора Мартиновски"] == 23
         assert ulaz.opterecenje_korepetitora()["Ђорђина Убовић"] == 14
         assert ulaz.opterecenje_odeljenja()["41"] == 16
 
@@ -79,7 +81,7 @@ class TestStvarniUlaz:
         assert zahtevi[0].nastavnik == "Смиљка Ђорђевић"
 
     def test_nastavnici_smenjujucih_odeljenja_popunjavaju_jutarnji_prozor(self):
-        """The six 20h teachers have no slack in a five-day morning week."""
+        """The five 20h teachers have no slack in a five-day morning week."""
         ulaz = ucitaj(OBS)
         opterecenje = ulaz.opterecenje_nastavnika()
         smene = ulaz.smene_nastavnika()
@@ -96,11 +98,10 @@ class TestStvarniUlaz:
             "Александра Ула Ускоковић",
             "Каролина Марјановић",
             "Милица Марковић",
-            "Драгана Величковић (Мартиновски)",
             "Ивана Лалић",
             "Теа Миловановић",
         }
-        # Субота is what creates the slack these six need.
+        # Субота is what creates the slack these five need.
         assert kapacitet_smene(Smena.CRVENA, broj_dana=6) == 24
 
 
