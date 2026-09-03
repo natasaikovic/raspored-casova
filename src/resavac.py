@@ -18,7 +18,7 @@ from typing import Iterable, Sequence
 from ortools.sat.python import cp_model
 
 from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
-from .izuzeci import dozvoljen_peti_cas_solfedja, izuzet_od_ogranicenja_pauza
+from .izuzeci import dozvoljen_peti_cas, izuzet_od_ogranicenja_pauza
 from .model import (
     BLOKOVI,
     DANI,
@@ -154,7 +154,7 @@ def _dozvoljeni_poceci(
     if zahtev.smena in (Smena.CRVENA, Smena.PLAVA):
         if zahtev.smena is jutarnja_smena:
             blokovi = PRVA_SMENA
-            if dozvoljen_peti_cas_solfedja(
+            if dozvoljen_peti_cas(
                 zahtev.predmet, zahtev.nastavnik, zahtev.odeljenja
             ):
                 blokovi = PRVA_SMENA + (5,)
