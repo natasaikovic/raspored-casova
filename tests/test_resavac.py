@@ -361,7 +361,7 @@ def test_nedelja_b_koristi_inverznu_smenu_a_srednja_ostaje_ista():
     assert b.izvestaj is not None and b.izvestaj.ispravan
 
 
-def test_promena_lokacije_ima_tacno_jedan_putni_blok():
+def test_putni_blok_nije_dozvoljen_izmedju_drugih_lokacija():
     teorija = zahtev("Теорија", "11", 1, "Ана")
     balet = zahtev("Класичан балет", "11", 2, "Мила", "Ива")
     u = ulaz([teorija, balet])
@@ -384,13 +384,7 @@ def test_promena_lokacije_ima_tacno_jedan_putni_blok():
         broj_radnika=1,
     )
 
-    assert rezultat.pronadjen
-    assert {cas.dan for cas in rezultat.casovi} == {"понедељак"}
-    blokovi = sorted({cas.blok for cas in rezultat.casovi})
-    assert [b - a for a, b in zip(blokovi, blokovi[1:])].count(2) == 1
-    assert max(blokovi) - min(blokovi) + 1 == len(blokovi) + 1
-    assert rezultat.izvestaj is not None
-    assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
+    assert not rezultat.pronadjen
 
 
 def test_dnevni_obrazac_zabranjuje_dve_praznine_na_istoj_lokaciji():

@@ -50,6 +50,7 @@ SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
+NARODNO_POZORISTE = "Народно позориште"
 KOREPETITOR_BR_1 = "корепетитор br.1"
 NEPOZNATI_KOREPETITOR = "?"
 
@@ -344,9 +345,10 @@ def _dodaj_dnevno_pravilo_lokacije(
 ) -> None:
     """Zabrani praznine kompaktnim dnevnim obrascem.
 
-    Dan je jedan neprekinut raspon nastavnih blokova ili dva takva dela sa
-    tacno jednim putnim blokom izmedju njih. Umesto posebnog intervala za
-    svaku mogucu lokaciju biramo samo lokaciju pre i posle putnog bloka.
+    Dan je jedan neprekinut raspon nastavnih blokova. Jedini izuzetak je
+    prazan blok 9 neposredno pre nastave u Narodnom pozoristu u bloku 10.
+    Umesto posebnog intervala za svaku mogucu lokaciju biramo samo lokaciju
+    pre i posle eventualnog putnog bloka.
     """
 
     sufiks = "_b" if nedelja_b else ""
@@ -401,10 +403,16 @@ def _dodaj_dnevno_pravilo_lokacije(
             neposredan = {pre_naziv, posle_naziv} == {
                 KNEZ_MILETINA, SPORTSKA_GIMNAZIJA
             }
-            putuje = int(bool(menja and not neposredan))
-            dozvoljeni_prelazi.append(
-                (pre_indeks, posle_indeks, menja, putuje)
+            put_ka_np = (
+                posle_naziv == NARODNO_POZORISTE
+                and pre_naziv in {KNEZ_MILETINA, SPORTSKA_GIMNAZIJA}
             )
+            if not menja:
+                dozvoljeni_prelazi.append((pre_indeks, posle_indeks, 0, 0))
+            elif neposredan:
+                dozvoljeni_prelazi.append((pre_indeks, posle_indeks, 1, 0))
+            elif put_ka_np:
+                dozvoljeni_prelazi.append((pre_indeks, posle_indeks, 1, 1))
     model.add_allowed_assignments(
         [lokacija_pre, lokacija_posle, menja_lokaciju, ima_putni_blok],
         dozvoljeni_prelazi,
@@ -423,6 +431,7 @@ def _dodaj_dnevno_pravilo_lokacije(
         1, len(BLOKOVI), f"{token}_d{indeks_dana}_granica_prelaza{sufiks}"
     )
     model.add(granica_prelaza == 1).only_enforce_if(~menja_lokaciju)
+    model.add(granica_prelaza == 9).only_enforce_if(ima_putni_blok)
 
     for jedinica in stavke:
         blok, po_danu, lokacije = _promenljive_za_nedelju(
@@ -471,8 +480,8 @@ def _dodaj_dnevno_pravilo_lokacije(
     model.add_max_equality(kraj, poslednji_kandidati)
     model.add(sum(posle_puta) >= menja_lokaciju)
     model.add(sum(prisutnosti) - sum(posle_puta) >= menja_lokaciju)
-    # Ukupan dnevni raspon sadrži samo nastavne blokove i, pri promeni
-    # lokacije, tačno jedan slobodan blok za put.
+    # Ukupan dnevni raspon sadrži samo nastavne blokove. Jedini dozvoljeni
+    # slobodan blok je blok 9, neposredno pre nastave u Narodnom pozorištu.
     model.add(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
