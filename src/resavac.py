@@ -46,7 +46,9 @@ DUSAN_ILIJIN = "Душан Илијин"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
+PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
+SALE_PRIMENJENE_GIMNASTIKE = frozenset({"KM-8", "SG-2", "SG-3"})
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -222,6 +224,10 @@ def _moguce_prostorije(
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
     if zahtev.predmet == INFORMATIKA:
         return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
+    if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
+        return tuple(
+            p for p in prostorije if p.oznaka in SALE_PRIMENJENE_GIMNASTIKE
+        )
     if zahtev.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
         return tuple(
             p
@@ -233,8 +239,14 @@ def _moguce_prostorije(
     if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
         "III1", "III2", "IV1", "IV2"
     }:
-        return tuple(p for p in prostorije if p.tip is tip)
-    return tuple(p for p in prostorije if p.tip is tip and p.oznaka != NP_SALA)
+        return tuple(
+            p for p in prostorije if p.tip is tip and p.oznaka != "KM-8"
+        )
+    return tuple(
+        p
+        for p in prostorije
+        if p.tip is tip and p.oznaka not in {NP_SALA, "KM-8"}
+    )
 
 
 def _kazna_sala_narodne_igre(zahtev: Zahtev, oznaka: str) -> int:
@@ -490,6 +502,72 @@ def _dodaj_dnevno_pravilo_lokacije(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
     kazne.append(300 * menja_lokaciju)
+
+
+def _dodaj_pravilo_sale_primenjene_gimnastike(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    token: str,
+    indeks_dana: int,
+    stavke: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Veži salu PG za druge, ne-PG časove odeljenja u SG tog dana."""
+
+    sufiks = "_b" if nedelja_b else ""
+    primenjene = [
+        jedinica
+        for jedinica in stavke
+        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet
+        == PRIMENJENA_GIMNASTIKA
+    ]
+    if not primenjene:
+        return
+
+    drugi_u_sg: list[cp_model.BoolVar] = []
+    for jedinica in stavke:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
+            continue
+        _, po_danu, lokacije = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
+        if koristi_sg is None:
+            continue
+        prisutan_u_sg = model.new_bool_var(
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_drugi_sg{sufiks}"
+        )
+        model.add_bool_and(
+            [po_danu[indeks_dana], koristi_sg]
+        ).only_enforce_if(prisutan_u_sg)
+        model.add_bool_or(
+            [~po_danu[indeks_dana], ~koristi_sg]
+        ).only_enforce_if(~prisutan_u_sg)
+        drugi_u_sg.append(prisutan_u_sg)
+
+    ima_drugi_u_sg = model.new_bool_var(
+        f"{token}_d{indeks_dana}_ima_drugi_sg{sufiks}"
+    )
+    if drugi_u_sg:
+        model.add_max_equality(ima_drugi_u_sg, drugi_u_sg)
+    else:
+        model.add(ima_drugi_u_sg == 0)
+
+    for jedinica in primenjene:
+        _, po_danu, lokacije = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
+        if koristi_sg is None:
+            model.add(ima_drugi_u_sg == 0).only_enforce_if(
+                po_danu[indeks_dana]
+            )
+        else:
+            model.add(koristi_sg == ima_drugi_u_sg).only_enforce_if(
+                po_danu[indeks_dana]
+            )
 
 
 def _dodaj_pravilo_aleksandra_boskovica(
@@ -762,6 +840,12 @@ def napravi_model(
     intervali_kapaciteta_b: dict[
         tuple[str, TipProstorije], list[cp_model.IntervalVar]
     ] = defaultdict(list)
+    intervali_skupova_kandidata: dict[
+        tuple[str, TipProstorije, frozenset[str]], list[cp_model.IntervalVar]
+    ] = defaultdict(list)
+    intervali_skupova_kandidata_b: dict[
+        tuple[str, TipProstorije, frozenset[str]], list[cp_model.IntervalVar]
+    ] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
     np_izbori: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
     ima_np_program = all(
@@ -919,18 +1003,24 @@ def napravi_model(
                 {} if sa_nedeljom_b else None
             )
             for broj_lokacije, lokacija in enumerate(lokacije_mogucih):
+                kandidati_na_lokaciji = frozenset(
+                    p.oznaka for p in moguce if p.lokacija == lokacija
+                )
+                kljuc_kandidata = (lokacija, tip, kandidati_na_lokaciji)
                 koristi = model.new_bool_var(
                     f"{prefiks}_lok_{broj_lokacije}"
                 )
                 lokacije[lokacija] = koristi
-                intervali_kapaciteta[(lokacija, tip)].append(
-                    model.new_optional_interval_var(
-                        start,
-                        jedinica.trajanje,
-                        kraj,
-                        koristi,
-                        f"{prefiks}_lok_{broj_lokacije}_i",
-                    )
+                interval_lokacije = model.new_optional_interval_var(
+                    start,
+                    jedinica.trajanje,
+                    kraj,
+                    koristi,
+                    f"{prefiks}_lok_{broj_lokacije}_i",
+                )
+                intervali_kapaciteta[(lokacija, tip)].append(interval_lokacije)
+                intervali_skupova_kandidata[kljuc_kandidata].append(
+                    interval_lokacije
                 )
                 if lokacija == "Народно позориште":
                     np_izbori[zahtev.odeljenja[0]].append(koristi)
@@ -954,11 +1044,12 @@ def napravi_model(
                         )
                     else:
                         koristi_b = koristi
-                        interval_b_lokacije = intervali_kapaciteta[
-                            (lokacija, tip)
-                        ][-1]
+                        interval_b_lokacije = interval_lokacije
                     lokacije_b[lokacija] = koristi_b
                     intervali_kapaciteta_b[(lokacija, tip)].append(
+                        interval_b_lokacije
+                    )
+                    intervali_skupova_kandidata_b[kljuc_kandidata].append(
                         interval_b_lokacije
                     )
             model.add_exactly_one(lokacije.values())
@@ -1114,6 +1205,10 @@ def napravi_model(
         kapaciteti[(prostorija.lokacija, prostorija.tip)] += 1
     for kljuc, intervali in intervali_kapaciteta.items():
         model.add_cumulative(intervali, [1] * len(intervali), kapaciteti[kljuc])
+    for (_, _, kandidati), intervali in intervali_skupova_kandidata.items():
+        model.add_cumulative(
+            intervali, [1] * len(intervali), len(kandidati)
+        )
     if sa_nedeljom_b:
         for osoba in sorted(set(intervali_nastavnika_b) | set(intervali_korepetitora_b)):
             model.add_no_overlap(
@@ -1125,6 +1220,10 @@ def napravi_model(
         for kljuc, intervali in intervali_kapaciteta_b.items():
             model.add_cumulative(
                 intervali, [1] * len(intervali), kapaciteti[kljuc]
+            )
+        for (_, _, kandidati), intervali in intervali_skupova_kandidata_b.items():
+            model.add_cumulative(
+                intervali, [1] * len(intervali), len(kandidati)
             )
 
     # Identične jedinice istog zahteva uređujemo hronološki da uklonimo
@@ -1236,6 +1335,14 @@ def napravi_model(
                 stavke,
                 promenljive,
             )
+            _dodaj_pravilo_sale_primenjene_gimnastike(
+                model,
+                ulaz,
+                token,
+                indeks_dana,
+                stavke,
+                promenljive,
+            )
 
             if odeljenje.skola is Skola.OSNOVNA:
                 ukupno = [
@@ -1274,6 +1381,15 @@ def napravi_model(
                 _dodaj_dnevno_pravilo_lokacije(
                     model,
                     kazne,
+                    token,
+                    indeks_dana,
+                    stavke,
+                    promenljive,
+                    nedelja_b=True,
+                )
+                _dodaj_pravilo_sale_primenjene_gimnastike(
+                    model,
+                    ulaz,
                     token,
                     indeks_dana,
                     stavke,

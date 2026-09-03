@@ -48,6 +48,11 @@ jobs:
         run: |
           mkdir -p izlaz .hint-artifact
           echo "HINT: tražim poslednji upotrebljiv artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
+          if [ "${GITHUB_REF_NAME}" = "sala8-primenjena-gimnastika" ]; then
+            echo "HINT: dijagnostičko merenje grane sale 8 radi bez hinta." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
           run_ids_file=".hint-artifact/run_ids.txt"
           if ! gh api \
             "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&status=success&per_page=100" \

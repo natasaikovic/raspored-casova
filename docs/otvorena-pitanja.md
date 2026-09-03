@@ -20,7 +20,7 @@ rešena pitanja ne treba zadržavati u ovom dokumentu.
 Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, pa nije spojeno.
 
 - **Prioriteti sala.** Kolona `приоритет` u `ulazi/prostorije.csv` je
-  delimično popunjena. Potvrđene su posebne namene sala 2, 4, 5 i 8, ali
+  delimično popunjena. Potvrđene su posebne namene sala 2, 4 i 5, ali
   još nedostaju namena sala 3 i 6, kao i prioriteti sala u Sportskoj
   gimnaziji. Treba proveriti i da li je jedan broj 1–3 dovoljan pored
   prioriteta koji zavisi od predmeta.
@@ -28,6 +28,12 @@ Sekvencijalno rešavanje A → B bez hinta nije našlo nedelju A za 1801.596 s, 
   Odgovor upisati u: `ulazi/prostorije.csv`.
 
 ## Pravila koja treba raščistiti
+
+- **Sala KM-8 i Primenjena gimnastika.** Da li je KM-8 zaista isključivo za
+  Primenjenu gimnastiku ili i dalje važi „samo u nuždi“ za druge predmete?
+
+  Odgovor upisati u: `ulazi/prostorije.csv` i
+  `docs/pravila-rasporeda.md`.
 
 - **Kadrovske rupe.** Dijani Jovanović (18 časova) sme da se doda. U
   referenci je nerazrešen par `Kristina / Ana` (2 časa petkom).
