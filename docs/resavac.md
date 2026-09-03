@@ -93,11 +93,20 @@ statusom 1 ako raspored nije pronađen ili ako proveravač pronađe makar jednu
 grešku. CSV ostaje sačuvan kao kandidat za sledeću iteraciju, ali se ne smatra
 konačnim rasporedom.
 
-Glavni model se rešava dvofazno: kratka prva faza bez funkcije cilja traži
+Glavni model se rešava dvofazno: prva faza bez funkcije cilja traži
 dopustivo rešenje, a druga faza uključuje postojeći cilj i dobija rešenje prve
-faze preko običnih CP-SAT `add_hint` poziva. Hint se ne učitava iz fajla ili
-artifacta. Ako optimizacija ne završi, dopustivo rešenje prve faze se ipak
-proverava i čuva kao CSV i HTML pregled.
+faze preko običnih CP-SAT `add_hint` poziva. Ako optimizacija ne završi,
+dopustivo rešenje prve faze se ipak proverava i čuva kao CSV i HTML pregled.
+
+Prethodni raspored (`--hintovi nedelja_a.csv --hintovi-b nedelja_b.csv`)
+skraćuje prvu fazu sa više minuta na oko sekund. Termini iz CSV-a se uparuju
+sa jedinicama modela i prvo se pokušavaju kao **fiksirane** vrednosti
+(`fix_variables_to_their_hinted_value`): ako je stari raspored i dalje
+dopustiv, to je odmah rešenje prve faze. Ako ulaz više ne dozvoljava stari
+raspored, CP-SAT to javi za deo sekunde i pretraga prve faze ide od nule.
+Obični, nefiksirani hintovi ovde ne pomažu: hint pokriva samo termine, a CP-SAT
+ne uspeva da ga dopuni do potpunog rešenja. Nedelja B je potrebna zato što
+naizmenična odeljenja osnovne škole imaju zasebne termine u B.
 
 Podrazumevano vremensko ograničenje je pet minuta za zajednički model obe
 nedelje. Može se promeniti:

@@ -72,6 +72,10 @@ OPSTI_PREDMETI = frozenset({
 # Razmak između dana sprečava interval dužine dva da pređe u sledeći dan.
 KORAK_DANA = 20
 
+# Fiksirani hint iz prethodnog rasporeda rešava se za oko sekund; ovo je
+# samo zaštita da neuspeo pokušaj ne pojede budžet prave pretrage.
+LIMIT_FIKSIRANOG_HINTA = 60.0
+
 
 @dataclass(frozen=True)
 class Jedinica:
@@ -731,6 +735,7 @@ def napravi_model(
     sa_nedeljom_b: bool = False,
     samo_lokacije: bool = False,
     sa_ciljem: bool = True,
+    hintovi_b: Sequence[Cas] = (),
 ) -> tuple[
     cp_model.CpModel,
     tuple[Jedinica, ...],
@@ -1329,10 +1334,16 @@ def napravi_model(
                     troskovi.append(3 * koristi)
     if sa_ciljem:
         model.minimize(sum(troskovi))
-    _dodaj_hintove(model, ulaz, jedinice_zahteva, promenljive, hintovi)
+    _dodaj_hintove(
+        model, ulaz, prostorije, jedinice_zahteva, promenljive, hintovi, hintovi_b
+    )
     return model, jedinice, promenljive
 
-def _kanonizuj_hintove(ulaz: Ulaz, hintovi: Sequence[Cas]) -> tuple[Cas, ...]:
+def _kanonizuj_hintove(
+    ulaz: Ulaz,
+    hintovi: Sequence[Cas],
+    prostorije: Sequence[Prostorija] = (),
+) -> tuple[Cas, ...]:
     """Poveži latinični prethodni raspored sa kanonskim vrednostima ulaza."""
 
     def mapa(vrednosti: Iterable[str]) -> dict[str, str]:
@@ -1343,6 +1354,7 @@ def _kanonizuj_hintove(ulaz: Ulaz, hintovi: Sequence[Cas]) -> tuple[Cas, ...]:
     odeljenja = mapa(ulaz.odeljenja)
     nastavnici = mapa(ulaz.nastavnici)
     korepetitori = mapa(ulaz.korepetitori)
+    oznake_prostorija = mapa(p.oznaka for p in prostorije)
 
     def nadji(vrednost: str, vrednosti: dict[str, str]) -> str:
         return vrednosti.get(kljuc_pisma(vrednost), vrednost)
@@ -1355,29 +1367,30 @@ def _kanonizuj_hintove(ulaz: Ulaz, hintovi: Sequence[Cas]) -> tuple[Cas, ...]:
             odeljenja=tuple(nadji(o, odeljenja) for o in c.odeljenja),
             nastavnik=nadji(c.nastavnik, nastavnici),
             korepetitor=(nadji(c.korepetitor, korepetitori) if c.korepetitor else None),
-            prostorija=c.prostorija,
+            prostorija=nadji(c.prostorija, oznake_prostorija),
             red=c.red,
         )
         for c in hintovi
     )
 
 
-def _dodaj_hintove(
-    model: cp_model.CpModel,
+def _upari_hintove(
     ulaz: Ulaz,
     jedinice_zahteva: dict[int, list[Jedinica]],
-    promenljive: dict[int, PromenljiveJedinice],
     hintovi: Sequence[Cas],
-) -> None:
-    """Dodaj nepotpune CP-SAT hintove iz prethodnog rasporeda."""
+) -> dict[int, tuple[int, int]]:
+    """Za svaku jedinicu nađi (dan, blok) u prethodnom rasporedu.
 
-    if not hintovi:
-        return
-    hintovi = _kanonizuj_hintove(ulaz, hintovi)
+    Redovi CSV-a se uparuju sa jedinicama istog zahteva tako da se poklope
+    trajanje i obrazac korepeticije. Jedinice bez para se preskaču, pa se
+    izmenjeni deo ulaza jednostavno ostavlja solveru.
+    """
+
     po_kljucu: dict[tuple[str, str, tuple[str, ...]], list[Cas]] = defaultdict(list)
     for cas in hintovi:
         po_kljucu[(cas.predmet, cas.nastavnik, tuple(cas.odeljenja))].append(cas)
 
+    rezultat: dict[int, tuple[int, int]] = {}
     for zahtev_indeks, jedinice in jedinice_zahteva.items():
         zahtev = ulaz.zahtevi[zahtev_indeks]
         redovi = po_kljucu.get(
@@ -1391,7 +1404,7 @@ def _dodaj_hintove(
             izabran: tuple[int, ...] | None = None
             for indeks in sorted(neiskorisceni):
                 prvi = redovi[indeks]
-                niz = []
+                niz: list[int] = []
                 for pomeraj in range(jedinica.trajanje):
                     pogodak = next(
                         (
@@ -1405,25 +1418,164 @@ def _dodaj_hintove(
                         niz = []
                         break
                     niz.append(pogodak)
-                if niz:
-                    izabran = tuple(niz)
-                    break
+                if not niz:
+                    continue
+                korepeticija = tuple(
+                    pomeraj for pomeraj, i in enumerate(niz) if redovi[i].korepetitor
+                )
+                if korepeticija != jedinica.korepeticija:
+                    continue
+                izabran = tuple(niz)
+                break
             if not izabran:
                 continue
             neiskorisceni.difference_update(izabran)
             cas = redovi[izabran[0]]
-            p = promenljive[jedinica.indeks]
-            dan = DANI.index(cas.dan)
-            start_hinta = dan * KORAK_DANA + cas.blok
-            domen = tuple(p.start.proto.domain)
-            if not any(
-                donja <= start_hinta <= gornja
-                for donja, gornja in zip(domen[::2], domen[1::2])
-            ):
+            rezultat[jedinica.indeks] = (DANI.index(cas.dan), cas.blok)
+    return rezultat
+
+
+def _u_domenu(promenljiva: cp_model.IntVar, vrednost: int) -> bool:
+    domen = tuple(promenljiva.proto.domain)
+    return any(
+        donja <= vrednost <= gornja
+        for donja, gornja in zip(domen[::2], domen[1::2])
+    )
+
+
+HintoviJedinica = dict[int, list[tuple[cp_model.IntVar, int]]]
+
+
+def _pripremi_hintove(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice_zahteva: dict[int, list[Jedinica]],
+    promenljive: dict[int, PromenljiveJedinice],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas] = (),
+) -> HintoviJedinica:
+    """Za svaku jedinicu pripremi parove (promenljiva, vrednost) iz hinta.
+
+    Hintuju se samo termini (dan, blok, start) obe nedelje; hint koji ne
+    upada u domen promenljive se izostavlja, pa jedinica ostaje slobodna.
+    """
+
+    rezultat: HintoviJedinica = defaultdict(list)
+    if not hintovi:
+        return {}
+    for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
+        if not casovi:
+            continue
+        upareno = _upari_hintove(
+            ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
+        )
+        for indeks, (dan, blok) in upareno.items():
+            p = promenljive[indeks]
+            if nedelja_b:
+                if p.start_b is None or p.start_b is p.start:
+                    continue
+                start_var, dan_var, blok_var = p.start_b, p.dan_b, p.blok_b
+            else:
+                start_var, dan_var, blok_var = p.start, p.dan, p.blok
+            assert dan_var is not None and blok_var is not None
+            start_hinta = dan * KORAK_DANA + blok
+            if not _u_domenu(start_var, start_hinta):
                 continue
-            model.add_hint(p.dan, dan)
-            model.add_hint(p.blok, cas.blok)
-            model.add_hint(p.start, start_hinta)
+            rezultat[indeks].extend(
+                [(dan_var, dan), (blok_var, blok), (start_var, start_hinta)]
+            )
+    return dict(rezultat)
+
+
+def _primeni_hintove(
+    model: cp_model.CpModel,
+    hintovi_jedinica: HintoviJedinica,
+    slobodne: Iterable[int] = (),
+) -> int:
+    """Postavi hintove u model, preskačući jedinice koje treba ostaviti slobodne."""
+
+    model.clear_hints()
+    slobodne = set(slobodne)
+    broj = 0
+    for indeks, parovi in hintovi_jedinica.items():
+        if indeks in slobodne:
+            continue
+        for promenljiva, vrednost in parovi:
+            model.add_hint(promenljiva, vrednost)
+        broj += 1
+    return broj
+
+
+def _dodaj_hintove(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice_zahteva: dict[int, list[Jedinica]],
+    promenljive: dict[int, PromenljiveJedinice],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas] = (),
+) -> HintoviJedinica:
+    """Dodaj CP-SAT hintove termina iz prethodnog rasporeda za obe nedelje.
+
+    Hintovi su nepotpuni (samo termini), pa ih CP-SAT sam po sebi slabo
+    prati; zato ih :func:`_resi_u_dve_faze` prvo pokušava kao fiksirane.
+    """
+
+    pripremljeni = _pripremi_hintove(
+        ulaz, prostorije, jedinice_zahteva, promenljive, hintovi, hintovi_b
+    )
+    if pripremljeni:
+        _primeni_hintove(model, pripremljeni)
+    return pripremljeni
+
+
+def _susedi_jedinica(
+    ulaz: Ulaz, jedinice: Sequence[Jedinica]
+) -> dict[int, set[int]]:
+    """Jedinice koje dele nastavnika, korepetitora ili odeljenje (polugrupu)."""
+
+    po_resursu: dict[object, set[int]] = defaultdict(set)
+    for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        po_resursu[("osoba", _resurs_korepetitora(zahtev.nastavnik))].add(jedinica.indeks)
+        if zahtev.korepetitor and jedinica.korepeticija:
+            po_resursu[("osoba", _resurs_korepetitora(zahtev.korepetitor))].add(
+                jedinica.indeks
+            )
+        for token in _tokeni_odeljenja(ulaz, zahtev.odeljenja):
+            po_resursu[("odeljenje", token)].add(jedinica.indeks)
+    susedi: dict[int, set[int]] = defaultdict(set)
+    for clanovi in po_resursu.values():
+        for indeks in clanovi:
+            susedi[indeks].update(clanovi)
+    return susedi
+
+
+def _nivoi_oslobadjanja(
+    ulaz: Ulaz,
+    jedinice: Sequence[Jedinica],
+    hintovi_jedinica: HintoviJedinica,
+    najvise_nivoa: int = 2,
+) -> list[set[int]]:
+    """Skupovi jedinica koje se redom oslobađaju kad fiksirani hint ne prolazi.
+
+    Nivo 0 oslobađa samo jedinice bez hinta (izmenjeni ili novi zahtevi,
+    termini van domena). Svaki sledeći nivo dodaje sve jedinice koje sa već
+    slobodnima dele nastavnika, korepetitora ili odeljenje.
+    """
+
+    slobodne = {j.indeks for j in jedinice if j.indeks not in hintovi_jedinica}
+    nivoi = [set(slobodne)]
+    susedi = _susedi_jedinica(ulaz, jedinice)
+    for _ in range(najvise_nivoa):
+        prosireno = set(slobodne)
+        for indeks in slobodne:
+            prosireno.update(susedi.get(indeks, ()))
+        if prosireno == slobodne:
+            break
+        slobodne = prosireno
+        nivoi.append(set(slobodne))
+    return nivoi
 
 
 def _status_tekst(status: cp_model.CpSolverStatus) -> str:
@@ -1643,6 +1795,64 @@ def _izvuci_casove(
     return tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
 
 
+def _resi_fiksiranim_hintom(
+    model: cp_model.CpModel,
+    solver: cp_model.CpSolver,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas],
+    vremensko_ogranicenje: float,
+    pocetak: float,
+) -> cp_model.CpSolverStatus:
+    """Pokušaj prethodni raspored kao fiksiran, sve labavije oko izmena."""
+
+    jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
+    for jedinica in jedinice:
+        jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
+    pripremljeni = _pripremi_hintove(
+        ulaz, prostorije, jedinice_zahteva, promenljive, hintovi, hintovi_b
+    )
+    if not pripremljeni:
+        print("FAZA 1 — hint se ne poklapa ni sa jednom jedinicom; tražim novo rešenje")
+        return cp_model.UNKNOWN
+
+    status = cp_model.UNKNOWN
+    solver.parameters.fix_variables_to_their_hinted_value = True
+    for nivo, slobodne in enumerate(
+        _nivoi_oslobadjanja(ulaz, jedinice, pripremljeni)
+    ):
+        fiksirane = _primeni_hintove(model, pripremljeni, slobodne)
+        if fiksirane == 0:
+            break
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        if preostalo <= 0:
+            break
+        solver.parameters.max_time_in_seconds = min(LIMIT_FIKSIRANOG_HINTA, preostalo)
+        korak = time.monotonic()
+        status = solver.solve(model)
+        trajanje = time.monotonic() - korak
+        opis = (
+            "prethodni raspored je i dalje dopustiv"
+            if nivo == 0
+            else f"prethodni raspored prolazi uz {len(slobodne)} oslobođenih jedinica"
+        )
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            print(f"FAZA 1 — {opis} (fiksirani hint, nivo {nivo}, {trajanje:.3f} s)")
+            break
+        print(
+            f"FAZA 1 — fiksirani hint nivo {nivo} ({fiksirane} jedinica) ne prolazi: "
+            f"{_status_tekst(status)}, {trajanje:.3f} s"
+        )
+    solver.parameters.fix_variables_to_their_hinted_value = False
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        _primeni_hintove(model, pripremljeni)
+        print("FAZA 1 — prethodni raspored nije upotrebljiv kao fiksirani hint; tražim novo rešenje")
+    return status
+
+
 def _resi_u_dve_faze(
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
@@ -1653,6 +1863,7 @@ def _resi_u_dve_faze(
     seme: int,
     hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
+    hintovi_b: Sequence[Cas] = (),
 ) -> tuple[
     cp_model.CpSolver | None,
     tuple[Jedinica, ...],
@@ -1672,12 +1883,28 @@ def _resi_u_dve_faze(
         samo_lokacije=True,
         sa_ciljem=False,
         hintovi=hintovi,
+        hintovi_b=hintovi_b,
     )
     solver_1 = cp_model.CpSolver()
-    solver_1.parameters.max_time_in_seconds = min(limit_prve, vremensko_ogranicenje)
     solver_1.parameters.num_search_workers = broj_radnika
     solver_1.parameters.random_seed = seme
-    status_1 = solver_1.solve(model_1)
+    status_1 = cp_model.UNKNOWN
+    if hintovi:
+        # Prethodni raspored je obično i dalje dopustiv. Nepotpun hint CP-SAT
+        # ne uspeva da dopuni pretragom, ali fiksiranje hintovanih termina
+        # daje rešenje za sekundu. Ako ulaz više ne dozvoljava stari
+        # raspored, odgovor je INFEASIBLE za deo sekunde; tada se redom
+        # oslobađaju jedinice oko izmene, pa tek onda ide obična pretraga.
+        status_1 = _resi_fiksiranim_hintom(
+            model_1, solver_1, ulaz, prostorije, jedinice_1, promenljive_1,
+            hintovi, hintovi_b, vremensko_ogranicenje, pocetak,
+        )
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        solver_1.parameters.max_time_in_seconds = max(
+            0.0, min(limit_prve, preostalo)
+        )
+        status_1 = solver_1.solve(model_1)
     trajanje_prve = time.monotonic() - pocetak
     if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         preostalo = vremensko_ogranicenje - trajanje_prve
@@ -1753,6 +1980,7 @@ def resi_nedelju(
     seme: int = 1,
     hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
+    hintovi_b: Sequence[Cas] = (),
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
@@ -1766,6 +1994,7 @@ def resi_nedelju(
         seme,
         hintovi,
         sa_nedeljom_b,
+        hintovi_b,
     )
     if solver is None:
         return Rezultat(status_tekst, (), None, None)
@@ -1799,6 +2028,7 @@ def resi_obe_nedelje(
     broj_radnika: int = 8,
     seme: int = 1,
     hintovi: Sequence[Cas] = (),
+    hintovi_b: Sequence[Cas] = (),
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
@@ -1812,6 +2042,7 @@ def resi_obe_nedelje(
         seme,
         hintovi,
         True,
+        hintovi_b,
     )
     if solver is None:
         prazan = Rezultat(status_tekst, (), None, None)
@@ -1897,19 +2128,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--seme", type=int, default=1)
     parser.add_argument(
         "--hintovi", type=Path, default=None,
-        help="CSV sa prethodnim rasporedom koji se koristi kao CP-SAT hint",
+        help="CSV prethodne nedelje A koji se koristi kao CP-SAT hint",
+    )
+    parser.add_argument(
+        "--hintovi-b", type=Path, default=None,
+        help="CSV prethodne nedelje B (naizmenična odeljenja imaju svoje termine)",
     )
     argumenti = parser.parse_args(argv)
 
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze(argumenti.ulazi)
     hintovi: tuple[Cas, ...] = ()
+    hintovi_b: tuple[Cas, ...] = ()
     if argumenti.hintovi is not None and argumenti.hintovi.exists():
         hintovi = ucitaj_resenje(argumenti.hintovi)
         print(f"HINT: učitan je {argumenti.hintovi}; hint ide u fazu 1.")
+        if argumenti.hintovi_b is not None and argumenti.hintovi_b.exists():
+            hintovi_b = ucitaj_resenje(argumenti.hintovi_b)
+            print(f"HINT: učitan je i {argumenti.hintovi_b} za nedelju B.")
+        else:
+            print("HINT: nedelja B nije prosleđena; naizmenična odeljenja u B nemaju hint.")
     elif argumenti.hintovi is not None:
         print(f"HINT: {argumenti.hintovi} ne postoji; rešavač radi bez hintova.")
     else:
-        print("HINT: nije prosleđen fajl; rešavač radi без hintova.")
+        print("HINT: nije prosleđen fajl; rešavač radi bez hintova.")
     rezultat_a, rezultat_b = resi_obe_nedelje(
         ulaz,
         prostorije,
@@ -1918,6 +2159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         broj_radnika=argumenti.broj_radnika,
         seme=argumenti.seme,
         hintovi=hintovi,
+        hintovi_b=hintovi_b,
     )
     izlazni_status = 0
     for ime, rezultat in (
