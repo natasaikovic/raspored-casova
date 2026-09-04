@@ -250,6 +250,36 @@ def test_bez_hinta_ne_gradi_niti_resava_pripremni_model(monkeypatch, capsys):
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
 
 
+def test_hladna_prva_faza_ima_jedan_solve_i_ceo_preostali_budzet(monkeypatch):
+    pravi_solver = cp_model.CpSolver
+    solve_pozivi = []
+
+    class TimeoutSolver:
+        def __init__(self):
+            self.parameters = pravi_solver().parameters
+
+        def solve(self, model):
+            solve_pozivi.append(
+                (model, self.parameters.max_time_in_seconds)
+            )
+            return cp_model.UNKNOWN
+
+    vremena = iter((0.0, 0.2, 0.3, 0.4, 1.0, 1800.0))
+    monkeypatch.setattr(resavac.time, "monotonic", lambda: next(vremena))
+    monkeypatch.setattr(resavac.cp_model, "CpSolver", TimeoutSolver)
+
+    solver, _, _, status = resavac._resi_u_dve_faze(
+        ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")]),
+        (SALA, UCIONICA), (), Smena.CRVENA,
+        vremensko_ogranicenje=1800, broj_radnika=1, seme=1,
+    )
+
+    assert solver is None
+    assert "faza 1" in status
+    assert len(solve_pozivi) == 1
+    assert solve_pozivi[0][1] == 1799.0
+
+
 def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):
     z = replace(
         zahtev("Класичан балет", "11", 2, "Мила", "Ива"),

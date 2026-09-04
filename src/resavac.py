@@ -2462,25 +2462,34 @@ def _resi_u_dve_faze(
     solver_1 = cp_model.CpSolver()
     solver_1.parameters.num_search_workers = broj_radnika
     solver_1.parameters.random_seed = seme
-    preostalo_do_rezerve = _preostali_limit_prve_faze(
-        rok_sa_rezervom,
-        vremensko_ogranicenje,
-        time.monotonic() - pocetak,
-    )
     status_1 = cp_model.UNKNOWN
-    if preostalo_do_rezerve > 0:
-        solver_1.parameters.max_time_in_seconds = preostalo_do_rezerve
-        status_1 = solver_1.solve(model_1)
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+    if not koristi_pripremu:
+        # Hladan start mora biti jedan neprekinut CP-SAT pokušaj. Prekid posle
+        # 1500 s i ponovno pokretanje sa rezervom gubi celo dotadašnje stablo
+        # pretrage baš kada strogi model mora da se pronađe ispočetka.
         preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
         if preostalo > 0:
-            print(
-                "FAZA 1 — nema konkretnu dodelu do rezerve; "
-                "koristim rezervu za validan raspored "
-                f"({preostalo:.1f} s preostalo)"
-            )
             solver_1.parameters.max_time_in_seconds = preostalo
             status_1 = solver_1.solve(model_1)
+    else:
+        preostalo_do_rezerve = _preostali_limit_prve_faze(
+            rok_sa_rezervom,
+            vremensko_ogranicenje,
+            time.monotonic() - pocetak,
+        )
+        if preostalo_do_rezerve > 0:
+            solver_1.parameters.max_time_in_seconds = preostalo_do_rezerve
+            status_1 = solver_1.solve(model_1)
+        if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo > 0:
+                print(
+                    "FAZA 1 — nema konkretnu dodelu do rezerve; "
+                    "koristim rezervu za validan raspored "
+                    f"({preostalo:.1f} s preostalo)"
+                )
+                solver_1.parameters.max_time_in_seconds = preostalo
+                status_1 = solver_1.solve(model_1)
     trajanje_prve = time.monotonic() - pocetak_prve
     print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
     if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
