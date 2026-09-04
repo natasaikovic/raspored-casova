@@ -1794,6 +1794,19 @@ def _status_tekst(status: cp_model.CpSolverStatus) -> str:
     }.get(status, str(status))
 
 
+def _preostali_limit_prve_faze(
+    limit_prve: float,
+    vremensko_ogranicenje: float,
+    proteklo: float,
+) -> float:
+    """Vrati neiskorišćeni deo budžeta prve i ukupne faze."""
+
+    return max(
+        0.0,
+        min(limit_prve - proteklo, vremensko_ogranicenje - proteklo),
+    )
+
+
 def _dodeli_prostorije(
     solver_termina: cp_model.CpSolver,
     ulaz: Ulaz,
@@ -2115,9 +2128,11 @@ def _resi_u_dve_faze(
             hintovi, hintovi_b, vremensko_ogranicenje, pocetak,
         )
     if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
-        solver_1.parameters.max_time_in_seconds = max(
-            0.0, min(limit_prve, preostalo)
+        proteklo = time.monotonic() - pocetak
+        solver_1.parameters.max_time_in_seconds = _preostali_limit_prve_faze(
+            limit_prve,
+            vremensko_ogranicenje,
+            proteklo,
         )
         status_1 = solver_1.solve(model_1)
     trajanje_prve = time.monotonic() - pocetak
