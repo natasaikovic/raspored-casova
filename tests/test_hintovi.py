@@ -1,4 +1,7 @@
 from dataclasses import replace
+from pathlib import Path
+
+import pytest
 
 from ortools.sat.python import cp_model
 
@@ -16,6 +19,8 @@ from src.resavac import (
     _analiziraj_prostorije_hintova,
     _prenesi_resenje_kao_hint,
     _upari_hintove,
+    _vrednosti_hladnog_mastera,
+    _zabrani_i_hintuj_master_dodelu,
     napravi_model,
     resi_obe_nedelje,
 )
@@ -302,6 +307,66 @@ def test_hladni_tok_dodeljuje_a_i_b_sobe_sa_preostalim_budzetom(monkeypatch):
     assert rezultat_a.cilj is None and rezultat_b.cilj is None
 
 
+def test_hladni_tok_posle_prvog_infeasible_sobe_uspeva_na_drugom(monkeypatch):
+    pravi_poziv = resavac._dodeli_prostorije_obe
+    broj_poziva = 0
+
+    def prvi_neuspeva(*args, **kwargs):
+        nonlocal broj_poziva
+        broj_poziva += 1
+        if broj_poziva == 1:
+            kwargs["status_out"].append(cp_model.INFEASIBLE)
+            return None
+        return pravi_poziv(*args, **kwargs)
+
+    monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", prvi_neuspeva)
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert broj_poziva == 2
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
+def test_no_good_menja_kompletnu_master_dodelu():
+    u = _ulaz_za_dve_nedelje()
+    model, jedinice, promenljive = napravi_model(
+        u, (SALA, UCIONICA), (), Smena.CRVENA,
+        sa_nedeljom_b=True, samo_lokacije=True, sa_ciljem=False,
+    )
+    prvi = cp_model.CpSolver()
+    prvi.parameters.num_search_workers = 1
+    assert prvi.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    varijable, vrednosti = _vrednosti_hladnog_mastera(
+        prvi, jedinice, promenljive
+    )
+
+    _zabrani_i_hintuj_master_dodelu(model, varijable, vrednosti)
+    drugi = cp_model.CpSolver()
+    drugi.parameters.num_search_workers = 1
+    assert drugi.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    _, druge_vrednosti = _vrednosti_hladnog_mastera(
+        drugi, jedinice, promenljive
+    )
+
+    assert druge_vrednosti != vrednosti
+    assert len(model.proto.solution_hint.vars) == len(set(model.proto.solution_hint.vars))
+
+
+def test_unknown_dodela_soba_ne_pokrece_novi_master(monkeypatch):
+    broj_poziva = 0
+
+    def timeout_soba(*args, **kwargs):
+        nonlocal broj_poziva
+        broj_poziva += 1
+        kwargs["status_out"].append(cp_model.UNKNOWN)
+        return None
+
+    monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", timeout_soba)
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert broj_poziva == 1
+    assert not rezultat_a.pronadjen and not rezultat_b.pronadjen
+
+
 def test_main_ne_izvozi_delimican_par_nedelja(monkeypatch, tmp_path):
     u = _ulaz_za_dve_nedelje()
     izvestaj = resavac.proveri(u, (SALA, UCIONICA), (), (), Smena.CRVENA)
@@ -317,6 +382,73 @@ def test_main_ne_izvozi_delimican_par_nedelja(monkeypatch, tmp_path):
     assert not (izlaz / "nedelja_a.csv").exists()
     assert not (izlaz / "nedelja_b.csv").exists()
     assert not (izlaz / "raspored.html").exists()
+
+
+def test_atomski_izvoz_ne_ostavlja_parcijalne_nove_fajlove(monkeypatch, tmp_path):
+    u = _ulaz_za_dve_nedelje()
+    a, b = _resi(u)
+    monkeypatch.setattr(
+        resavac, "ucitaj_standardne_ulaze", lambda _putanja: (u, (SALA, UCIONICA), ())
+    )
+    monkeypatch.setattr(resavac, "resi_obe_nedelje", lambda *_args, **_kwargs: (a, b))
+    pravi_sacuvaj = resavac.sacuvaj_csv
+    broj_poziva = 0
+
+    def prekini_drugi_csv(putanja, casovi):
+        nonlocal broj_poziva
+        broj_poziva += 1
+        if broj_poziva == 2:
+            raise RuntimeError("simuliran prekid")
+        pravi_sacuvaj(putanja, casovi)
+
+    monkeypatch.setattr(resavac, "sacuvaj_csv", prekini_drugi_csv)
+    izlaz = tmp_path / "izlaz"
+    with pytest.raises(RuntimeError, match="simuliran prekid"):
+        resavac.main(["--izlaz", str(izlaz)])
+
+    assert not (izlaz / "nedelja_a.csv").exists()
+    assert not (izlaz / "nedelja_b.csv").exists()
+    assert not (izlaz / "raspored.html").exists()
+    assert not list(izlaz.glob(".raspored-*"))
+
+
+def test_atomski_replace_na_gresci_vraca_prethodni_skup(monkeypatch, tmp_path):
+    u = _ulaz_za_dve_nedelje()
+    a, b = _resi(u)
+    izlaz = tmp_path / "izlaz"
+    izlaz.mkdir()
+    prethodni = {
+        "nedelja_a.csv": "staro A",
+        "nedelja_b.csv": "staro B",
+        "raspored.html": "stari HTML",
+    }
+    for ime, sadrzaj in prethodni.items():
+        (izlaz / ime).write_text(sadrzaj, encoding="utf-8")
+    pravi_replace = resavac.os.replace
+    prekid_iskoriscen = False
+
+    def prekini_postavljanje_b(izvor, cilj):
+        nonlocal prekid_iskoriscen
+        izvor, cilj = Path(izvor), Path(cilj)
+        if (
+            not prekid_iskoriscen
+            and izvor.name == "nedelja_b.csv"
+            and cilj.parent == izlaz
+            and izvor.parent.name != "prethodni"
+        ):
+            prekid_iskoriscen = True
+            raise OSError("simuliran prekid replace")
+        return pravi_replace(izvor, cilj)
+
+    monkeypatch.setattr(resavac.os, "replace", prekini_postavljanje_b)
+    with pytest.raises(OSError, match="simuliran prekid replace"):
+        resavac._sacuvaj_izlaze_atomski(izlaz, a.casovi, b.casovi)
+
+    assert {
+        ime: (izlaz / ime).read_text(encoding="utf-8")
+        for ime in prethodni
+    } == prethodni
+    assert not list(izlaz.glob(".raspored-*"))
 
 
 def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):

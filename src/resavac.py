@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import tempfile
 import time
 from collections import defaultdict
 from dataclasses import dataclass, replace
@@ -98,6 +100,8 @@ PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA = 20
 # cuva se za mali egzaktni model koji zatim zajedno bira konkretne sobe u A i
 # B nedelji. Za kratke testne pozive koristi se polovina dostupnog budzeta.
 REZERVA_ZA_DODELU_PROSTORIJA = 120.0
+NAJVISE_HLADNIH_MASTER_POKUSAJA = 4
+MINIMALNI_BUDZET_HLADNOG_POKUSAJA = 5.0
 
 
 @dataclass(frozen=True)
@@ -1867,6 +1871,7 @@ def _dodeli_prostorije(
     fiksne: dict[int, str] | None = None,
     vremensko_ogranicenje: float = 60,
     broj_radnika: int = 8,
+    status_out: list[cp_model.CpSolverStatus] | None = None,
 ) -> dict[int, str] | None:
     """Dodeli konkretne prostorije pošto su termini i lokacije već poznati."""
 
@@ -1903,6 +1908,8 @@ def _dodeli_prostorije(
         if jedinica.indeks in fiksne:
             moguce = [p for p in moguce if p.oznaka == fiksne[jedinica.indeks]]
         if not moguce:
+            if status_out is not None:
+                status_out.append(cp_model.INFEASIBLE)
             return None
         izbori[jedinica.indeks] = {}
         for prostorija in moguce:
@@ -1935,6 +1942,8 @@ def _dodeli_prostorije(
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
     status = solver.solve(model)
+    if status_out is not None:
+        status_out.append(status)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None
     return {
@@ -1955,6 +1964,7 @@ def _dodeli_prostorije_obe(
     promenljive: dict[int, PromenljiveJedinice],
     vremensko_ogranicenje: float = 60,
     broj_radnika: int = 8,
+    status_out: list[cp_model.CpSolverStatus] | None = None,
 ) -> tuple[dict[int, str], dict[int, str]] | None:
     """Zajedno dodeli prostorije za A i B uz iste sobe stalnih smena."""
 
@@ -1994,6 +2004,8 @@ def _dodeli_prostorije_obe(
             )
         ]
         if not moguce_a or not moguce_b:
+            if status_out is not None:
+                status_out.append(cp_model.INFEASIBLE)
             return None
         izbori_a[jedinica.indeks] = {}
         izbori_b[jedinica.indeks] = {}
@@ -2048,6 +2060,8 @@ def _dodeli_prostorije_obe(
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
     status = solver.solve(model)
+    if status_out is not None:
+        status_out.append(status)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None
 
@@ -2058,6 +2072,48 @@ def _dodeli_prostorije_obe(
         }
 
     return izvuci(izbori_a), izvuci(izbori_b)
+
+
+def _vrednosti_hladnog_mastera(
+    solver: cp_model.CpSolver,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+) -> tuple[list[cp_model.IntVar], list[int]]:
+    """Izvuci jednu kompletnu, deduplikovanu dodelu termina i lokacija A/B."""
+
+    varijable: list[cp_model.IntVar] = []
+    vrednosti: list[int] = []
+    vidjene: set[int] = set()
+
+    def dodaj(varijabla: cp_model.IntVar | None) -> None:
+        if varijabla is None or varijabla.index in vidjene:
+            return
+        vidjene.add(varijabla.index)
+        varijable.append(varijabla)
+        vrednosti.append(solver.value(varijabla))
+
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        dodaj(p.start)
+        for koristi in p.lokacije.values():
+            dodaj(koristi)
+        dodaj(p.start_b)
+        for koristi in (p.lokacije_b or {}).values():
+            dodaj(koristi)
+    return varijable, vrednosti
+
+
+def _zabrani_i_hintuj_master_dodelu(
+    model: cp_model.CpModel,
+    varijable: Sequence[cp_model.IntVar],
+    vrednosti: Sequence[int],
+) -> None:
+    """Zabrani baš ovu kombinaciju, ali je iskoristi kao smernicu za susednu."""
+
+    model.add_forbidden_assignments(varijable, [vrednosti])
+    model.clear_hints()
+    for varijabla, vrednost in zip(varijable, vrednosti, strict=True):
+        model.add_hint(varijabla, vrednost)
 
 
 def _izvuci_casove(
@@ -2430,64 +2486,104 @@ def _resi_u_dve_faze(
         if greska_modela:
             raise RuntimeError(f"Неисправан модел локација: {greska_modela}")
 
-        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
-        rezerva = min(REZERVA_ZA_DODELU_PROSTORIJA, max(0.0, preostalo / 2))
-        limit_lokacija = max(0.0, preostalo - rezerva)
-        solver_lokacija = cp_model.CpSolver()
-        solver_lokacija.parameters.num_search_workers = broj_radnika
-        solver_lokacija.parameters.random_seed = seme
-        status_lokacija = cp_model.UNKNOWN
-        pocetak_lokacija = time.monotonic()
-        if limit_lokacija > 0:
+        minimalni_budzet = min(
+            MINIMALNI_BUDZET_HLADNOG_POKUSAJA,
+            max(0.1, vremensko_ogranicenje / 10),
+        )
+        for pokusaj in range(1, NAJVISE_HLADNIH_MASTER_POKUSAJA + 1):
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            rezerva = min(
+                REZERVA_ZA_DODELU_PROSTORIJA, max(0.0, preostalo / 2)
+            )
+            limit_lokacija = max(0.0, preostalo - rezerva)
+            if limit_lokacija < minimalni_budzet:
+                print(
+                    f"HLADNI POKUŠAJ {pokusaj} — nema dovoljno vremena za "
+                    "novi master i sobe"
+                )
+                break
+
+            solver_lokacija = cp_model.CpSolver()
+            solver_lokacija.parameters.num_search_workers = broj_radnika
+            solver_lokacija.parameters.random_seed = seme
             solver_lokacija.parameters.max_time_in_seconds = limit_lokacija
+            pocetak_lokacija = time.monotonic()
             status_lokacija = solver_lokacija.solve(model_lokacija)
-        trajanje_lokacija = time.monotonic() - pocetak_lokacija
-        print(f"FAZA 1 — lokacijski master: {trajanje_lokacija:.3f} s")
-        if status_lokacija not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            status = _status_tekst(status_lokacija)
-            print(f"FAZA 1 — neuspeh/timeout: {status}")
-            print("FAZA 2 — dodela konkretnih prostorija: 0.000 s")
-            return (
-                None, jedinice_lokacija, promenljive_lokacija,
-                f"neuspeh/timeout (lokacijski master): {status}", None, None,
+            trajanje_lokacija = time.monotonic() - pocetak_lokacija
+            print(
+                f"HLADNI POKUŠAJ {pokusaj} — master "
+                f"{_status_tekst(status_lokacija)}, {trajanje_lokacija:.3f} s"
+            )
+            if status_lokacija not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                status = _status_tekst(status_lokacija)
+                print(f"FAZA 1 — neuspeh/timeout: {status}")
+                print("FAZA 2 — dodela konkretnih prostorija: 0.000 s")
+                return (
+                    None, jedinice_lokacija, promenljive_lokacija,
+                    f"neuspeh/timeout (lokacijski master): {status}", None, None,
+                )
+
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo <= 0:
+                break
+            limit_soba = min(REZERVA_ZA_DODELU_PROSTORIJA, preostalo)
+            pocetak_soba = time.monotonic()
+            statusi_soba: list[cp_model.CpSolverStatus] = []
+            if sa_nedeljom_b:
+                dodela = _dodeli_prostorije_obe(
+                    solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                    promenljive_lokacija, vremensko_ogranicenje=limit_soba,
+                    broj_radnika=broj_radnika, status_out=statusi_soba,
+                )
+            else:
+                dodela_a = _dodeli_prostorije(
+                    solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                    promenljive_lokacija, vremensko_ogranicenje=limit_soba,
+                    broj_radnika=broj_radnika, status_out=statusi_soba,
+                )
+                dodela = (dodela_a, None) if dodela_a is not None else None
+            trajanje_soba = time.monotonic() - pocetak_soba
+            status_soba = (
+                statusi_soba[-1] if statusi_soba
+                else cp_model.FEASIBLE if dodela is not None
+                else cp_model.INFEASIBLE
+            )
+            print(
+                f"HLADNI POKUŠAJ {pokusaj} — sobe "
+                f"{_status_tekst(status_soba)}, {trajanje_soba:.3f} s"
+            )
+            if dodela is not None:
+                dodela_a, dodela_b = dodela
+                print("FAZA 2 — konkretne prostorije dodeljene")
+                return (
+                    solver_lokacija, jedinice_lokacija, promenljive_lokacija,
+                    "dopustivo (hladni lokacijski master + faza 2 dodela soba); "
+                    "objective n/d",
+                    dodela_a, dodela_b,
+                )
+            if status_soba != cp_model.INFEASIBLE:
+                print("FAZA 2 — pretraga soba nije dokazala neizvodljivost; prekidam")
+                break
+            if pokusaj == NAJVISE_HLADNIH_MASTER_POKUSAJA:
+                break
+
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo < 2 * minimalni_budzet:
+                print("FAZA 2 — nema dovoljno vremena za sledeći master i sobe")
+                break
+            varijabile, vrednosti = _vrednosti_hladnog_mastera(
+                solver_lokacija, jedinice_lokacija, promenljive_lokacija
+            )
+            _zabrani_i_hintuj_master_dodelu(model_lokacija, varijabile, vrednosti)
+            print(
+                f"HLADNI POKUŠAJ {pokusaj} — zabranjena je neizvodljiva "
+                "kombinacija termina i lokacija; pokušavam susedno rešenje"
             )
 
-        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
-        if preostalo <= 0:
-            print("FAZA 2 — nema vremena za dodelu konkretnih prostorija")
-            return (
-                None, jedinice_lokacija, promenljive_lokacija,
-                "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
-            )
-        pocetak_soba = time.monotonic()
-        if sa_nedeljom_b:
-            dodela = _dodeli_prostorije_obe(
-                solver_lokacija, ulaz, prostorije, jedinice_lokacija,
-                promenljive_lokacija, vremensko_ogranicenje=preostalo,
-                broj_radnika=broj_radnika,
-            )
-        else:
-            dodela_a = _dodeli_prostorije(
-                solver_lokacija, ulaz, prostorije, jedinice_lokacija,
-                promenljive_lokacija, vremensko_ogranicenje=preostalo,
-                broj_radnika=broj_radnika,
-            )
-            dodela = (dodela_a, None) if dodela_a is not None else None
-        trajanje_soba = time.monotonic() - pocetak_soba
-        print(f"FAZA 2 — dodela konkretnih prostorija: {trajanje_soba:.3f} s")
-        if dodela is None:
-            print("FAZA 2 — konkretne prostorije nisu dodeljene")
-            return (
-                None, jedinice_lokacija, promenljive_lokacija,
-                "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
-            )
-        dodela_a, dodela_b = dodela
-        print("FAZA 2 — konkretne prostorije dodeljene")
+        print("FAZA 2 — konkretne prostorije nisu dodeljene")
         return (
-            solver_lokacija, jedinice_lokacija, promenljive_lokacija,
-            "dopustivo (hladni lokacijski master + faza 2 dodela soba); "
-            "objective n/d",
-            dodela_a, dodela_b,
+            None, jedinice_lokacija, promenljive_lokacija,
+            "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
         )
     # Svi modeli koji će se rešavati grade se pre prvog solve poziva, tako da
     # i vreme konstrukcije ulazi u isti ukupni zidni budžet.
@@ -2801,6 +2897,52 @@ def sacuvaj_csv(putanja: str | Path, casovi: Sequence[Cas]) -> None:
             )
 
 
+def _sacuvaj_izlaze_atomski(
+    direktorijum: Path,
+    casovi_a: Sequence[Cas],
+    casovi_b: Sequence[Cas],
+) -> None:
+    """Pripremi ceo A/B/HTML skup, pa ga zameni uz rollback pri grešci."""
+
+    direktorijum.mkdir(parents=True, exist_ok=True)
+    imena = ("nedelja_a.csv", "nedelja_b.csv", "raspored.html")
+    with tempfile.TemporaryDirectory(
+        prefix=".raspored-", dir=direktorijum
+    ) as privremeni:
+        priprema = Path(privremeni)
+        sacuvaj_csv(priprema / imena[0], casovi_a)
+        sacuvaj_csv(priprema / imena[1], casovi_b)
+        napravi_html(
+            priprema / imena[0], priprema / imena[1], priprema / imena[2]
+        )
+        if not all((priprema / ime).is_file() for ime in imena):
+            raise RuntimeError("Није припремљен цео скуп излазних датотека")
+
+        rezervne = priprema / "prethodni"
+        rezervne.mkdir()
+        sklonjeni: list[str] = []
+        postavljeni: list[str] = []
+        try:
+            for ime in imena:
+                cilj = direktorijum / ime
+                if cilj.exists():
+                    os.replace(cilj, rezervne / ime)
+                    sklonjeni.append(ime)
+            for ime in imena:
+                os.replace(priprema / ime, direktorijum / ime)
+                postavljeni.append(ime)
+        except BaseException:
+            for ime in postavljeni:
+                cilj = direktorijum / ime
+                if cilj.exists():
+                    cilj.unlink()
+            for ime in sklonjeni:
+                rezerva = rezervne / ime
+                if rezerva.exists():
+                    os.replace(rezerva, direktorijum / ime)
+            raise
+
+
 def ucitaj_standardne_ulaze(
     direktorijum: str | Path,
 ) -> tuple[Ulaz, tuple[Prostorija, ...], tuple[Nedostupnost, ...]]:
@@ -2902,12 +3044,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         and rezultat_b.izvestaj.ispravan
     )
     if oba_validna:
-        sacuvaj_csv(argumenti.izlaz / "nedelja_a.csv", rezultat_a.casovi)
-        sacuvaj_csv(argumenti.izlaz / "nedelja_b.csv", rezultat_b.casovi)
-        napravi_html(
-            argumenti.izlaz / "nedelja_a.csv",
-            argumenti.izlaz / "nedelja_b.csv",
-            argumenti.izlaz / "raspored.html",
+        _sacuvaj_izlaze_atomski(
+            argumenti.izlaz, rezultat_a.casovi, rezultat_b.casovi
         )
         print(f"HTML: {argumenti.izlaz / 'raspored.html'}")
     return izlazni_status

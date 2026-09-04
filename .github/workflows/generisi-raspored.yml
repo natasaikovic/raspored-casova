@@ -7,6 +7,12 @@ on:
       - "src/*.py"
       - ".github/workflows/generisi-raspored.yml"
   workflow_dispatch:
+    inputs:
+      prisilni_hladni_start:
+        description: "Pokreni bez artefakta prethodnog rasporeda"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: generisi-raspored-${{ github.ref }}
@@ -45,23 +51,51 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          FORCE_COLD: ${{ github.event_name == 'workflow_dispatch' && inputs.prisilni_hladni_start }}
         run: |
           mkdir -p izlaz .hint-artifact
-          echo "HINT: tražim poslednji upotrebljiv artefakt raspored-2026-27 sa grane main." | tee izlaz/solver.log
-          run_ids_file=".hint-artifact/run_ids.txt"
-          if ! gh api \
-            "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&status=success&per_page=100" \
-            --jq '.workflow_runs[] | select(.path == ".github/workflows/generisi-raspored.yml") | .id' \
-            > "${run_ids_file}"; then
-            echo "HINT: lista uspešnih pokretanja nije dostupna; rešavač radi bez hinta." | tee -a izlaz/solver.log
+          if [ "${FORCE_COLD}" = "true" ]; then
+            echo "HINT: ručno je izabran hladni start; preskačem sve artefakte." | tee izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            echo "HINT_FILE_B=" >> "${GITHUB_ENV}"
             exit 0
           fi
+
+          echo "HINT: prvo tražim uspešan artefakt sa grane ${GITHUB_HEAD_BRANCH}, zatim sa main." | tee izlaz/solver.log
+          run_ids_file=".hint-artifact/run_ids.txt"
+          : > "${run_ids_file}"
+
+          preuzmi_runove_grane() {
+            lokalna_grana="$1"
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/generisi-raspored.yml/runs" \
+              -f branch="${lokalna_grana}" \
+              -f status=success \
+              -f per_page=100 \
+              --jq ".workflow_runs[] | select(.id != ${CURRENT_RUN_ID}) | .id"
+          }
+
+          if ! preuzmi_runove_grane "${GITHUB_HEAD_BRANCH}" >> "${run_ids_file}"; then
+            echo "HINT: lista uspešnih pokretanja nije dostupna; rešavač radi bez hinta." | tee -a izlaz/solver.log
+            echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            echo "HINT_FILE_B=" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          if [ "${GITHUB_HEAD_BRANCH}" != "main" ]; then
+            if ! preuzmi_runove_grane main >> "${run_ids_file}"; then
+              echo "HINT: fallback lista sa main grane nije dostupna; nastavljam sa kandidatima iste grane." | tee -a izlaz/solver.log
+            fi
+          fi
+          awk '!vidjen[$0]++' "${run_ids_file}" > "${run_ids_file}.jedinstveni"
+          mv "${run_ids_file}.jedinstveni" "${run_ids_file}"
           mapfile -t run_ids < "${run_ids_file}"
 
           if [ "${#run_ids[@]}" -eq 0 ]; then
             echo "HINT: uspešan artefakt nije pronađen; rešavač radi bez hinta." | tee -a izlaz/solver.log
             echo "HINT_FILE=" >> "${GITHUB_ENV}"
+            echo "HINT_FILE_B=" >> "${GITHUB_ENV}"
             exit 0
           fi
 
