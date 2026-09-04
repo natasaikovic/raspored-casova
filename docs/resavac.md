@@ -100,6 +100,17 @@ dopustivo rešenje prve faze se ipak proverava i čuva kao CSV i HTML pregled.
 Tokom druge faze log beleži vreme, vrednost cilja i najbolju granicu svakog
 novog incumbenta, a na kraju i relativni gap, broj grana i broj konflikata.
 
+Posle isteka zajedničkog vremenskog budžeta faza 1 i 2, zaštita kvaliteta
+materijalizuje kandidate sa konkretnim prostorijama i oba nezavisno proverava.
+Kompletan i ispravan prethodni raspored A+B, zajedno sa svojim prostorijama,
+služi kao besplatna regresiona granica. Ako takvog hinta nema, kandidat prve
+faze dobija zasebnu proveru dodele prostorija sa starim limitom od 60 sekundi.
+Prethodni A+B raspored mora proći i međunedeljna pravila zajedničkog modela:
+časovi stalnih smena i srednje škole moraju imati isti termin i prostoriju.
+Među kandidatima bez grešaka bira se najmanji zbir upozorenja obe nedelje, a pri
+istom zbiru prednost ima faza 2. Ova dodatna evaluacija radi nakon solvera i
+ne umanjuje niti menja njegov zadati vremenski budžet.
+
 Prethodni raspored (`--hintovi nedelja_a.csv --hintovi-b nedelja_b.csv`)
 skraćuje prvu fazu sa više minuta na oko sekund. Termini iz CSV-a se uparuju
 sa jedinicama modela i prvo se pokušavaju kao **fiksirane** vrednosti
