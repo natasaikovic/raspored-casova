@@ -154,8 +154,12 @@ popunjena.
 
 ### Narodno pozorište
 
-- jedna sala;
-- može se koristiti samo od 16:00 do 17:40;
+- dve različite sale;
+- jedna sala dostupna je svakog dana osim subote od 16:00;
+- druga sala dostupna je samo sredom od 16:00;
+- oznaka `NP-сала` iz postojećeg CSV-a još nije jednoznačno povezana sa
+  oznakama `NP-1` i `NP-2`, pa se oznake u `ulazi/prostorije.csv` ne menjaju
+  dok se to ne razjasni;
 - koristi se samo za predmet **Repertoar klasičnog baleta**;
 - `IV1` ima u toj sali **dva dvočasa nedeljno**;
 - `IV2` ima u toj sali **dva dvočasa nedeljno**;
