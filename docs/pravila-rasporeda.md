@@ -20,6 +20,9 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
 
 ### Dvočasi
 
+- Svaki dvočas mora biti održan spojeno. Ako učenici imaju dva časa istog
+  predmeta istog dana, ta dva časa moraju biti uzastopna. Ovo pravilo važi i
+  za srednju i za osnovnu školu.
 - **Glavni predmet** (Klasičan balet 12č, Savremena igra 10č, Narodna igra 10č)
   je **uvek dvočas, tačno jedan dnevno, nikad dva u istom danu**. Iz toga sledi
   da odseci sa 12 časova glavnog predmeta imaju čas i **subotom** (6 dvočasa).
@@ -35,6 +38,17 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
   sredom i petkom.
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
+- Srpski jezik sa fondom 3 raspoređuje se kao jedan spojeni dvočas jednog dana
+  i jedan samostalan čas drugog dana.
+- Biologija, Sociologija, Psihologija, Filozofija i Istorija igre obavezno se
+  drže kao spojeni dvočasi, jer su njihovi nastavnici u školi samo jedan ili
+  dva dana.
+- Za Mariju Arambašić Savić poželjno je da jednog dana drži samo Filozofiju, a
+  drugog samo Sociologiju, kao dvočase. Grupisanje svakog od ta dva predmeta u
+  isti dan je poželjno, ali nije čvrsto pravilo; spojeni dvočasi jesu obavezni.
+- Za Engleski i Francuski jezik, Istoriju i Matematiku poželjno je izbeći dva
+  časa istog dana. Ako ipak moraju biti istog dana, moraju biti spojeni.
+- Računarstvo i informatika sa fondom 2 obavezno se drži kao spojeni dvočas.
 
 ### Subota
 
