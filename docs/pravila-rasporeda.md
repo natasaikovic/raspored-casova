@@ -133,6 +133,8 @@ popunjena.
 ### Knez Miletina
 
 - šest redovnih sala;
+- `KM-3` i `KM-6` su manje sale. Najčešće se koriste za OBŠ, a u SBŠ za
+  sporedne predmete kada nema dovoljno prostora;
 - sala br. 8, u kojoj se načelno održava **Primenjena gimnastika**, jer su u
   njoj gimnastički rekviziti, a neravan pod nije pogodan za igračke predmete;
 - četiri učionice;
@@ -180,6 +182,22 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Sala br. 2 prioritetno se koristi za **Karakterne igre**.
 - Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
   savremene igre** i **Improvizacije**.
+- Odeljenja sa indeksima `1` i `2` pripadaju odseku Klasičan balet, sa
+  indeksima `3` i `4` odseku Savremena igra, a sa indeksom `5` odseku Narodna
+  igra.
+- Na odseku Klasičan balet glavni predmeti su Klasičan balet — glavni predmet,
+  Repertoar klasičnog baleta i Duetna igra; Savremena igra i Karakterne igre
+  su sporedni predmeti.
+- Na odseku Savremena igra glavni predmeti su Savremena igra — glavni predmet,
+  Repertoar savremene igre i Improvizacije; Klasičan balet i Igre XX veka su
+  sporedni predmeti. Iako je sporedan, Klasičan balet je bolje smestiti u veću
+  salu.
+- Na odseku Narodna igra glavni predmeti su Narodna igra — glavni predmet i
+  Repertoar narodne igre; Klasičan balet, Karakterne igre i Savremena igra su
+  sporedni predmeti. Repertoar narodne igre sme u manje sale Sportske
+  gimnazije, naročito za `IV5`, koje ima 11 učenika.
+- Starija odeljenja i glavni predmeti imaju prednost u većim salama u odnosu
+  na mlađa odeljenja i sporedne predmete.
 - **Repertoar klasičnog baleta** treba raspoređivati u veće sale, naročito za
   starije razrede. Dozvoljene su `KM-1`, `KM-2`, `KM-4`, `KM-5` i `SG-1`, kao
   i posebni termini u Narodnom pozorištu opisani iznad. Predmet ne sme da se
