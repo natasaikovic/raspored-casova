@@ -89,6 +89,11 @@ KORAK_DANA = 20
 # samo zaštita da neuspeo pokušaj ne pojede budžet prave pretrage.
 LIMIT_FIKSIRANOG_HINTA = 60.0
 
+# Lokalna promena do dvadeset jedinica i dalje može brzo da se popravi preko
+# fiksiranog toplog starta. Veći broj znači da je prethodni raspored strukturno
+# zastareo; tada pripremni pokušaji lako pojedu gotovo ceo budžet prave pretrage.
+PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA = 20
+
 
 @dataclass(frozen=True)
 class Jedinica:
@@ -2130,6 +2135,15 @@ def _analiziraj_prostorije_hintova(
     return slobodne, len(transformisane_sobe - slobodne)
 
 
+def _broj_nevazecih_dodela_prostorija(
+    analiza: tuple[set[int], int],
+) -> int:
+    """Saberi jedinice koje menjaju sobu ili celu lokaciju bez dupliranja."""
+
+    promene_lokacije, promene_sobe = analiza
+    return len(promene_lokacije) + promene_sobe
+
+
 def _resi_fiksiranim_hintom(
     model: cp_model.CpModel,
     solver: cp_model.CpSolver,
@@ -2142,6 +2156,7 @@ def _resi_fiksiranim_hintom(
     vremensko_ogranicenje: float,
     pocetak: float,
     oznaka_faze: str = "FAZA 1",
+    analiza_prostorija: tuple[set[int], int] | None = None,
 ) -> cp_model.CpSolverStatus:
     """Pokušaj prethodni raspored kao fiksiran, sve labavije oko izmena."""
 
@@ -2158,13 +2173,18 @@ def _resi_fiksiranim_hintom(
         )
         return cp_model.UNKNOWN
 
-    pocetno_slobodne, transformisane_sobe = _analiziraj_prostorije_hintova(
-        ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
-    )
-    print(
-        f"HINT: {transformisane_sobe} неважећих соба мења се унутар исте "
-        f"локације; {len(pocetno_slobodne)} јединица мора да промени локацију."
-    )
+    if analiza_prostorija is None:
+        analiza_prostorija = _analiziraj_prostorije_hintova(
+            ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
+        )
+        pocetno_slobodne, transformisane_sobe = analiza_prostorija
+        print(
+            f"HINT: {transformisane_sobe} неважећих соба мења се унутар исте "
+            f"локације; {len(pocetno_slobodne)} јединица мора да промени "
+            "локацију."
+        )
+    else:
+        pocetno_slobodne, _ = analiza_prostorija
 
     model.clear_hints()
     cuvari: dict[int, cp_model.BoolVar] = {}
@@ -2313,19 +2333,50 @@ def _resi_u_dve_faze(
     rok_sa_rezervom = max(60.0, vremensko_ogranicenje - 300.0)
     rok_pripreme = min(rok_sa_rezervom, vremensko_ogranicenje)
 
-    model_pripreme, jedinice_pripreme, promenljive_pripreme = napravi_model(
-        ulaz,
-        prostorije,
-        nedostupnosti,
-        jutarnja_smena,
-        sa_nedeljom_b=sa_nedeljom_b,
-        samo_lokacije=True,
-        sa_ciljem=False,
-        hintovi=hintovi,
-        hintovi_b=hintovi_b,
-    )
-    # Sva tri modela se grade pre prvog solve poziva, tako da i vreme
-    # konstrukcije ulazi u isti ukupni zidni budžet.
+    # Odluka o hladnom startu donosi se pre gradnje i rešavanja pripremnog
+    # modela. Tako masovno zastareo hint ne troši budžet stroge faze.
+    analiza_hinta: tuple[set[int], int] | None = None
+    koristi_pripremu = bool(hintovi or hintovi_b)
+    if koristi_pripremu:
+        jedinice_za_analizu = _jedinice(ulaz)
+        jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
+        for jedinica in jedinice_za_analizu:
+            jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
+        analiza_hinta = _analiziraj_prostorije_hintova(
+            ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
+        )
+        promene_lokacije, promene_sobe = analiza_hinta
+        broj_nevazecih = _broj_nevazecih_dodela_prostorija(analiza_hinta)
+        print(
+            f"HINT: {promene_sobe} неважећих соба мења се унутар исте "
+            f"локације; {len(promene_lokacije)} јединица мора да промени "
+            "локацију."
+        )
+        if broj_nevazecih > PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA:
+            koristi_pripremu = False
+            print(
+                f"HINT: {broj_nevazecih} неважећих додела прелази праг "
+                f"{PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA}; одбацујем hint и "
+                "покрећем хладну строгу фазу."
+            )
+
+    model_pripreme = None
+    jedinice_pripreme: tuple[Jedinica, ...] = ()
+    promenljive_pripreme: dict[int, PromenljiveJedinice] = {}
+    if koristi_pripremu:
+        model_pripreme, jedinice_pripreme, promenljive_pripreme = napravi_model(
+            ulaz,
+            prostorije,
+            nedostupnosti,
+            jutarnja_smena,
+            sa_nedeljom_b=sa_nedeljom_b,
+            samo_lokacije=True,
+            sa_ciljem=False,
+            hintovi=hintovi,
+            hintovi_b=hintovi_b,
+        )
+    # Svi modeli koji će se rešavati grade se pre prvog solve poziva, tako da
+    # i vreme konstrukcije ulazi u isti ukupni zidni budžet.
     model_1, jedinice_1, promenljive_1 = napravi_model(
         ulaz,
         prostorije,
@@ -2344,18 +2395,26 @@ def _resi_u_dve_faze(
         samo_lokacije=False,
         sa_ciljem=True,
     )
-    solver_pripreme = cp_model.CpSolver()
-    solver_pripreme.parameters.num_search_workers = broj_radnika
-    solver_pripreme.parameters.random_seed = seme
+    solver_pripreme: cp_model.CpSolver | None = None
     status_pripreme = cp_model.UNKNOWN
-    if hintovi:
+    if koristi_pripremu:
+        assert model_pripreme is not None
+        assert analiza_hinta is not None
+        solver_pripreme = cp_model.CpSolver()
+        solver_pripreme.parameters.num_search_workers = broj_radnika
+        solver_pripreme.parameters.random_seed = seme
         status_pripreme = _resi_fiksiranim_hintom(
             model_pripreme, solver_pripreme, ulaz, prostorije,
             jedinice_pripreme, promenljive_pripreme,
             hintovi, hintovi_b, rok_pripreme, pocetak,
             oznaka_faze="PRIPREMA",
+            analiza_prostorija=analiza_hinta,
         )
-    if status_pripreme not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+    if koristi_pripremu and status_pripreme not in (
+        cp_model.OPTIMAL, cp_model.FEASIBLE
+    ):
+        assert model_pripreme is not None
+        assert solver_pripreme is not None
         proteklo = time.monotonic() - pocetak
         limit_pripreme = _preostali_limit_prve_faze(
             rok_sa_rezervom,
@@ -2366,15 +2425,18 @@ def _resi_u_dve_faze(
             solver_pripreme.parameters.max_time_in_seconds = limit_pripreme
             status_pripreme = solver_pripreme.solve(model_pripreme)
     trajanje_pripreme = time.monotonic() - pocetak
-    print(f"PRIPREMA — trajanje: {trajanje_pripreme:.3f} s")
+    if koristi_pripremu:
+        print(f"PRIPREMA — trajanje: {trajanje_pripreme:.3f} s")
+    else:
+        print("PRIPREMA — прескочена; цео буџет остаје строгој фази")
     priprema_uspela = status_pripreme in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-    if not priprema_uspela:
+    if koristi_pripremu and not priprema_uspela:
         status = _status_tekst(status_pripreme)
         print(
             f"PRIPREMA — neuspeh/timeout: {status}; "
             "FAZA 1 nastavlja bez pripremnog hinta"
         )
-    else:
+    elif priprema_uspela:
         print("PRIPREMA — dopustivi termini i lokacije pronađeni")
 
     if vremensko_ogranicenje - (time.monotonic() - pocetak) <= 0:
@@ -2382,12 +2444,13 @@ def _resi_u_dve_faze(
         print("FAZA 1 — trajanje: 0.000 s")
         print("FAZA 2 — trajanje: 0.000 s")
         return (
-            None, jedinice_pripreme, promenljive_pripreme,
+            None, jedinice_1, promenljive_1,
             "neuspeh/timeout (faza 1): vremensko ograničenje",
         )
 
     pocetak_prve = time.monotonic()
     if priprema_uspela:
+        assert solver_pripreme is not None
         _prenesi_resenje_kao_hint(
             model_1, solver_pripreme, jedinice_pripreme,
             promenljive_pripreme, promenljive_1,

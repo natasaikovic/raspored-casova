@@ -9,6 +9,8 @@ from src.model import (
 )
 from src.proveravac import Cas
 from src.resavac import (
+    PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA,
+    _broj_nevazecih_dodela_prostorija,
     _jedinice,
     _analiziraj_prostorije_hintova,
     _prenesi_resenje_kao_hint,
@@ -170,6 +172,84 @@ def test_prethodni_raspored_se_prihvata_kao_fiksirani_hint(capsys):
     assert drugo_b.izvestaj is not None and drugo_b.izvestaj.ispravan
 
 
+def test_prag_hladnog_starta_zadrzava_malu_a_odbacuje_veliku_izmenu():
+    assert _broj_nevazecih_dodela_prostorija(
+        ({0}, PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA - 1)
+    ) == PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA
+    assert _broj_nevazecih_dodela_prostorija(
+        ({0, 1}, PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA - 1)
+    ) > PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA
+
+
+def test_veliki_broj_nevazecih_dodela_preskace_sve_pripremne_pokusaje(
+    monkeypatch, capsys
+):
+    u = _ulaz_za_dve_nedelje()
+    prvo_a, prvo_b = _resi(u)
+
+    monkeypatch.setattr(
+        resavac,
+        "_analiziraj_prostorije_hintova",
+        lambda *_args: (
+            set(range(PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA + 1)), 0
+        ),
+    )
+
+    def priprema_ne_sme_da_se_pokrene(*_args, **_kwargs):
+        raise AssertionError("pripremni solve ne sme da se pokrene")
+
+    monkeypatch.setattr(
+        resavac, "_resi_fiksiranim_hintom", priprema_ne_sme_da_se_pokrene
+    )
+    drugo_a, drugo_b = _resi(
+        u, hintovi=prvo_a.casovi, hintovi_b=prvo_b.casovi
+    )
+
+    izlaz = capsys.readouterr().out
+    assert "одбацујем hint и покрећем хладну строгу фазу" in izlaz
+    assert "PRIPREMA — прескочена" in izlaz
+    assert drugo_a.pronadjen and drugo_b.pronadjen
+
+
+def test_mali_broj_nevazecih_dodela_zadrzava_topli_start(monkeypatch, capsys):
+    u = _ulaz_za_dve_nedelje()
+    prvo_a, prvo_b = _resi(u)
+    capsys.readouterr()
+    pravi_pokusaj = resavac._resi_fiksiranim_hintom
+    broj_pokusaja = 0
+
+    def izbroj_pokusaj(*args, **kwargs):
+        nonlocal broj_pokusaja
+        broj_pokusaja += 1
+        return pravi_pokusaj(*args, **kwargs)
+
+    monkeypatch.setattr(resavac, "_resi_fiksiranim_hintom", izbroj_pokusaj)
+    drugo_a, drugo_b = _resi(
+        u, hintovi=prvo_a.casovi, hintovi_b=prvo_b.casovi
+    )
+
+    assert broj_pokusaja == 1
+    assert "PRIPREMA — прескочена" not in capsys.readouterr().out
+    assert drugo_a.pronadjen and drugo_b.pronadjen
+
+
+def test_bez_hinta_ne_gradi_niti_resava_pripremni_model(monkeypatch, capsys):
+    pravi_napravi_model = resavac.napravi_model
+    samo_lokacije_pozivi = 0
+
+    def izbroj_modele(*args, **kwargs):
+        nonlocal samo_lokacije_pozivi
+        samo_lokacije_pozivi += bool(kwargs.get("samo_lokacije"))
+        return pravi_napravi_model(*args, **kwargs)
+
+    monkeypatch.setattr(resavac, "napravi_model", izbroj_modele)
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert samo_lokacije_pozivi == 0
+    assert "PRIPREMA — прескочена" in capsys.readouterr().out
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
 def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):
     z = replace(
         zahtev("Класичан балет", "11", 2, "Мила", "Ива"),
@@ -268,7 +348,7 @@ def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
     def solver_fabrika():
         nonlocal broj_solvera
         broj_solvera += 1
-        return pravi_solver() if broj_solvera <= 2 else TimeoutSolver()
+        return pravi_solver() if broj_solvera == 1 else TimeoutSolver()
 
     monkeypatch.setattr(resavac.cp_model, "CpSolver", solver_fabrika)
     rezultat_a, rezultat_b = _resi(
