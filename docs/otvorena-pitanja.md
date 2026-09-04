@@ -22,11 +22,6 @@ SG-2 i SG-3 koriste kada SG-1 nije dostupna.
 - Da li među salama SG-1, SG-2 i SG-3 postoji redosled po veličini ili kvalitetu
   koji treba poštovati i za ostale predmete?
 
-### Sala KM-8 i Primenjena gimnastika
-
-- Da li je KM-8 zaista isključivo za Primenjenu gimnastiku ili i dalje važi da
-  drugi predmeti mogu da je koriste samo u nuždi?
-
 ## Predmeti i nastavnici
 
 ### Raspored petkom — dva nejasna časa „Kristina / Ana“

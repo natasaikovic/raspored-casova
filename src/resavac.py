@@ -240,17 +240,17 @@ def _moguce_prostorije(
         "III1", "III2", "IV1", "IV2"
     }:
         return tuple(
-            p for p in prostorije if p.tip is tip
+            p for p in prostorije if p.tip is tip and p.oznaka != "KM-8"
         )
     return tuple(
         p
         for p in prostorije
-        if p.tip is tip and p.oznaka != NP_SALA
+        if p.tip is tip and p.oznaka not in {NP_SALA, "KM-8"}
     )
 
 
 def _kazna_sale_km8(zahtev: Zahtev, oznaka: str) -> int:
-    """KM-8 čuvamo za Primenjenu gimnastiku osim kada nema drugog rešenja."""
+    """Odbrambena kazna; kandidati već strogo isključuju druge predmete."""
 
     if oznaka == "KM-8" and zahtev.predmet != PRIMENJENA_GIMNASTIKA:
         return 100_000

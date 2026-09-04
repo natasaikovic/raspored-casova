@@ -133,8 +133,8 @@ popunjena.
 ### Knez Miletina
 
 - šest redovnih sala;
-- sala br. 8, koja je obavezna za **Primenjenu gimnastiku**, a za druge
-  predmete koristi se samo u nuždi;
+- sala br. 8, koja je isključivo za **Primenjenu gimnastiku**; nijedan drugi
+  predmet ne sme da je koristi, bez izuzetaka;
 - četiri učionice;
 - jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
   samo u nuždi;
@@ -167,8 +167,8 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 
 - Informatika se održava u specijalnoj učionici.
 - Gluma se održava isključivo u videoteci.
-- Sala `KM-8` čuva se za **Primenjenu gimnastiku**. Drugi predmet može biti u
-  toj sali samo u nuždi i takva dodela nosi veliku kaznu.
+- Sala `KM-8` koristi se isključivo za **Primenjenu gimnastiku**. Nijedan drugi
+  predmet ne sme biti raspoređen u njoj, bez izuzetaka i bez upotrebe „u nuždi“.
 - Primenjena gimnastika može biti samo u `KM-8`, `SG-2` ili `SG-3`. Za dato
   odeljenje i dan, ako odeljenje ima bilo koji drugi čas u Sportskoj gimnaziji,
   Primenjena gimnastika mora biti u `SG-2` ili `SG-3`, kako učenici ne bi menjali

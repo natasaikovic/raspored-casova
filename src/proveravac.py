@@ -541,9 +541,9 @@ def _proveri_red(
             )
             if sesija not in upozorene_sesije_km8:
                 upozorene_sesije_km8.add(sesija)
-                izvestaj.upozorenja.append(
-                    f"{cas.gde}: KM-8 треба чувати за предмет "
-                    f"{PRIMENJENA_GIMNASTIKA}; други предмет је дозвољен само у нужди"
+                izvestaj.greske.append(
+                    f"{cas.gde}: KM-8 је искључиво за предмет "
+                    f"{PRIMENJENA_GIMNASTIKA}; други предмет није дозвољен"
                 )
         if cas.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
             if prostorija.lokacija != SPORTSKA_GIMNAZIJA:

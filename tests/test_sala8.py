@@ -75,18 +75,17 @@ def _casovi_pg(prostorija, sa_drugim_u_sg=False):
     return tuple(casovi)
 
 
-def test_solver_kandidati_pg_su_posebne_sale_a_drugi_moze_u_km8_u_nuzdi():
+def test_solver_kandidati_pg_su_posebne_sale_a_drugi_ne_moze_u_km8():
     ulaz = _ulaz()
     pg, drugi = ulaz.zahtevi
 
     assert {p.oznaka for p in _moguce_prostorije(pg, ulaz, SALE)} == {
         "KM-8", "SG-2", "SG-3",
     }
-    assert "KM-8" in {
+    assert "KM-8" not in {
         p.oznaka for p in _moguce_prostorije(drugi, ulaz, SALE)
     }
     assert _kazna_sale_km8(pg, "KM-8") == 0
-    assert _kazna_sale_km8(drugi, "KM-8") == 100_000
 
 
 @pytest.mark.parametrize(
@@ -107,7 +106,7 @@ def test_proveravac_odbija_pg_u_drugoj_sali(prostorija):
     assert any("мора бити у KM-8, SG-2 или SG-3" in g for g in izvestaj.greske)
 
 
-def test_proveravac_upozorava_za_drugi_predmet_u_km8():
+def test_proveravac_odbija_drugi_predmet_u_km8():
     ulaz = _ulaz()
     casovi = (
         Cas("понедељак", 1, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 2),
@@ -116,9 +115,9 @@ def test_proveravac_upozorava_za_drugi_predmet_u_km8():
         Cas("уторак", 2, DRUGA_IGRA, ("11",), "Мила", "Ива", "KM-8", 5),
     )
     izvestaj = proveri(ulaz, SALE, (), casovi)
-    assert izvestaj.ispravan, izvestaj.tekst()
-    assert any("дозвољен само у нужди" in u for u in izvestaj.upozorenja)
-    assert sum("дозвољен само у нужди" in u for u in izvestaj.upozorenja) == 1
+    assert not izvestaj.ispravan
+    assert any("други предмет није дозвољен" in g for g in izvestaj.greske)
+    assert sum("други предмет није дозвољен" in g for g in izvestaj.greske) == 1
 
 
 def test_proveravac_drugi_sg_cas_odredjuje_salu_pg():
@@ -202,17 +201,14 @@ def _fiksiraj_sve(model, jedinice, promenljive, lokacija, blok=1, nedelja_b=Fals
         model.add(lokacije[lokacija] == 1)
 
 
-def test_location_model_km8_je_dozvoljena_za_drugi_predmet_u_nuzdi():
+def test_location_model_km8_je_zabranjena_za_drugi_predmet():
     ulaz = _ulaz_kapaciteta(("drugi", "drugi"))
     model, jedinice, promenljive = napravi_model(
         ulaz, SALE[:2], (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
     )
     _fiksiraj_sve(model, jedinice, promenljive, KM)
 
-    assert cp_model.CpSolver().solve(model) in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE,
-    )
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_location_model_dve_pg_ne_mogu_istovremeno_u_km8():
@@ -371,7 +367,7 @@ def test_location_model_kaznjava_km8_i_u_zasebnom_izboru_nedelje_b():
     assert "KM-8" not in dodela_b.values()
 
 
-def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
+def test_location_model_strogo_pravilo_vazi_i_za_nedelju_b():
     ulaz = _ulaz_kapaciteta(("drugi", "drugi"), menjaju_se=True)
     model, jedinice, promenljive = napravi_model(
         ulaz,
@@ -389,10 +385,7 @@ def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
         model.add(p.lokacije[KM] == 1)
     _fiksiraj_sve(model, jedinice, promenljive, KM, blok=9, nedelja_b=True)
 
-    assert cp_model.CpSolver().solve(model) in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE,
-    )
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_location_model_dve_informatike_dele_jedinu_specijalnu_ucionicu():
