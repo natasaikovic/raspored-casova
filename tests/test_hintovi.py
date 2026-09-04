@@ -462,7 +462,9 @@ def test_objective_free_reproof_smanjuje_jezgro_sa_1128_na_pravi_sukob():
     originalno = list(prvi.sufficient_assumptions_for_infeasibility())
     assert len(originalno) == 1128
 
-    jezgro = _ponovo_dokazi_veliko_jezgro_soba(model, originalno, 10.0, 1)
+    jezgro = _ponovo_dokazi_veliko_jezgro_soba(
+        model, originalno, {cuvar.index for cuvar in cuvari}, 10.0, 1
+    )
 
     assert len(jezgro) == 2
     assert set(jezgro) == {cuvari[-2].index, cuvari[-1].index}
@@ -487,7 +489,38 @@ def test_unknown_reproof_zadrzava_originalno_jezgro(monkeypatch):
     monkeypatch.setattr(resavac.cp_model, "CpSolver", SolverKojiNeDokazuje)
 
     assert _ponovo_dokazi_veliko_jezgro_soba(
-        model, originalno, 10.0, 1
+        model, originalno, originalno, 10.0, 1
+    ) == originalno
+
+
+def test_reproof_koristi_celo_novo_delimicno_preklopljeno_jezgro(monkeypatch):
+    model = cp_model.CpModel()
+    cilj = model.new_bool_var("cilj")
+    model.minimize(cilj)
+    originalno = list(range(65))
+    novo = list(range(32, 97))
+
+    class SolverSaDrugimDovoljnimJezgrom:
+        def __init__(self):
+            self.parameters = SimpleNamespace()
+
+        def solve(self, prosledjeni_model):
+            assert prosledjeni_model is model
+            assert not prosledjeni_model.has_objective()
+            return cp_model.INFEASIBLE
+
+        def sufficient_assumptions_for_infeasibility(self):
+            return novo
+
+    monkeypatch.setattr(
+        resavac.cp_model, "CpSolver", SolverSaDrugimDovoljnimJezgrom
+    )
+
+    assert _ponovo_dokazi_veliko_jezgro_soba(
+        model, originalno, range(97), 10.0, 1
+    ) == novo
+    assert _ponovo_dokazi_veliko_jezgro_soba(
+        model, originalno, range(96), 10.0, 1
     ) == originalno
 
 

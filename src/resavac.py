@@ -15,7 +15,7 @@ import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Collection, Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
@@ -2212,10 +2212,11 @@ def _dodeli_prostorije(
 def _ponovo_dokazi_veliko_jezgro_soba(
     model: cp_model.CpModel,
     jezgro: Sequence[int],
+    mapirani_literali: Collection[int],
     preostalo_vreme: float,
     broj_radnika: int,
 ) -> list[int]:
-    """Bez cilja ponovo dokazi samo veliko jezgro, uz strogo mali budzet."""
+    """Bez cilja ponovo dokaži veliko jezgro i vrati ga samo ako je mapirano."""
 
     originalno = list(jezgro)
     if (
@@ -2238,9 +2239,16 @@ def _ponovo_dokazi_veliko_jezgro_soba(
         )
         return originalno
 
-    novi_skup = set(solver.sufficient_assumptions_for_infeasibility())
-    novo = [literal for literal in originalno if literal in novi_skup]
-    if not novo:
+    novo = list(solver.sufficient_assumptions_for_infeasibility())
+    mapirani = set(mapirani_literali)
+    if not novo or any(
+        (literal if literal >= 0 else -literal - 1) not in mapirani
+        for literal in novo
+    ):
+        print(
+            "ROOM CORE — objective-free re-proof vratio je nepotpuno "
+            "mapirano jezgro; zadržavam originalno jezgro"
+        )
         return originalno
     print(f"ROOM CORE — objective-free re-proof: {len(originalno)} -> {len(novo)}")
     return novo
@@ -2382,6 +2390,7 @@ def _dodeli_prostorije_obe(
         jezgro = _ponovo_dokazi_veliko_jezgro_soba(
             model,
             solver.sufficient_assumptions_for_infeasibility(),
+            pretpostavke,
             vremensko_ogranicenje - (time.monotonic() - pocetak_resavanja),
             broj_radnika,
         )
