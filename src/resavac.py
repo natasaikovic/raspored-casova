@@ -352,11 +352,14 @@ def _dodaj_subotnje_ogranicenje(
     prisutan_subotom: cp_model.BoolVar,
     trajanje: int,
     token: str,
+    sa_ciljem: bool = True,
 ) -> None:
     """Subotom zabrani rad posle 15:05 i snažno favorizuj kraj do 13:15."""
 
     kraj_bloka = blok + trajanje - 1
     model.add(kraj_bloka <= 8).only_enforce_if(prisutan_subotom)
+    if not sa_ciljem:
+        return
     kasno = model.new_bool_var(f"{token}_subota_posle_1315")
     model.add(kasno <= prisutan_subotom)
     model.add(kraj_bloka >= 7).only_enforce_if(kasno)
@@ -723,6 +726,7 @@ def _dodaj_kontinuitet_osoba(
     jedinice: Sequence[Jedinica],
     promenljive: dict[int, PromenljiveJedinice],
     nedelja_b: bool = False,
+    sa_ciljem: bool = True,
 ) -> None:
     """Ograniči pauze osoba i dodatno ih smanji kroz funkciju cilja."""
 
@@ -739,6 +743,32 @@ def _dodaj_kontinuitet_osoba(
                 )[1][indeks_dana]
                 for jedinica, _ in stavke
             ]
+            zauzeto = sum(
+                len(pomeraji)
+                * _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )[1][indeks_dana]
+                for jedinica, pomeraji in stavke
+            )
+            # Maksimum od šest angažovanih blokova je čvrsto pravilo i mora
+            # ostati i u fazi izvodljivosti bez funkcije cilja.
+            model.add(zauzeto <= 6)
+
+            if sa_ciljem:
+                preko_optimuma = model.new_int_var(
+                    0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
+                )
+                model.add_max_equality(preko_optimuma, [0, zauzeto - 4])
+                kazne.append(250 * preko_optimuma)
+
+            prati_pauze = (
+                sa_ciljem
+                or not izuzet_od_ogranicenja_pauza(osoba)
+                or osoba == DUSAN_ILIJIN
+            )
+            if not prati_pauze:
+                continue
+
             ima_cas = model.new_bool_var(
                 f"o{broj_osobe}_d{indeks_dana}_ima{sufiks}"
             )
@@ -758,37 +788,30 @@ def _dodaj_kontinuitet_osoba(
                 prisutan = po_danu[indeks_dana]
                 model.add(prvi <= blok + min(pomeraji)).only_enforce_if(prisutan)
                 model.add(poslednji >= blok + max(pomeraji)).only_enforce_if(prisutan)
-            zauzeto = sum(
-                len(pomeraji)
-                * _promenljive_za_nedelju(
-                    promenljive[jedinica.indeks], nedelja_b
-                )[1][indeks_dana]
-                for jedinica, pomeraji in stavke
-            )
-            model.add(zauzeto <= 6)
-            preko_optimuma = model.new_int_var(
-                0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
-            )
-            model.add_max_equality(preko_optimuma, [0, zauzeto - 4])
-            kazne.append(250 * preko_optimuma)
 
-            ima_pauzu = model.new_bool_var(
-                f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
-            )
+            ima_pauzu: cp_model.BoolVar | None = None
+            if sa_ciljem or not izuzet_od_ogranicenja_pauza(osoba):
+                ima_pauzu = model.new_bool_var(
+                    f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
+                )
             duzina_pauze = model.new_int_var(
                 0,
                 len(BLOKOVI),
                 f"o{broj_osobe}_d{indeks_dana}_duzina_pauze{sufiks}",
             )
-            model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
-            model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
+            if ima_pauzu is not None:
+                model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
+                model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
             if not izuzet_od_ogranicenja_pauza(osoba) or osoba == DUSAN_ILIJIN:
                 model.add(duzina_pauze <= 2)
-            dnevne_pauze.append(ima_pauzu)
+            if ima_pauzu is not None:
+                dnevne_pauze.append(ima_pauzu)
             duzine_pauza.append(duzina_pauze)
-            kazne.append(500 * ima_pauzu)
-            kazne.append(100 * duzina_pauze)
+            if sa_ciljem:
+                assert ima_pauzu is not None
+                kazne.append(500 * ima_pauzu)
+                kazne.append(100 * duzina_pauze)
         if not izuzet_od_ogranicenja_pauza(osoba):
             model.add(sum(dnevne_pauze) <= 1)
         if osoba == DUSAN_ILIJIN:
@@ -971,6 +994,7 @@ def napravi_model(
                 po_danu[len(DANI) - 1],
                 jedinica.trajanje,
                 prefiks,
+                sa_ciljem,
             )
         po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
         if sa_nedeljom_b:
@@ -1230,7 +1254,7 @@ def napravi_model(
             else:
                 lokacije_b = lokacije
 
-        if dozvoljena_subota:
+        if dozvoljena_subota and sa_ciljem:
             _dodaj_subotnji_prioritet_sg(
                 model,
                 kazne,
@@ -1521,11 +1545,17 @@ def napravi_model(
     # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni
     # kontinuitet.
     _dodaj_kontinuitet_osoba(
-        model, kazne, ulaz, jedinice, promenljive
+        model, kazne, ulaz, jedinice, promenljive, sa_ciljem=sa_ciljem
     )
     if sa_nedeljom_b:
         _dodaj_kontinuitet_osoba(
-            model, kazne, ulaz, jedinice, promenljive, nedelja_b=True
+            model,
+            kazne,
+            ulaz,
+            jedinice,
+            promenljive,
+            nedelja_b=True,
+            sa_ciljem=sa_ciljem,
         )
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.

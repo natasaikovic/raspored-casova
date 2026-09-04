@@ -49,9 +49,19 @@ def _ulaz_dusana() -> Ulaz:
     return Ulaz(zahtevi, odeljenja, {"Историја": Predmet("Историја", False, False)}, Skola.SREDNJA)
 
 
-def _model_dusana(sa_nedeljom_b: bool = False):
+def _model_dusana(
+    sa_nedeljom_b: bool = False,
+    sa_ciljem: bool = True,
+):
     ucionica = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
-    return napravi_model(_ulaz_dusana(), (ucionica,), (), Smena.CRVENA, sa_nedeljom_b=sa_nedeljom_b)
+    return napravi_model(
+        _ulaz_dusana(),
+        (ucionica,),
+        (),
+        Smena.CRVENA,
+        sa_nedeljom_b=sa_nedeljom_b,
+        sa_ciljem=sa_ciljem,
+    )
 
 
 def _fiksiraj(model, jedinice, promenljive, termini, nedelja_b: bool = False) -> None:
@@ -188,7 +198,12 @@ def test_solver_razdvaja_dva_casa_iste_grupe_po_danima(nedelja_b: bool) -> None:
 def test_solver_granica_ukupnih_praznih_blokova(
     nedelja_b: bool, termini, ocekivani_status: cp_model.CpSolverStatus
 ) -> None:
-    model, jedinice, promenljive = _model_dusana(sa_nedeljom_b=nedelja_b)
+    model, jedinice, promenljive = _model_dusana(
+        sa_nedeljom_b=nedelja_b, sa_ciljem=False
+    )
+    imena = {p.name for p in model.proto.variables}
+    assert any("duzina_pauze" in ime for ime in imena)
+    assert not any(ime.endswith("_pauza") or ime.endswith("_pauza_b") for ime in imena)
     _fiksiraj(model, jedinice, promenljive, termini, nedelja_b=nedelja_b)
     status = cp_model.CpSolver().solve(model)
     if ocekivani_status == cp_model.FEASIBLE:

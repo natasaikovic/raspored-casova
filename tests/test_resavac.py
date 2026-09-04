@@ -79,6 +79,77 @@ def test_prva_faza_nema_cilj_a_druga_ga_ima():
     assert sa_ciljem.has_objective()
 
 
+def test_prva_faza_ne_gradi_pomocne_promenljive_samo_za_kazne():
+    z = zahtev("Теорија", "11", 1, "Ана")
+    u = ulaz([z])
+
+    bez_cilja, _, _ = napravi_model(
+        u, (UCIONICA,), (), Smena.CRVENA, sa_ciljem=False
+    )
+    sa_ciljem, _, _ = napravi_model(
+        u, (UCIONICA,), (), Smena.CRVENA, sa_ciljem=True
+    )
+
+    imena_bez_cilja = {p.name for p in bez_cilja.proto.variables}
+    imena_sa_ciljem = {p.name for p in sa_ciljem.proto.variables}
+    soft_sufiksi = (
+        "_subota_posle_1315",
+        "_subota_van_sg_",
+        "_preko_4",
+        "_pauza",
+        "_duzina_pauze",
+    )
+    assert not any(
+        sufiks in ime for ime in imena_bez_cilja for sufiks in soft_sufiksi
+    )
+    assert any("_preko_4" in ime for ime in imena_sa_ciljem)
+    assert any("_pauza" in ime for ime in imena_sa_ciljem)
+    assert len(bez_cilja.proto.variables) < len(sa_ciljem.proto.variables)
+    assert len(bez_cilja.proto.constraints) < len(sa_ciljem.proto.constraints)
+
+
+def test_prva_faza_cuva_cvrsti_subotnji_kraj_bez_soft_promenljivih():
+    z = Zahtev(
+        predmet="Савремена игра",
+        razred="I",
+        odeljenja=("I3",),
+        fond=1,
+        fond_korepeticije=0,
+        nastavnik="Ана",
+        korepetitor=None,
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+        red=2,
+    )
+    u = Ulaz(
+        (z,),
+        {"I3": Odeljenje("I3", "I", Smena.CEO_DAN, Skola.SREDNJA)},
+        {z.predmet: Predmet(z.predmet, True, True)},
+        Skola.SREDNJA,
+    )
+    sg_sala = Prostorija(
+        "SG-1", "Спортска гимназија", TipProstorije.SALA, None, ""
+    )
+    bez_cilja, jedinice, promenljive = napravi_model(
+        u, (SALA, sg_sala), (), Smena.CRVENA, sa_ciljem=False
+    )
+    sa_ciljem, _, _ = napravi_model(
+        u, (SALA, sg_sala), (), Smena.CRVENA, sa_ciljem=True
+    )
+
+    imena_bez_cilja = {p.name for p in bez_cilja.proto.variables}
+    imena_sa_ciljem = {p.name for p in sa_ciljem.proto.variables}
+    assert not any("subota_posle_1315" in ime for ime in imena_bez_cilja)
+    assert not any("subota_van_sg" in ime for ime in imena_bez_cilja)
+    assert any("subota_posle_1315" in ime for ime in imena_sa_ciljem)
+    assert any("subota_van_sg" in ime for ime in imena_sa_ciljem)
+
+    p = promenljive[jedinice[0].indeks]
+    bez_cilja.add(p.dan == 5)
+    bez_cilja.add(p.blok == 9)
+    assert cp_model.CpSolver().solve(bez_cilja) == cp_model.INFEASIBLE
+
+
 def test_p1_ima_tri_pojedinacna_casa_u_1830():
     z = Zahtev(
         predmet="Класичан балет",
@@ -157,7 +228,7 @@ def test_solver_zabranjuje_pauzu_osobe_duzu_od_dva_bloka():
         zahtev("Теорија 2", "12", 1, "Ивана Љујић"),
     ]
     model, jedinice, promenljive = napravi_model(
-        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA, sa_ciljem=False
     )
     for jedinica, blok in zip(jedinice, (1, 5)):
         model.add(promenljive[jedinica.indeks].dan == 0)
@@ -172,7 +243,7 @@ def test_solver_zabranjuje_dve_pauze_osobe_u_nedelji():
         for i, odeljenje in enumerate(("11", "12", "13", "14"), start=1)
     ]
     model, jedinice, promenljive = napravi_model(
-        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA, sa_ciljem=False
     )
     termini = ((0, 1), (0, 3), (1, 1), (1, 3))
     for jedinica, (dan, blok) in zip(jedinice, termini):
@@ -204,7 +275,7 @@ def test_solver_zabranjuje_vise_od_sest_casova_osobe_dnevno():
         for i in range(1, 8)
     ]
     model, jedinice, promenljive = napravi_model(
-        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA
+        ulaz(zahtevi), (UCIONICA,), (), Smena.CRVENA, sa_ciljem=False
     )
     for jedinica in jedinice:
         model.add(promenljive[jedinica.indeks].dan == 0)
