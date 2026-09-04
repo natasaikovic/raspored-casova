@@ -168,6 +168,9 @@ popunjena.
   koje od ta dva odeljenja koristi taj termin ako to olakšava raspored.
 
 Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
+Iako dva nastavna časa formalno imaju odmor između njih, svi igrački dvočasi
+drže se spojeno: odmor se ne koristi, pa je potvrđeno da čas u Narodnom
+pozorištu sme da traje do 17:40.
 
 ### Posebne prostorije i prioriteti
 
