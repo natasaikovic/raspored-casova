@@ -12,10 +12,10 @@ import csv
 import os
 import tempfile
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
@@ -61,6 +61,9 @@ DUSAN_ILIJIN = "Душан Илијин"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
+KLASICAN_BALET = "Класичан балет"
+TRADICIONALNO_PEVANJE = "Традиционално певање"
+SALE_TRADICIONALNOG_PEVANJA = frozenset({"KM-8", "SG-2", "SG-3"})
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
@@ -104,6 +107,57 @@ NAJVISE_HLADNIH_MASTER_POKUSAJA = 4
 MINIMALNI_BUDZET_HLADNOG_POKUSAJA = 5.0
 
 
+class _TelemetrijaFaze2(cp_model.CpSolverSolutionCallback):
+    """Ispiši svaki novi incumbent tokom optimizacije druge faze."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._najbolji_cilj: float | None = None
+        self.broj_incumbenata = 0
+
+    def on_solution_callback(self) -> None:
+        cilj = self.objective_value
+        if self._najbolji_cilj is not None and cilj >= self._najbolji_cilj:
+            return
+        self._najbolji_cilj = cilj
+        self.broj_incumbenata += 1
+        print(
+            f"FAZA 2 — incumbent {self.broj_incumbenata}: "
+            f"t={self.wall_time:.3f} s, objective={cilj:.0f}, "
+            f"best_bound={self.best_objective_bound:.0f}"
+        )
+
+
+def _relativni_gap(cilj: float, granica: float) -> float:
+    """Relativno odstupanje incumbenta od najbolje poznate granice."""
+
+    return abs(cilj - granica) / max(1.0, abs(cilj), abs(granica))
+
+
+def _ispisi_zavrsnu_telemetriju_faze_2(
+    solver: cp_model.CpSolver,
+    status: cp_model.CpSolverStatus,
+) -> None:
+    """Ispiši završne pokazatelje pretrage bez obzira na njen ishod."""
+
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        cilj = solver.objective_value
+        granica = solver.best_objective_bound
+        gap = _relativni_gap(cilj, granica)
+        print(
+            "FAZA 2 — završno: "
+            f"objective={cilj:.0f}, best_bound={granica:.0f}, "
+            f"relativni_gap={gap:.6%}, branches={solver.num_branches}, "
+            f"conflicts={solver.num_conflicts}"
+        )
+    else:
+        print(
+            "FAZA 2 — završno: objective=n/a, best_bound=n/a, "
+            f"relativni_gap=n/a, branches={solver.num_branches}, "
+            f"conflicts={solver.num_conflicts}"
+        )
+
+
 @dataclass(frozen=True)
 class Jedinica:
     """Jedna sesija koju solver raspoređuje, dužine jednog ili dva bloka."""
@@ -143,6 +197,17 @@ class PromenljiveJedinice:
     prostorije_b: dict[str, cp_model.BoolVar] | None
     lokacije: dict[str, cp_model.BoolVar]
     lokacije_b: dict[str, cp_model.BoolVar] | None
+
+
+@dataclass(frozen=True)
+class KandidatTermina:
+    """Termini jedne faze sa solverom koji čuva njihove vrednosti."""
+
+    solver: cp_model.CpSolver
+    jedinice: tuple[Jedinica, ...]
+    promenljive: dict[int, PromenljiveJedinice]
+    status: str
+    optimizovan: bool = False
 
 
 @dataclass(frozen=True)
@@ -274,10 +339,15 @@ def _moguce_prostorije(
         return tuple(
             p for p in prostorije if p.tip is tip
         )
+    dozvoli_salu_za_pevanje = zahtev.predmet == TRADICIONALNO_PEVANJE
     kandidati = tuple(
         p
         for p in prostorije
-        if p.tip is tip and p.oznaka != NP_SALA
+        if (
+            p.tip is tip
+            or (dozvoli_salu_za_pevanje and p.oznaka in SALE_TRADICIONALNOG_PEVANJA)
+        )
+        and p.oznaka != NP_SALA
     ) if zahtev.predmet != REPERTOAR_KLASICNOG else tuple(
         p for p in prostorije if p.tip is tip
     )
@@ -597,6 +667,65 @@ def _dodaj_dnevno_pravilo_lokacije(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
     kazne.append(300 * menja_lokaciju)
+
+
+def _dodaj_pravilo_lokacije_primenjene_gimnastike(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    token: str,
+    indeks_dana: int,
+    stavke: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    nedelja_b: bool = False,
+) -> None:
+    """Ako je Klasičan balet tog dana u SG, i PG mora biti u SG."""
+
+    sufiks = "_b" if nedelja_b else ""
+    primenjene = [
+        jedinica for jedinica in stavke
+        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet == PRIMENJENA_GIMNASTIKA
+    ]
+    klasicni_u_sg: list[cp_model.BoolVar] = []
+    for jedinica in stavke:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        if zahtev.predmet != KLASICAN_BALET:
+            continue
+        _, po_danu, lokacije = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
+        if koristi_sg is None:
+            continue
+        prisutan = model.new_bool_var(
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_kb_sg{sufiks}"
+        )
+        model.add_bool_and(
+            [po_danu[indeks_dana], koristi_sg]
+        ).only_enforce_if(prisutan)
+        model.add_bool_or(
+            [~po_danu[indeks_dana], ~koristi_sg]
+        ).only_enforce_if(~prisutan)
+        klasicni_u_sg.append(prisutan)
+
+    if not primenjene or not klasicni_u_sg:
+        return
+    ima_klasicni_u_sg = model.new_bool_var(
+        f"{token}_d{indeks_dana}_ima_kb_sg{sufiks}"
+    )
+    model.add_max_equality(ima_klasicni_u_sg, klasicni_u_sg)
+    for jedinica in primenjene:
+        _, po_danu, lokacije = _promenljive_za_nedelju(
+            promenljive[jedinica.indeks], nedelja_b
+        )
+        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
+        if koristi_sg is None:
+            model.add(ima_klasicni_u_sg == 0).only_enforce_if(
+                po_danu[indeks_dana]
+            )
+        else:
+            model.add(koristi_sg == 1).only_enforce_if(
+                [po_danu[indeks_dana], ima_klasicni_u_sg]
+            )
 
 
 def _dodaj_pravilo_aleksandra_boskovica(
@@ -1493,6 +1622,9 @@ def napravi_model(
                 stavke,
                 promenljive,
             )
+            _dodaj_pravilo_lokacije_primenjene_gimnastike(
+                model, ulaz, token, indeks_dana, stavke, promenljive
+            )
             if odeljenje.skola is Skola.OSNOVNA:
                 ukupno = [
                     jedinica.trajanje
@@ -1530,6 +1662,15 @@ def napravi_model(
                 _dodaj_dnevno_pravilo_lokacije(
                     model,
                     kazne,
+                    token,
+                    indeks_dana,
+                    stavke,
+                    promenljive,
+                    nedelja_b=True,
+                )
+                _dodaj_pravilo_lokacije_primenjene_gimnastike(
+                    model,
+                    ulaz,
                     token,
                     indeks_dana,
                     stavke,
@@ -2840,6 +2981,7 @@ def _resi_u_dve_faze(
     status_2 = solver_2.solve(model_2)
     trajanje_druge = time.monotonic() - pocetak_druge
     print(f"FAZA 2 — trajanje: {max(0.0, trajanje_druge):.3f} s")
+    _ispisi_zavrsnu_telemetriju_faze_2(solver_2, status_2)
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)
         print(f"FAZA 2 — optimizovano rešenje: {status}")
@@ -2851,9 +2993,8 @@ def _resi_u_dve_faze(
     status = _status_tekst(status_2)
     print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
     return (
-        solver_1,
-        jedinice_1,
-        promenljive_1,
+        kandidat_1,
+        None,
         f"dopustivo (faza 1); faza 2 neuspeh/timeout: {status}",
         None,
         None,
@@ -2905,6 +3046,221 @@ def replace_red(cas: Cas, red: int) -> Cas:
     """Napravi isti čas sa brojem reda koji će imati u izlaznom CSV-u."""
 
     return replace(cas, red=red)
+
+
+KandidatPara = tuple[str, Rezultat, Rezultat]
+
+
+def _validan_kandidat_para(kandidat: KandidatPara | None) -> bool:
+    """Kandidat je prihvatljiv samo ako su obe nedelje potpune i bez grešaka."""
+
+    if kandidat is None:
+        return False
+    _, rezultat_a, rezultat_b = kandidat
+    return (
+        rezultat_a.pronadjen
+        and rezultat_b.pronadjen
+        and rezultat_a.izvestaj is not None
+        and rezultat_b.izvestaj is not None
+        and rezultat_a.izvestaj.ispravan
+        and rezultat_b.izvestaj.ispravan
+    )
+
+
+def _izaberi_najbolji_kandidat(
+    kandidati: Sequence[KandidatPara],
+) -> KandidatPara | None:
+    """Izaberi najmanje upozorenja; pri istom zbiru prednost ima faza 2."""
+
+    validni = [kandidat for kandidat in kandidati if _validan_kandidat_para(kandidat)]
+    if not validni:
+        return None
+
+    def kljuc(kandidat: KandidatPara) -> tuple[int, int]:
+        naziv, rezultat_a, rezultat_b = kandidat
+        assert rezultat_a.izvestaj is not None and rezultat_b.izvestaj is not None
+        broj_upozorenja = (
+            len(rezultat_a.izvestaj.upozorenja)
+            + len(rezultat_b.izvestaj.upozorenja)
+        )
+        return broj_upozorenja, 0 if naziv == "FAZA 2" else 1
+
+    return min(validni, key=kljuc)
+
+
+def _izaberi_sa_regresionom_granicom(
+    kandidat_faze_2: KandidatPara | None,
+    kandidat_hinta: KandidatPara | None,
+    napravi_kandidata_faze_1: Callable[[], KandidatPara | None],
+) -> KandidatPara | None:
+    """Koristi validan hint kao granicu, inače obavezno evaluiraj fazu 1."""
+
+    kandidati: list[KandidatPara] = []
+    if _validan_kandidat_para(kandidat_hinta):
+        assert kandidat_hinta is not None
+        kandidati.append(kandidat_hinta)
+    else:
+        kandidat_faze_1 = napravi_kandidata_faze_1()
+        if kandidat_faze_1 is not None:
+            kandidati.append(kandidat_faze_1)
+    if kandidat_faze_2 is not None:
+        kandidati.append(kandidat_faze_2)
+    return _izaberi_najbolji_kandidat(kandidati)
+
+
+def _materijalizuj_kandidata_obe_nedelje(
+    naziv: str,
+    kandidat: KandidatTermina | None,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    broj_radnika: int,
+    vremensko_ogranicenje_prostorija: float = 60,
+) -> KandidatPara | None:
+    """Dodeli sobe i nezavisno proveri obe nedelje jednog kandidata termina."""
+
+    if kandidat is None:
+        return None
+    dodele = _dodeli_prostorije_obe(
+        kandidat.solver,
+        ulaz,
+        prostorije,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        vremensko_ogranicenje=vremensko_ogranicenje_prostorija,
+        broj_radnika=broj_radnika,
+    )
+    if dodele is None:
+        print(
+            f"ZAŠTITA KVALITETA — {naziv}: dodela prostorija nije uspela "
+            f"za {vremensko_ogranicenje_prostorija:g} s"
+        )
+        return None
+    dodela_a, dodela_b = dodele
+    casovi_a = _izvuci_casove(
+        kandidat.solver,
+        ulaz,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        dodeljene_prostorije=dodela_a,
+    )
+    casovi_b = _izvuci_casove(
+        kandidat.solver,
+        ulaz,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        nedelja_b=True,
+        dodeljene_prostorije=dodela_b,
+    )
+    cilj = kandidat.solver.objective_value if kandidat.optimizovan else None
+    return (
+        naziv,
+        Rezultat(
+            kandidat.status,
+            casovi_a,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+            cilj,
+        ),
+        Rezultat(
+            kandidat.status,
+            casovi_b,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+            cilj,
+        ),
+    )
+
+
+def _kandidat_originalnog_hinta(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas],
+) -> KandidatPara | None:
+    """Materijalizuj kompletan A+B hint sa njegovim originalnim sobama."""
+
+    if not hintovi or not hintovi_b:
+        return None
+    casovi_a = _kanonizuj_hintove(ulaz, hintovi, prostorije)
+    casovi_b = _kanonizuj_hintove(ulaz, hintovi_b, prostorije)
+    izvestaj_a = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA
+    )
+    izvestaj_b = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA
+    )
+    if (
+        izvestaj_a.ispravan
+        and izvestaj_b.ispravan
+        and not _hint_postuje_medjunedeljne_invarijante(ulaz, casovi_a, casovi_b)
+    ):
+        izvestaj_a.greske.append(
+            "стална и средња одељења морају имати исти термин и простор у обе недеље"
+        )
+    return (
+        "HINT",
+        Rezultat(
+            "prethodni raspored (regresiona granica)",
+            casovi_a,
+            izvestaj_a,
+            None,
+        ),
+        Rezultat(
+            "prethodni raspored (regresiona granica)",
+            casovi_b,
+            izvestaj_b,
+            None,
+        ),
+    )
+
+
+def _hint_postuje_medjunedeljne_invarijante(
+    ulaz: Ulaz,
+    casovi_a: Sequence[Cas],
+    casovi_b: Sequence[Cas],
+) -> bool:
+    """Proveri A=B za časove odeljenja čija se smena ne menja."""
+
+    def stalni_casovi(casovi: Sequence[Cas]) -> Counter[tuple[object, ...]]:
+        return Counter(
+            (
+                cas.dan,
+                cas.blok,
+                cas.predmet,
+                tuple(sorted(cas.odeljenja)),
+                cas.nastavnik,
+                cas.korepetitor,
+                cas.prostorija,
+            )
+            for cas in casovi
+            if cas.odeljenja
+            and all(
+                not ulaz.odeljenja[oznaka].smena.menja_se
+                for oznaka in cas.odeljenja
+            )
+        )
+
+    return stalni_casovi(casovi_a) == stalni_casovi(casovi_b)
+
+
+def _materijalizuj_kandidata_faze_1(
+    kandidat: KandidatTermina,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    broj_radnika: int,
+) -> KandidatPara | None:
+    """Materijalizuj F1 sa starim limitom dodele prostorija od 60 sekundi."""
+
+    return _materijalizuj_kandidata_obe_nedelje(
+        "FAZA 1",
+        kandidat,
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        broj_radnika,
+        vremensko_ogranicenje_prostorija=60,
+    )
 
 
 def resi_obe_nedelje(

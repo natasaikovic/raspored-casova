@@ -126,8 +126,11 @@ def test_model_prve_faze_ima_konkretne_prostorije_i_nema_cilj():
         j for j in jedinice
         if ulaz.zahtevi[j.zahtev_indeks].predmet == "Примењена гимнастика"
     )
-    assert set(promenljive[pg_jedinica.indeks].lokacije) == {"Кнез Милетина 8"}
-    assert set(promenljive[pg_jedinica.indeks].prostorije) == {"KM-8"}
+    assert set(promenljive[pg_jedinica.indeks].lokacije) == {
+        "Кнез Милетина 8", "Спортска гимназија",
+    }
+    assert "KM-8" in promenljive[pg_jedinica.indeks].prostorije
+    assert "SG-2" in promenljive[pg_jedinica.indeks].prostorije
 
 
 def _mali_ulaz(pravila):
@@ -193,7 +196,7 @@ def test_standardno_ucitavanje_jasno_prijavljuje_nedostajuci_novi_csv(tmp_path):
         ucitaj_standardne_ulaze(tmp_path)
 
 
-def test_aktivna_obavezna_pravila_filtriraju_pg_i_np():
+def test_aktivna_pravila_dozvoljavaju_pg_u_svim_salama_i_filtriraju_np():
     ulaz, sobe, _ = ucitaj_standardne_ulaze("ulazi")
     pg = next(z for z in ulaz.zahtevi if z.predmet == "Примењена гимнастика")
     rkb = next(
@@ -201,8 +204,22 @@ def test_aktivna_obavezna_pravila_filtriraju_pg_i_np():
         if z.predmet == "Репертоар класичног балета" and z.odeljenja == ("IV1",)
     )
 
-    assert {p.oznaka for p in _moguce_prostorije(pg, ulaz, sobe, 2)} == {"KM-8"}
+    assert {p.oznaka for p in _moguce_prostorije(pg, ulaz, sobe, 2)} == {
+        "KM-1", "KM-2", "KM-3", "KM-4", "KM-5", "KM-6", "KM-8",
+        "SG-1", "SG-2", "SG-3",
+    }
     assert {p.oznaka for p in _moguce_prostorije(rkb, ulaz, sobe, 2)} == {"NP-сала"}
+
+
+def test_tradicionalno_pevanje_sme_izuzetno_u_km8():
+    ulaz, sobe, _ = ucitaj_standardne_ulaze("ulazi")
+    pevanje = next(
+        z for z in ulaz.zahtevi if z.predmet == "Традиционално певање"
+    )
+
+    assert "KM-8" in {
+        p.oznaka for p in _moguce_prostorije(pevanje, ulaz, sobe, 1)
+    }
 
 
 def test_model_termina_optimizuje_konkretnu_sobu_po_csv_nivou():

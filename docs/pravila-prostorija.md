@@ -36,9 +36,10 @@ uvodi drugi paralelni resurs i čuva postojeće ponašanje jedne sale.
 
 ## Pravila koja ostaju u kodu
 
-CSV označava KM-8 kao obaveznu za Primenjenu gimnastiku, pa ranije uslovno
-pravilo KM-8 naspram SG-2/SG-3 više ne važi. CSV još ne može da izrazi kvote
-pet termina u Narodnom pozorištu ni subotnji prioritet lokacije Sportske
-gimnazije. Ta pravila zato ostaju u kodu do proširenja formata. Velika kazna
-za upotrebu KM-8 za druge predmete takođe ostaje jer je potvrđena, a u
-dostavljenih 57 redova nije zapisana kao `изузетно` wildcard pravilo.
+CSV označava KM-8 kao prvi izbor za Primenjenu gimnastiku, ali su joj dozvoljene
+i druge sale. Ako je Klasičan balet istog odeljenja tog dana u Sportskoj
+gimnaziji, lokacija Primenjene gimnastike se sa njim obavezno usklađuje.
+Tradicionalno pevanje sme izuzetno u KM-8 jer sala ima klavir. CSV još ne može
+da izrazi kvote pet termina u Narodnom pozorištu ni subotnji prioritet lokacije
+Sportske gimnazije. Ta pravila zato ostaju u kodu do proširenja formata. Velika
+kazna za korišćenje neravnog poda KM-8 za druge igračke predmete takođe ostaje.

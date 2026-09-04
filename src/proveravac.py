@@ -77,6 +77,9 @@ ALEKSANDAR_GRUPE = frozenset({("II1", "II3"), ("II2", "II4"), ("II5",)})
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
 REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
+KLASICAN_BALET = "Класичан балет"
+TRADICIONALNO_PEVANJE = "Традиционално певање"
+SALE_TRADICIONALNOG_PEVANJA = frozenset({"KM-8", "SG-2", "SG-3"})
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -539,7 +542,11 @@ def _proveri_red(
         ocekivani_tip = (
             TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
         )
-        if prostorija.tip is not ocekivani_tip:
+        dozvoljeno_pevanje_u_sali = (
+            cas.predmet == TRADICIONALNO_PEVANJE
+            and cas.prostorija in SALE_TRADICIONALNOG_PEVANJA
+        )
+        if prostorija.tip is not ocekivani_tip and not dozvoljeno_pevanje_u_sali:
             izvestaj.greske.append(
                 f"{cas.gde}: предмет „{cas.predmet}“ тражи {ocekivani_tip.value}, "
                 f"а {cas.prostorija} је {prostorija.tip.value}"
@@ -982,6 +989,51 @@ def _proveri_dnevni_raspored(
                 izvestaj.greske.append(
                     f"{grupa} мења локацију {promene} пута у дану {dan}; максимум је једном"
                 )
+            _proveri_lokaciju_primenjene_gimnastike(
+                grupa, dan, dnevni, prostorije, izvestaj
+            )
+
+
+def _proveri_lokaciju_primenjene_gimnastike(
+    grupa: str,
+    dan: str,
+    dnevni: Sequence[Cas],
+    prostorije: dict[str, Prostorija],
+    izvestaj: Izvestaj,
+) -> None:
+    """PG mora biti u SG kada je Klasičan balet tog odeljenja tog dana u SG."""
+
+    ima_klasicni_u_sg = any(
+        cas.predmet == KLASICAN_BALET
+        and cas.prostorija in prostorije
+        and prostorije[cas.prostorija].lokacija == SPORTSKA_GIMNAZIJA
+        for cas in dnevni
+    )
+    if not ima_klasicni_u_sg:
+        return
+    pogresne_sesije: set[tuple[object, ...]] = set()
+    for cas in dnevni:
+        if cas.predmet != PRIMENJENA_GIMNASTIKA:
+            continue
+        sesija = (
+            cas.predmet,
+            cas.odeljenja,
+            cas.nastavnik,
+            cas.korepetitor,
+            cas.prostorija,
+        )
+        if sesija in pogresne_sesije:
+            continue
+        if (
+            cas.prostorija in prostorije
+            and prostorije[cas.prostorija].lokacija == SPORTSKA_GIMNAZIJA
+        ):
+            continue
+        pogresne_sesije.add(sesija)
+        izvestaj.greske.append(
+            f"{grupa}: {PRIMENJENA_GIMNASTIKA} у дану {dan} мора бити у "
+            "Спортској гимназији јер је тамо Класичан балет тог одељења"
+        )
 
 
 def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:

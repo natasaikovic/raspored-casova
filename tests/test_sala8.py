@@ -26,6 +26,7 @@ from src.resavac import (
 
 
 PG = "Примењена гимнастика"
+KLASICAN = "Класичан балет"
 DRUGA_IGRA = "Друга игра"
 KM = "Кнез Милетина 8"
 SG = "Спортска гимназија"
@@ -127,6 +128,55 @@ def test_proveravac_upozorava_za_drugi_predmet_u_km8():
     assert izvestaj.ispravan, izvestaj.tekst()
     assert any("дозвољен само у нужди" in u for u in izvestaj.upozorenja)
     assert sum("дозвољен само у нужди" in u for u in izvestaj.upozorenja) == 1
+
+
+def _ulaz_pg_i_klasicni():
+    zahtevi = (
+        _zahtev(PG, "Бранислава", "Ђорђина", 2),
+        _zahtev(KLASICAN, "Мила", "Ива", 3),
+    )
+    return Ulaz(
+        zahtevi,
+        {"11": Odeljenje("11", "први", Smena.CRVENA, Skola.OSNOVNA)},
+        {
+            PG: Predmet(PG, True, True),
+            KLASICAN: Predmet(KLASICAN, True, True),
+        },
+        Skola.OSNOVNA,
+        (
+            PraviloProstorije(
+                "KM-8", NivoPravilaProstorije.PRVI, PG, (), None, "",
+            ),
+        ),
+    )
+
+
+def test_pg_mora_pratiti_klasicni_balet_u_sportskoj_gimnaziji():
+    ulaz = _ulaz_pg_i_klasicni()
+    casovi = (
+        Cas("понедељак", 1, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 2),
+        Cas("понедељак", 2, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 3),
+        Cas("понедељак", 3, KLASICAN, ("11",), "Мила", "Ива", "SG-1", 4),
+        Cas("понедељак", 4, KLASICAN, ("11",), "Мила", "Ива", "SG-1", 5),
+    )
+    izvestaj = proveri(ulaz, SALE, (), casovi)
+    assert any("мора бити у Спортској гимназији" in g for g in izvestaj.greske)
+
+
+def test_model_zabranjuje_pg_u_km_kada_je_klasicni_u_sg_istog_dana():
+    ulaz = _ulaz_pg_i_klasicni()
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE, (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
+    )
+    for jedinica in jedinice:
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        p = promenljive[jedinica.indeks]
+        model.add(p.dan == 0)
+        if zahtev.predmet == PG:
+            model.add(p.lokacije[KM] == 1)
+        else:
+            model.add(p.lokacije[SG] == 1)
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def _ulaz_kapaciteta(vrste, menjaju_se=False):
