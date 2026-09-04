@@ -43,6 +43,7 @@ from .model import (
 from .pismo import kljuc_pisma, u_latinicu
 from .pravila_prostorija import (
     dozvoljena_prostorija,
+    kanonska_prostorija,
     kazna_prostorije,
     prostorija_dostupna,
 )
@@ -1574,7 +1575,9 @@ def _kanonizuj_hintove(
             odeljenja=tuple(nadji(o, odeljenja) for o in c.odeljenja),
             nastavnik=nadji(c.nastavnik, nastavnici),
             korepetitor=(nadji(c.korepetitor, korepetitori) if c.korepetitor else None),
-            prostorija=nadji(c.prostorija, oznake_prostorija),
+            prostorija=kanonska_prostorija(
+                nadji(c.prostorija, oznake_prostorija)
+            ),
             red=c.red,
         )
         for c in hintovi
@@ -1585,8 +1588,8 @@ def _upari_hintove(
     ulaz: Ulaz,
     jedinice_zahteva: dict[int, list[Jedinica]],
     hintovi: Sequence[Cas],
-) -> dict[int, tuple[int, int]]:
-    """Za svaku jedinicu nađi (dan, blok) u prethodnom rasporedu.
+) -> dict[int, tuple[int, int, str]]:
+    """Za svaku jedinicu nađi (dan, blok, prostoriju) prethodnog rasporeda.
 
     Redovi CSV-a se uparuju sa jedinicama istog zahteva tako da se poklope
     trajanje i obrazac korepeticije. Jedinice bez para se preskaču, pa se
@@ -1597,7 +1600,7 @@ def _upari_hintove(
     for cas in hintovi:
         po_kljucu[(cas.predmet, cas.nastavnik, tuple(cas.odeljenja))].append(cas)
 
-    rezultat: dict[int, tuple[int, int]] = {}
+    rezultat: dict[int, tuple[int, int, str]] = {}
     for zahtev_indeks, jedinice in jedinice_zahteva.items():
         zahtev = ulaz.zahtevi[zahtev_indeks]
         redovi = po_kljucu.get(
@@ -1618,6 +1621,8 @@ def _upari_hintove(
                             i for i in neiskorisceni
                             if redovi[i].dan == prvi.dan
                             and redovi[i].blok == prvi.blok + pomeraj
+                            and kanonska_prostorija(redovi[i].prostorija)
+                            == kanonska_prostorija(prvi.prostorija)
                         ),
                         None,
                     )
@@ -1638,7 +1643,9 @@ def _upari_hintove(
                 continue
             neiskorisceni.difference_update(izabran)
             cas = redovi[izabran[0]]
-            rezultat[jedinica.indeks] = (DANI.index(cas.dan), cas.blok)
+            rezultat[jedinica.indeks] = (
+                DANI.index(cas.dan), cas.blok, cas.prostorija
+            )
     return rezultat
 
 
@@ -1668,7 +1675,7 @@ def _pripremi_hintove(
     """
 
     rezultat: HintoviJedinica = defaultdict(list)
-    if not hintovi:
+    if not hintovi and not hintovi_b:
         return {}
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
         if not casovi:
@@ -1676,7 +1683,7 @@ def _pripremi_hintove(
         upareno = _upari_hintove(
             ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
-        for indeks, (dan, blok) in upareno.items():
+        for indeks, (dan, blok, _prostorija) in upareno.items():
             p = promenljive[indeks]
             if nedelja_b:
                 if p.start_b is None or p.start_b is p.start:
@@ -1763,6 +1770,7 @@ def _nivoi_oslobadjanja(
     jedinice: Sequence[Jedinica],
     hintovi_jedinica: HintoviJedinica,
     najvise_nivoa: int = 2,
+    pocetno_slobodne: Iterable[int] = (),
 ) -> list[set[int]]:
     """Skupovi jedinica koje se redom oslobađaju kad fiksirani hint ne prolazi.
 
@@ -1772,6 +1780,7 @@ def _nivoi_oslobadjanja(
     """
 
     slobodne = {j.indeks for j in jedinice if j.indeks not in hintovi_jedinica}
+    slobodne.update(pocetno_slobodne)
     nivoi = [set(slobodne)]
     susedi = _susedi_jedinica(ulaz, jedinice)
     for _ in range(najvise_nivoa):
@@ -2056,6 +2065,71 @@ def _izvuci_casove(
     return tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
 
 
+def _analiziraj_prostorije_hintova(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice_zahteva: dict[int, list[Jedinica]],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas],
+) -> tuple[set[int], int]:
+    """Nađi jedinice čiji stari termin zahteva promenu lokacije.
+
+    Promena konkretne sobe na istoj lokaciji ne oslobađa termin: strogi model
+    će izabrati drugu hard-dozvoljenu i vremenski dostupnu sobu. Problem samo
+    u jednoj nedelji oslobađa celu jedinicu, odnosno oba njena termina.
+    """
+
+    po_indeksu = {
+        jedinica.indeks: jedinica
+        for jedinice in jedinice_zahteva.values()
+        for jedinica in jedinice
+    }
+    po_oznaci = {
+        kanonska_prostorija(prostorija.oznaka): prostorija
+        for prostorija in prostorije
+    }
+    slobodne: set[int] = set()
+    transformisane_sobe: set[int] = set()
+    for casovi in (hintovi, hintovi_b):
+        if not casovi:
+            continue
+        upareno = _upari_hintove(
+            ulaz,
+            jedinice_zahteva,
+            _kanonizuj_hintove(ulaz, casovi, prostorije),
+        )
+        for indeks, (dan, blok, stara_oznaka) in upareno.items():
+            jedinica = po_indeksu[indeks]
+            zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+            stara = po_oznaci.get(kanonska_prostorija(stara_oznaka))
+            if stara is None:
+                slobodne.add(indeks)
+                continue
+            dostupne = [
+                kandidat
+                for kandidat in _moguce_prostorije(
+                    zahtev, ulaz, prostorije, jedinica.trajanje
+                )
+                if prostorija_dostupna(
+                    ulaz.dostupnost_prostorija,
+                    kandidat.oznaka,
+                    DANI[dan],
+                    range(blok, blok + jedinica.trajanje),
+                )
+            ]
+            stara_kanonska = kanonska_prostorija(stara.oznaka)
+            if any(
+                kanonska_prostorija(kandidat.oznaka) == stara_kanonska
+                for kandidat in dostupne
+            ):
+                continue
+            if any(kandidat.lokacija == stara.lokacija for kandidat in dostupne):
+                transformisane_sobe.add(indeks)
+            else:
+                slobodne.add(indeks)
+    return slobodne, len(transformisane_sobe - slobodne)
+
+
 def _resi_fiksiranim_hintom(
     model: cp_model.CpModel,
     solver: cp_model.CpSolver,
@@ -2084,10 +2158,21 @@ def _resi_fiksiranim_hintom(
         )
         return cp_model.UNKNOWN
 
+    pocetno_slobodne, transformisane_sobe = _analiziraj_prostorije_hintova(
+        ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
+    )
+    print(
+        f"HINT: {transformisane_sobe} неважећих соба мења се унутар исте "
+        f"локације; {len(pocetno_slobodne)} јединица мора да промени локацију."
+    )
+
     status = cp_model.UNKNOWN
     solver.parameters.fix_variables_to_their_hinted_value = True
     for nivo, slobodne in enumerate(
-        _nivoi_oslobadjanja(ulaz, jedinice, pripremljeni)
+        _nivoi_oslobadjanja(
+            ulaz, jedinice, pripremljeni,
+            pocetno_slobodne=pocetno_slobodne,
+        )
     ):
         fiksirane = _primeni_hintove(model, pripremljeni, slobodne)
         if fiksirane == 0:

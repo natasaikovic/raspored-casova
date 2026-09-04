@@ -4,11 +4,13 @@ from ortools.sat.python import cp_model
 
 import src.resavac as resavac
 from src.model import (
-    Odeljenje, Predmet, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev,
+    DostupnostProstorije, NivoPravilaProstorije, Odeljenje, Predmet,
+    PraviloProstorije, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev,
 )
 from src.proveravac import Cas
 from src.resavac import (
     _jedinice,
+    _analiziraj_prostorije_hintova,
     _prenesi_resenje_kao_hint,
     _upari_hintove,
     napravi_model,
@@ -18,6 +20,9 @@ from src.resavac import (
 
 SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
 UCIONICA = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
+SALA_2 = Prostorija("KM-2", "Кнез Милетина 8", TipProstorije.SALA, None, "")
+SG_1 = Prostorija("SG-1", "Спортска гимназија", TipProstorije.SALA, None, "")
+NP_SALA = Prostorija("NP-сала", "Народно позориште", TipProstorije.SALA, None, "")
 
 
 def zahtev(predmet, odeljenje, fond, nastavnik, korepetitor=None, fond_korepeticije=None):
@@ -53,6 +58,101 @@ def _ulaz_za_dve_nedelje():
         zahtev("Класичан балет", "11", 4, "Мила", "Ива"),
         zahtev("Солфеђо", "11", 2, "Јана"),
     ])
+
+
+def _hint_dvocas(
+    prostorija, dan="понедељак", predmet="Класичан балет"
+):
+    return tuple(
+        Cas(
+            dan, blok, predmet, ("11",), "Мила", "Ива",
+            prostorija, blok + 1,
+        )
+        for blok in (1, 2)
+    )
+
+
+def _analiza_soba(pravila=(), dostupnost=(), hintovi_b=()):
+    u = ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
+    u = replace(
+        u, pravila_prostorija=tuple(pravila),
+        dostupnost_prostorija=tuple(dostupnost),
+    )
+    jedinice = _jedinice(u)
+    jedinice_zahteva = {0: list(jedinice)}
+    slobodne, transformisane = _analiziraj_prostorije_hintova(
+        u, (SALA, SALA_2, SG_1, NP_SALA), jedinice_zahteva,
+        _hint_dvocas("KM-1"), hintovi_b,
+    )
+    return jedinice[0].indeks, slobodne, transformisane
+
+
+def test_obavezno_ili_zabranjeno_menja_sobu_ali_ne_termin_na_istoj_lokaciji():
+    for pravila in (
+        (
+            PraviloProstorije(
+                "KM-2", NivoPravilaProstorije.OBAVEZNO,
+                "Класичан балет", ("11",), None, "",
+            ),
+        ),
+        (
+            PraviloProstorije(
+                "KM-1", NivoPravilaProstorije.ZABRANJENO,
+                "Класичан балет", ("11",), None, "",
+            ),
+        ),
+    ):
+        _, slobodne, transformisane = _analiza_soba(pravila)
+        assert slobodne == set()
+        assert transformisane == 1
+
+
+def test_obavezna_druga_lokacija_oslobadja_jedinicu():
+    pravilo = PraviloProstorije(
+        "SG-1", NivoPravilaProstorije.OBAVEZNO,
+        "Класичан балет", ("11",), None, "",
+    )
+    indeks, slobodne, transformisane = _analiza_soba((pravilo,))
+    assert slobodne == {indeks}
+    assert transformisane == 0
+
+
+def test_np_alias_postuje_dostupnost_kanonske_sale():
+    predmet = "Репертоар класичног балета"
+    u = ulaz([zahtev(predmet, "11", 2, "Мила", "Ива")])
+    u = replace(
+        u,
+        pravila_prostorija=(PraviloProstorije(
+            "NP-1", NivoPravilaProstorije.OBAVEZNO,
+            predmet, ("11",), None, "",
+        ),),
+        dostupnost_prostorija=(DostupnostProstorije(
+            "NP-2", "понедељак", 1, 2, "",
+        ),),
+    )
+    jedinice = _jedinice(u)
+    slobodne, transformisane = _analiziraj_prostorije_hintova(
+        u, (NP_SALA,), {0: list(jedinice)},
+        _hint_dvocas("NP-1", predmet=predmet), (),
+    )
+    assert slobodne == set()
+    assert transformisane == 0
+
+
+def test_problem_samo_u_nedelji_b_oslobadja_oba_termina():
+    dostupnost = (
+        DostupnostProstorije("KM-1", "понедељак", 1, 2, ""),
+    )
+    indeks, slobodne, transformisane = _analiza_soba(
+        pravila=(PraviloProstorije(
+            "KM-1", NivoPravilaProstorije.OBAVEZNO,
+            "Класичан балет", ("11",), None, "",
+        ),),
+        dostupnost=dostupnost,
+        hintovi_b=_hint_dvocas("KM-1", "уторак"),
+    )
+    assert slobodne == {indeks}
+    assert transformisane == 0
 
 
 def test_prethodni_raspored_se_prihvata_kao_fiksirani_hint(capsys):
@@ -221,7 +321,10 @@ def test_uparivanje_hintova_postuje_obrazac_korepeticije():
 
     upareno = _upari_hintove(u, jedinice_zahteva, hintovi)
 
-    assert upareno == {jedinice[0].indeks: (2, 1), jedinice[1].indeks: (0, 1)}
+    assert upareno == {
+        jedinice[0].indeks: (2, 1, "KM-1"),
+        jedinice[1].indeks: (0, 1, "KM-1"),
+    }
 
 
 def test_nivoi_oslobadjanja_sire_se_preko_zajednickih_resursa():
