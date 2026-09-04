@@ -180,6 +180,10 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Sala br. 2 prioritetno se koristi za **Karakterne igre**.
 - Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
   savremene igre** i **Improvizacije**.
+- **Repertoar klasičnog baleta** treba raspoređivati u veće sale, naročito za
+  starije razrede. Dozvoljene su `KM-1`, `KM-2`, `KM-4`, `KM-5` i `SG-1`, kao
+  i posebni termini u Narodnom pozorištu opisani iznad. Predmet ne sme da se
+  održava u `KM-3`, `KM-6`, `SG-2` ni `SG-3`.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Pri promeni lokacije **Knez Miletina ↔ Sportska gimnazija**, časovi moraju
