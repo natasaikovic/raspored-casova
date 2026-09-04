@@ -266,6 +266,13 @@ ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
 - Kosta Milanović je korepetitor za Repertoar klasičnog baleta u odeljenjima
   IV1 i IV2, a Mirjana Anđelković za Primenjenu gimnastiku u odeljenjima 24,
   31, 32 i 34 i Istorijsko balske igre u odeljenjima 41, 42 i 43.
+- Dijana Jovanović u krajnjoj nuždi sme da ima samo 18 časova. Dva časa
+  korepeticije Primenjene gimnastike koja su joj skinuta zbog nemogućeg
+  rasporeda nisu unapred dodeljena drugoj osobi.
+- Korepetitori Primenjene gimnastike Dijana Jovanović, Đorđina Ubović,
+  Mirjana Anđelković i Jovan Marinković smeju da razmenjuju odeljenja, ali
+  nedeljni fond svakog od njih mora ostati isti: koliko časova neko preda
+  drugome u jednim odeljenjima, toliko mora dobiti u drugim odeljenjima.
 
 ## Vremenski blokovi
 
