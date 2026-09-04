@@ -10,10 +10,10 @@ from __future__ import annotations
 import argparse
 import csv
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
@@ -159,6 +159,17 @@ class PromenljiveJedinice:
     prostorije_b: dict[str, cp_model.BoolVar] | None
     lokacije: dict[str, cp_model.BoolVar]
     lokacije_b: dict[str, cp_model.BoolVar] | None
+
+
+@dataclass(frozen=True)
+class KandidatTermina:
+    """Termini jedne faze sa solverom koji čuva njihove vrednosti."""
+
+    solver: cp_model.CpSolver
+    jedinice: tuple[Jedinica, ...]
+    promenljive: dict[int, PromenljiveJedinice]
+    status: str
+    optimizovan: bool = False
 
 
 @dataclass(frozen=True)
@@ -2143,12 +2154,7 @@ def _resi_u_dve_faze(
     hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
     hintovi_b: Sequence[Cas] = (),
-) -> tuple[
-    cp_model.CpSolver | None,
-    tuple[Jedinica, ...],
-    dict[int, PromenljiveJedinice],
-    str,
-]:
+) -> tuple[KandidatTermina | None, KandidatTermina | None, str]:
     """Prvo nađi dopustivo rešenje, zatim ga koristi kao hint optimizaciji."""
 
     pocetak = time.monotonic()
@@ -2202,8 +2208,14 @@ def _resi_u_dve_faze(
         status = _status_tekst(status_1)
         print(f"FAZA 1 — neuspeh/timeout: {status}")
         print("FAZA 2 — trajanje: 0.000 s")
-        return None, jedinice_1, promenljive_1, f"neuspeh/timeout (faza 1): {status}"
+        return None, None, f"neuspeh/timeout (faza 1): {status}"
     print("FAZA 1 — dopustivo rešenje pronađeno")
+    kandidat_1 = KandidatTermina(
+        solver_1,
+        jedinice_1,
+        promenljive_1,
+        "dopustivo (faza 1)",
+    )
 
     model_2, jedinice_2, promenljive_2 = napravi_model(
         ulaz,
@@ -2222,12 +2234,7 @@ def _resi_u_dve_faze(
     preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
     if preostalo <= 0:
         print("FAZA 2 — timeout pre početka optimizacije")
-        return (
-            solver_1,
-            jedinice_1,
-            promenljive_1,
-            "dopustivo (faza 1); faza 2: timeout",
-        )
+        return kandidat_1, None, "dopustivo (faza 1); faza 2: timeout"
 
     solver_2 = cp_model.CpSolver()
     solver_2.parameters.max_time_in_seconds = preostalo
@@ -2241,14 +2248,20 @@ def _resi_u_dve_faze(
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)
         print(f"FAZA 2 — optimizovano rešenje: {status}")
-        return solver_2, jedinice_2, promenljive_2, f"optimizovano (faza 2): {status}"
+        kandidat_2 = KandidatTermina(
+            solver_2,
+            jedinice_2,
+            promenljive_2,
+            f"optimizovano (faza 2): {status}",
+            optimizovan=True,
+        )
+        return kandidat_1, kandidat_2, kandidat_2.status
 
     status = _status_tekst(status_2)
     print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
     return (
-        solver_1,
-        jedinice_1,
-        promenljive_1,
+        kandidat_1,
+        None,
         f"dopustivo (faza 1); faza 2 neuspeh/timeout: {status}",
     )
 
@@ -2267,7 +2280,7 @@ def resi_nedelju(
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
-    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
+    kandidat_1, kandidat_2, status_tekst = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2279,21 +2292,29 @@ def resi_nedelju(
         sa_nedeljom_b,
         hintovi_b,
     )
-    if solver is None:
+    kandidat = kandidat_2 or kandidat_1
+    if kandidat is None:
         return Rezultat(status_tekst, (), None, None)
 
     dodela = _dodeli_prostorije(
-        solver, ulaz, prostorije, jedinice, promenljive,
+        kandidat.solver,
+        ulaz,
+        prostorije,
+        kandidat.jedinice,
+        kandidat.promenljive,
         broj_radnika=broj_radnika,
     )
     if dodela is None:
         return Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
     casovi = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive,
+        kandidat.solver,
+        ulaz,
+        kandidat.jedinice,
+        kandidat.promenljive,
         dodeljene_prostorije=dodela,
     )
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
-    cilj = solver.objective_value if "faza 2" in status_tekst and "optimizovano" in status_tekst else None
+    cilj = kandidat.solver.objective_value if kandidat.optimizovan else None
     return Rezultat(status_tekst, casovi, izvestaj, cilj)
 
 
@@ -2301,6 +2322,221 @@ def replace_red(cas: Cas, red: int) -> Cas:
     """Napravi isti čas sa brojem reda koji će imati u izlaznom CSV-u."""
 
     return replace(cas, red=red)
+
+
+KandidatPara = tuple[str, Rezultat, Rezultat]
+
+
+def _validan_kandidat_para(kandidat: KandidatPara | None) -> bool:
+    """Kandidat je prihvatljiv samo ako su obe nedelje potpune i bez grešaka."""
+
+    if kandidat is None:
+        return False
+    _, rezultat_a, rezultat_b = kandidat
+    return (
+        rezultat_a.pronadjen
+        and rezultat_b.pronadjen
+        and rezultat_a.izvestaj is not None
+        and rezultat_b.izvestaj is not None
+        and rezultat_a.izvestaj.ispravan
+        and rezultat_b.izvestaj.ispravan
+    )
+
+
+def _izaberi_najbolji_kandidat(
+    kandidati: Sequence[KandidatPara],
+) -> KandidatPara | None:
+    """Izaberi najmanje upozorenja; pri istom zbiru prednost ima faza 2."""
+
+    validni = [kandidat for kandidat in kandidati if _validan_kandidat_para(kandidat)]
+    if not validni:
+        return None
+
+    def kljuc(kandidat: KandidatPara) -> tuple[int, int]:
+        naziv, rezultat_a, rezultat_b = kandidat
+        assert rezultat_a.izvestaj is not None and rezultat_b.izvestaj is not None
+        broj_upozorenja = (
+            len(rezultat_a.izvestaj.upozorenja)
+            + len(rezultat_b.izvestaj.upozorenja)
+        )
+        return broj_upozorenja, 0 if naziv == "FAZA 2" else 1
+
+    return min(validni, key=kljuc)
+
+
+def _izaberi_sa_regresionom_granicom(
+    kandidat_faze_2: KandidatPara | None,
+    kandidat_hinta: KandidatPara | None,
+    napravi_kandidata_faze_1: Callable[[], KandidatPara | None],
+) -> KandidatPara | None:
+    """Koristi validan hint kao granicu, inače obavezno evaluiraj fazu 1."""
+
+    kandidati: list[KandidatPara] = []
+    if _validan_kandidat_para(kandidat_hinta):
+        assert kandidat_hinta is not None
+        kandidati.append(kandidat_hinta)
+    else:
+        kandidat_faze_1 = napravi_kandidata_faze_1()
+        if kandidat_faze_1 is not None:
+            kandidati.append(kandidat_faze_1)
+    if kandidat_faze_2 is not None:
+        kandidati.append(kandidat_faze_2)
+    return _izaberi_najbolji_kandidat(kandidati)
+
+
+def _materijalizuj_kandidata_obe_nedelje(
+    naziv: str,
+    kandidat: KandidatTermina | None,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    broj_radnika: int,
+    vremensko_ogranicenje_prostorija: float = 60,
+) -> KandidatPara | None:
+    """Dodeli sobe i nezavisno proveri obe nedelje jednog kandidata termina."""
+
+    if kandidat is None:
+        return None
+    dodele = _dodeli_prostorije_obe(
+        kandidat.solver,
+        ulaz,
+        prostorije,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        vremensko_ogranicenje=vremensko_ogranicenje_prostorija,
+        broj_radnika=broj_radnika,
+    )
+    if dodele is None:
+        print(
+            f"ZAŠTITA KVALITETA — {naziv}: dodela prostorija nije uspela "
+            f"za {vremensko_ogranicenje_prostorija:g} s"
+        )
+        return None
+    dodela_a, dodela_b = dodele
+    casovi_a = _izvuci_casove(
+        kandidat.solver,
+        ulaz,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        dodeljene_prostorije=dodela_a,
+    )
+    casovi_b = _izvuci_casove(
+        kandidat.solver,
+        ulaz,
+        kandidat.jedinice,
+        kandidat.promenljive,
+        nedelja_b=True,
+        dodeljene_prostorije=dodela_b,
+    )
+    cilj = kandidat.solver.objective_value if kandidat.optimizovan else None
+    return (
+        naziv,
+        Rezultat(
+            kandidat.status,
+            casovi_a,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+            cilj,
+        ),
+        Rezultat(
+            kandidat.status,
+            casovi_b,
+            proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+            cilj,
+        ),
+    )
+
+
+def _kandidat_originalnog_hinta(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas],
+) -> KandidatPara | None:
+    """Materijalizuj kompletan A+B hint sa njegovim originalnim sobama."""
+
+    if not hintovi or not hintovi_b:
+        return None
+    casovi_a = _kanonizuj_hintove(ulaz, hintovi, prostorije)
+    casovi_b = _kanonizuj_hintove(ulaz, hintovi_b, prostorije)
+    izvestaj_a = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA
+    )
+    izvestaj_b = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA
+    )
+    if (
+        izvestaj_a.ispravan
+        and izvestaj_b.ispravan
+        and not _hint_postuje_medjunedeljne_invarijante(ulaz, casovi_a, casovi_b)
+    ):
+        izvestaj_a.greske.append(
+            "стална и средња одељења морају имати исти термин и простор у обе недеље"
+        )
+    return (
+        "HINT",
+        Rezultat(
+            "prethodni raspored (regresiona granica)",
+            casovi_a,
+            izvestaj_a,
+            None,
+        ),
+        Rezultat(
+            "prethodni raspored (regresiona granica)",
+            casovi_b,
+            izvestaj_b,
+            None,
+        ),
+    )
+
+
+def _hint_postuje_medjunedeljne_invarijante(
+    ulaz: Ulaz,
+    casovi_a: Sequence[Cas],
+    casovi_b: Sequence[Cas],
+) -> bool:
+    """Proveri A=B za časove odeljenja čija se smena ne menja."""
+
+    def stalni_casovi(casovi: Sequence[Cas]) -> Counter[tuple[object, ...]]:
+        return Counter(
+            (
+                cas.dan,
+                cas.blok,
+                cas.predmet,
+                tuple(sorted(cas.odeljenja)),
+                cas.nastavnik,
+                cas.korepetitor,
+                cas.prostorija,
+            )
+            for cas in casovi
+            if cas.odeljenja
+            and all(
+                not ulaz.odeljenja[oznaka].smena.menja_se
+                for oznaka in cas.odeljenja
+            )
+        )
+
+    return stalni_casovi(casovi_a) == stalni_casovi(casovi_b)
+
+
+def _materijalizuj_kandidata_faze_1(
+    kandidat: KandidatTermina,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    broj_radnika: int,
+) -> KandidatPara | None:
+    """Materijalizuj F1 sa starim limitom dodele prostorija od 60 sekundi."""
+
+    return _materijalizuj_kandidata_obe_nedelje(
+        "FAZA 1",
+        kandidat,
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        broj_radnika,
+        vremensko_ogranicenje_prostorija=60,
+    )
 
 
 def resi_obe_nedelje(
@@ -2315,7 +2551,7 @@ def resi_obe_nedelje(
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
-    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
+    kandidat_faze_1, kandidat_faze_2, status_tekst = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2327,37 +2563,59 @@ def resi_obe_nedelje(
         True,
         hintovi_b,
     )
-    if solver is None:
+    if kandidat_faze_1 is None:
         prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
-    dodele = _dodeli_prostorije_obe(
-        solver, ulaz, prostorije, jedinice, promenljive,
-        broj_radnika=broj_radnika,
+
+    kandidat_hinta = _kandidat_originalnog_hinta(
+        ulaz, prostorije, nedostupnosti, hintovi, hintovi_b
     )
-    if dodele is None:
-        prazan = Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
+    if kandidat_hinta is None:
+        print("ZAŠTITA KVALITETA — kompletan A+B hint nije prosleđen")
+    elif not _validan_kandidat_para(kandidat_hinta):
+        _, hint_a, hint_b = kandidat_hinta
+        assert hint_a.izvestaj is not None and hint_b.izvestaj is not None
+        print(
+            "ZAŠTITA KVALITETA — originalni hint nije ispravan: "
+            f"A={len(hint_a.izvestaj.greske)} grešaka, "
+            f"B={len(hint_b.izvestaj.greske)} grešaka"
+        )
+
+    kandidat_2 = _materijalizuj_kandidata_obe_nedelje(
+        "FAZA 2",
+        kandidat_faze_2,
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        broj_radnika,
+    )
+
+    def napravi_kandidata_faze_1() -> KandidatPara | None:
+        # Ova zaštitna dodela prostorija radi posle zajedničkog solver budžeta
+        # faza 1+2 i zato ga ne umanjuje.
+        return _materijalizuj_kandidata_faze_1(
+            kandidat_faze_1,
+            ulaz,
+            prostorije,
+            nedostupnosti,
+            broj_radnika,
+        )
+
+    izabrani = _izaberi_sa_regresionom_granicom(
+        kandidat_2, kandidat_hinta, napravi_kandidata_faze_1
+    )
+    if izabrani is None:
+        prazan = Rezultat("НЕМА ВАЛИДНОГ КАНДИДАТА", (), None, None)
         return prazan, prazan
-    dodela_a, dodela_b = dodele
-    casovi_a = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive,
-        dodeljene_prostorije=dodela_a,
+
+    naziv, rezultat_a, rezultat_b = izabrani
+    assert rezultat_a.izvestaj is not None and rezultat_b.izvestaj is not None
+    print(
+        f"ZAŠTITA KVALITETA — izabran je {naziv}: "
+        f"A={len(rezultat_a.izvestaj.upozorenja)}, "
+        f"B={len(rezultat_b.izvestaj.upozorenja)} upozorenja"
     )
-    casovi_b = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive, nedelja_b=True,
-        dodeljene_prostorije=dodela_b,
-    )
-    cilj = solver.objective_value if "optimizovano" in status_tekst else None
-    return Rezultat(
-        status_tekst,
-        casovi_a,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
-        cilj,
-    ), Rezultat(
-        status_tekst,
-        casovi_b,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
-        cilj,
-    )
+    return rezultat_a, rezultat_b
 
 
 def sacuvaj_csv(putanja: str | Path, casovi: Sequence[Cas]) -> None:
