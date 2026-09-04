@@ -175,6 +175,12 @@ pozorištu sme da traje do 17:40.
 
 ### Posebne prostorije i prioriteti
 
+- Učionice `KM-уч1`, `KM-уч2`, `KM-уч3`, `KM-уч7` i `SG-музуч` koriste se
+  za opšteobrazovne i pojedine stručne predmete: Srpski, Engleski i Francuski
+  jezik, Matematiku, Istoriju, Biologiju, Psihologiju, Sociologiju, Filozofiju,
+  Versku nastavu, Građansko vaspitanje, Etnologiju, Etnomuzikologiju, Istoriju
+  igre, Solfeđo i Tradicionalno pevanje, uz posebna ograničenja za poslednja
+  dva predmeta navedena ispod.
 - Informatika se održava u specijalnoj učionici.
 - Gluma se održava isključivo u videoteci.
 - Primenjena gimnastika u načelu se održava u `KM-8`, ali sme da se održi u
@@ -216,6 +222,11 @@ pozorištu sme da traje do 17:40.
   biti neposredno jedan za drugim, bez putnog bloka.
 - Pri drugim promenama lokacije između časova mora postojati tačno jedan
   slobodan blok za put.
+
+Odgovor administratorke za Solfeđo i Tradicionalno pevanje koristi oznaku
+`KM-2`, dok `ulazi/prostorije.csv` pod tom oznakom trenutno vodi salu, a
+učionicu vodi kao `KM-уч2`. Dok se ne potvrdi koja je od te dve oznake tačna,
+ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
 
 ## Nastavnici i korepetitori
 
