@@ -126,9 +126,12 @@ iz nedelje u nedelju; zahtev za simetriju na njega se ne primenjuje.
 
 ## Učionice, sale i lokacije
 
-Spisak prostorija je u `ulazi/prostorije.csv` (18 prostorija, izvučene iz
-prošlogodišnjeg rasporeda — nisu se menjale). Kolona `приоритет` još nije
-popunjena.
+Aktivni katalog je u `ulazi/prostorije.csv` (18 prostorija). Pravila po
+predmetu, odeljenju i obliku časa nalaze se u
+`ulazi/pravila_prostorija.csv`, a vremenski opsezi u
+`ulazi/dostupnost_prostorija.csv`. Pet nivoa i privremeno mapiranje NP oznaka
+opisani su u [pravila-prostorija.md](pravila-prostorija.md). Stara brojčana
+kolona `приоритет` nije dovoljan izvor za ova višedimenzionalna pravila.
 
 ### Knez Miletina
 
@@ -146,9 +149,9 @@ popunjena.
 - jedna učionica.
 - Predmeti **Narodna igra – glavni predmet** i **Repertoar narodne igre**
   održavaju se isključivo u salama `SG-1`, `SG-2` i `SG-3`.
-- Za **Narodnu igru – glavni predmet** prioritet je `SG-1`. Ako ona nije
-  dostupna, `SG-2` ili `SG-3` prvenstveno se dodeljuju odeljenju `IV5`, koje
-  ima najmanje učenika; odstupanje za druga odeljenja je lošije rešenje.
+- Strukturisani ulaz trenutno označava `SG-1` kao obaveznu za **Narodnu igru –
+  glavni predmet**. Ranije pravilo o izuzecima `SG-2`/`SG-3` time je zamenjeno
+  i proveravač više ne proizvodi upozorenja zasnovana na zakucanom prioritetu.
 
 ### Narodno pozorište
 
@@ -169,12 +172,7 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Gluma se održava isključivo u videoteci.
 - Sala `KM-8` čuva se za **Primenjenu gimnastiku**. Drugi predmet može biti u
   toj sali samo u nuždi i takva dodela nosi veliku kaznu.
-- Primenjena gimnastika može biti samo u `KM-8`, `SG-2` ili `SG-3`. Za dato
-  odeljenje i dan, ako odeljenje ima bilo koji drugi čas u Sportskoj gimnaziji,
-  Primenjena gimnastika mora biti u `SG-2` ili `SG-3`, kako učenici ne bi menjali
-  lokaciju. Ako tog dana nema drugog časa u Sportskoj gimnaziji, Primenjena
-  gimnastika mora biti u `KM-8`. Sam čas Primenjene gimnastike ne računa se kao
-  dokaz da je odeljenje tog dana u Sportskoj gimnaziji.
+- Primenjena gimnastika je prema strukturisanom pravilu obavezno u `KM-8`.
 - Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
   glavni predmet**.
 - Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.

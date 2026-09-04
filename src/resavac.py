@@ -17,7 +17,15 @@ from typing import Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
-from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
+from .loader import (
+    UlazGreska,
+    proveri_veze_pravila_prostorija,
+    ucitaj_dostupnost_prostorija,
+    ucitaj_nedostupnost,
+    ucitaj_pravila_prostorija,
+    ucitaj_prostorije,
+    ucitaj_vise,
+)
 from .izuzeci import dozvoljen_peti_cas, izuzet_od_ogranicenja_pauza
 from .model import (
     BLOKOVI,
@@ -33,22 +41,24 @@ from .model import (
     Zahtev,
 )
 from .pismo import kljuc_pisma, u_latinicu
+from .pravila_prostorija import (
+    dozvoljena_prostorija,
+    kazna_prostorije,
+    prostorija_dostupna,
+)
 from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
 from .vizualizacija import napravi_html
 
 
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
-INFORMATIKA = "Рачунарство и информатика"
 ISTORIJA = "Историја"
 ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
 DUSAN_ILIJIN = "Душан Илијин"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
-NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
-SALE_PRIMENJENE_GIMNASTIKE = frozenset({"KM-8", "SG-2", "SG-3"})
 NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -219,16 +229,11 @@ def _moguce_prostorije(
     zahtev: Zahtev,
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
+    trajanje: int = 2,
 ) -> tuple[Prostorija, ...]:
     predmet = ulaz.predmeti[zahtev.predmet]
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
-    if zahtev.predmet == INFORMATIKA:
-        return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
-    if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
-        return tuple(
-            p for p in prostorije if p.oznaka in SALE_PRIMENJENE_GIMNASTIKE
-        )
-    if zahtev.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
+    if zahtev.predmet == REPERTOAR_NARODNE:
         return tuple(
             p
             for p in prostorije
@@ -236,16 +241,28 @@ def _moguce_prostorije(
             and p.lokacija == SPORTSKA_GIMNAZIJA
             and p.oznaka in SG_SALE
         )
-    if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
-        "III1", "III2", "IV1", "IV2"
-    }:
+    if (
+        not ulaz.pravila_prostorija
+        and zahtev.predmet == REPERTOAR_KLASICNOG
+        and zahtev.odeljenja[0] in {"III1", "III2", "IV1", "IV2"}
+    ):
         return tuple(
             p for p in prostorije if p.tip is tip
         )
-    return tuple(
+    kandidati = tuple(
         p
         for p in prostorije
         if p.tip is tip and p.oznaka != NP_SALA
+    ) if zahtev.predmet != REPERTOAR_KLASICNOG else tuple(
+        p for p in prostorije if p.tip is tip
+    )
+    if not ulaz.pravila_prostorija:
+        return kandidati
+    return tuple(
+        p for p in kandidati
+        if dozvoljena_prostorija(
+            ulaz.pravila_prostorija, zahtev, p.oznaka, trajanje
+        )
     )
 
 
@@ -257,14 +274,56 @@ def _kazna_sale_km8(zahtev: Zahtev, oznaka: str) -> int:
     return 0
 
 
-def _kazna_sala_narodne_igre(zahtev: Zahtev, oznaka: str) -> int:
-    """SG-1 je standard; SG-2/SG-3 su izuzetak, prvenstveno za IV5."""
+def _kazna_strukturisanih_pravila(
+    ulaz: Ulaz, zahtev: Zahtev, oznaka: str, trajanje: int
+) -> int:
+    if ulaz.pravila_prostorija:
+        return kazna_prostorije(
+            ulaz.pravila_prostorija, zahtev, oznaka, trajanje
+        )
+    return 0
 
-    if zahtev.predmet != NARODNA_IGRA_GLAVNI or oznaka == "SG-1":
-        return 0
-    if oznaka not in {"SG-2", "SG-3"}:
-        return 100_000
-    return 1_000 if zahtev.odeljenja == ("IV5",) else 10_000
+
+def _ogranici_dostupnost_prostorije(
+    model: cp_model.CpModel,
+    koristi: cp_model.BoolVar,
+    start: cp_model.IntVar,
+    dozvoljeni: Sequence[tuple[int, int]],
+    ulaz: Ulaz,
+    oznaka: str,
+    trajanje: int,
+) -> None:
+    for dan, blok in dozvoljeni:
+        if not prostorija_dostupna(
+            ulaz.dostupnost_prostorija,
+            oznaka,
+            DANI[dan],
+            range(blok, blok + trajanje),
+        ):
+            model.add(start != dan * KORAK_DANA + blok).only_enforce_if(koristi)
+
+
+def _ogranici_dostupnost_lokacije(
+    model: cp_model.CpModel,
+    koristi: cp_model.BoolVar,
+    start: cp_model.IntVar,
+    dozvoljeni: Sequence[tuple[int, int]],
+    ulaz: Ulaz,
+    oznake: Iterable[str],
+    trajanje: int,
+) -> None:
+    oznake = tuple(oznake)
+    for dan, blok in dozvoljeni:
+        if not any(
+            prostorija_dostupna(
+                ulaz.dostupnost_prostorija,
+                oznaka,
+                DANI[dan],
+                range(blok, blok + trajanje),
+            )
+            for oznaka in oznake
+        ):
+            model.add(start != dan * KORAK_DANA + blok).only_enforce_if(koristi)
 
 
 def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
@@ -510,72 +569,6 @@ def _dodaj_dnevno_pravilo_lokacije(
         kraj - prvi == zauzeto + ima_putni_blok
     ).only_enforce_if(ima_cas)
     kazne.append(300 * menja_lokaciju)
-
-
-def _dodaj_pravilo_sale_primenjene_gimnastike(
-    model: cp_model.CpModel,
-    ulaz: Ulaz,
-    token: str,
-    indeks_dana: int,
-    stavke: Sequence[Jedinica],
-    promenljive: dict[int, PromenljiveJedinice],
-    nedelja_b: bool = False,
-) -> None:
-    """Veži salu PG za druge, ne-PG časove odeljenja u SG tog dana."""
-
-    sufiks = "_b" if nedelja_b else ""
-    primenjene = [
-        jedinica
-        for jedinica in stavke
-        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet
-        == PRIMENJENA_GIMNASTIKA
-    ]
-    if not primenjene:
-        return
-
-    drugi_u_sg: list[cp_model.BoolVar] = []
-    for jedinica in stavke:
-        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
-        if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
-            continue
-        _, po_danu, lokacije = _promenljive_za_nedelju(
-            promenljive[jedinica.indeks], nedelja_b
-        )
-        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
-        if koristi_sg is None:
-            continue
-        prisutan_u_sg = model.new_bool_var(
-            f"{token}_d{indeks_dana}_j{jedinica.indeks}_drugi_sg{sufiks}"
-        )
-        model.add_bool_and(
-            [po_danu[indeks_dana], koristi_sg]
-        ).only_enforce_if(prisutan_u_sg)
-        model.add_bool_or(
-            [~po_danu[indeks_dana], ~koristi_sg]
-        ).only_enforce_if(~prisutan_u_sg)
-        drugi_u_sg.append(prisutan_u_sg)
-
-    ima_drugi_u_sg = model.new_bool_var(
-        f"{token}_d{indeks_dana}_ima_drugi_sg{sufiks}"
-    )
-    if drugi_u_sg:
-        model.add_max_equality(ima_drugi_u_sg, drugi_u_sg)
-    else:
-        model.add(ima_drugi_u_sg == 0)
-
-    for jedinica in primenjene:
-        _, po_danu, lokacije = _promenljive_za_nedelju(
-            promenljive[jedinica.indeks], nedelja_b
-        )
-        koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
-        if koristi_sg is None:
-            model.add(ima_drugi_u_sg == 0).only_enforce_if(
-                po_danu[indeks_dana]
-            )
-        else:
-            model.add(koristi_sg == ima_drugi_u_sg).only_enforce_if(
-                po_danu[indeks_dana]
-            )
 
 
 def _dodaj_pravilo_aleksandra_boskovica(
@@ -903,6 +896,7 @@ def napravi_model(
         dan_b: cp_model.IntVar | None = None
         blok_b: cp_model.IntVar | None = None
         interval_b: cp_model.IntervalVar | None = None
+        dozvoljeni_b = dozvoljeni
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
                 jutarnja_b = (
@@ -989,7 +983,9 @@ def napravi_model(
             else:
                 po_danu_b = tuple(po_danu)
 
-        moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
+        moguce = _moguce_prostorije(
+            zahtev, ulaz, prostorije, jedinica.trajanje
+        )
         if not moguce:
             raise ValueError(f"{zahtev.gde}: нема одговарајуће просторије")
         izbor_prostorije: dict[str, cp_model.BoolVar] = {}
@@ -1029,6 +1025,10 @@ def napravi_model(
                 intervali_kapaciteta[(lokacija, tip)].append(interval_lokacije)
                 intervali_skupova_kandidata[kljuc_kandidata].append(
                     interval_lokacije
+                )
+                _ogranici_dostupnost_lokacije(
+                    model, koristi, start, dozvoljeni, ulaz,
+                    kandidati_na_lokaciji, jedinica.trajanje,
                 )
                 if kandidati_na_lokaciji == frozenset({"KM-8"}):
                     intervali_prostorija["KM-8"].append(interval_lokacije)
@@ -1093,6 +1093,10 @@ def napravi_model(
                     intervali_skupova_kandidata_b[kljuc_kandidata].append(
                         interval_b_lokacije
                     )
+                    _ogranici_dostupnost_lokacije(
+                        model, koristi_b, start_b, dozvoljeni_b, ulaz,
+                        kandidati_na_lokaciji, jedinica.trajanje,
+                    )
                     if kandidati_na_lokaciji == frozenset({"KM-8"}):
                         intervali_prostorija_b["KM-8"].append(
                             interval_b_lokacije
@@ -1148,6 +1152,11 @@ def napravi_model(
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
             po_lokaciji[prostorija.lokacija].append(koristi)
+            kazna_pravila = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, prostorija.oznaka, jedinica.trajanje
+            )
+            if kazna_pravila:
+                kazne.append(kazna_pravila * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
             if kazna_km8:
                 kazne.append(kazna_km8 * koristi)
@@ -1157,6 +1166,10 @@ def napravi_model(
                     model.add(koristi == 0)
                 else:
                     model.add(blok == 10).only_enforce_if(koristi)
+            _ogranici_dostupnost_prostorije(
+                model, koristi, start, dozvoljeni, ulaz,
+                prostorija.oznaka, jedinica.trajanje,
+            )
             opcion = model.new_optional_interval_var(
                 start, jedinica.trajanje, kraj, koristi,
                 f"{prefiks}_{prostorija.oznaka}_i",
@@ -1179,6 +1192,12 @@ def napravi_model(
                 izbor_prostorije_b[prostorija.oznaka] = koristi_b
                 po_lokaciji_b[prostorija.lokacija].append(koristi_b)
                 intervali_prostorija_b[prostorija.oznaka].append(opcion_b)
+                _ogranici_dostupnost_prostorije(
+                    model, koristi_b, start_b, dozvoljeni_b, ulaz,
+                    prostorija.oznaka, jedinica.trajanje,
+                )
+                if zahtev.smena.menja_se and kazna_pravila:
+                    kazne.append(kazna_pravila * koristi_b)
                 if zahtev.smena.menja_se and kazna_km8:
                     kazne.append(kazna_km8 * koristi_b)
         if not samo_lokacije:
@@ -1425,15 +1444,6 @@ def napravi_model(
                 stavke,
                 promenljive,
             )
-            _dodaj_pravilo_sale_primenjene_gimnastike(
-                model,
-                ulaz,
-                token,
-                indeks_dana,
-                stavke,
-                promenljive,
-            )
-
             if odeljenje.skola is Skola.OSNOVNA:
                 ukupno = [
                     jedinica.trajanje
@@ -1471,15 +1481,6 @@ def napravi_model(
                 _dodaj_dnevno_pravilo_lokacije(
                     model,
                     kazne,
-                    token,
-                    indeks_dana,
-                    stavke,
-                    promenljive,
-                    nedelja_b=True,
-                )
-                _dodaj_pravilo_sale_primenjene_gimnastike(
-                    model,
-                    ulaz,
                     token,
                     indeks_dana,
                     stavke,
@@ -1839,8 +1840,16 @@ def _dodeli_prostorije(
         )
         moguce = [
             prostorija
-            for prostorija in _moguce_prostorije(zahtev, ulaz, prostorije)
+            for prostorija in _moguce_prostorije(
+                zahtev, ulaz, prostorije, jedinica.trajanje
+            )
             if prostorija.lokacija == lokacija
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija,
+                prostorija.oznaka,
+                DANI[start // KORAK_DANA],
+                range(start % KORAK_DANA, start % KORAK_DANA + jedinica.trajanje),
+            )
         ]
         if jedinica.indeks in fiksne:
             moguce = [p for p in moguce if p.oznaka == fiksne[jedinica.indeks]]
@@ -1852,7 +1861,9 @@ def _dodeli_prostorije(
                 f"j{jedinica.indeks}_{prostorija.oznaka}"
             )
             izbori[jedinica.indeks][prostorija.oznaka] = koristi
-            kazna = _kazna_sala_narodne_igre(zahtev, prostorija.oznaka)
+            kazna = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, prostorija.oznaka, jedinica.trajanje
+            )
             if kazna:
                 kazne.append(kazna * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
@@ -1912,9 +1923,27 @@ def _dodeli_prostorije_obe(
         start_b = solver_termina.value(p.start_b)
         lokacija_a = next(n for n, x in p.lokacije.items() if solver_termina.boolean_value(x))
         lokacija_b = next(n for n, x in p.lokacije_b.items() if solver_termina.boolean_value(x))
-        moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
-        moguce_a = [s for s in moguce if s.lokacija == lokacija_a]
-        moguce_b = [s for s in moguce if s.lokacija == lokacija_b]
+        moguce = _moguce_prostorije(
+            zahtev, ulaz, prostorije, jedinica.trajanje
+        )
+        moguce_a = [
+            s for s in moguce
+            if s.lokacija == lokacija_a
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija, s.oznaka,
+                DANI[start_a // KORAK_DANA],
+                range(start_a % KORAK_DANA, start_a % KORAK_DANA + jedinica.trajanje),
+            )
+        ]
+        moguce_b = [
+            s for s in moguce
+            if s.lokacija == lokacija_b
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija, s.oznaka,
+                DANI[start_b // KORAK_DANA],
+                range(start_b % KORAK_DANA, start_b % KORAK_DANA + jedinica.trajanje),
+            )
+        ]
         if not moguce_a or not moguce_b:
             return None
         izbori_a[jedinica.indeks] = {}
@@ -1922,7 +1951,9 @@ def _dodeli_prostorije_obe(
         for soba in moguce_a:
             koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_a")
             izbori_a[jedinica.indeks][soba.oznaka] = koristi
-            kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
+            kazna = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, soba.oznaka, jedinica.trajanje
+            )
             if kazna:
                 kazne.append(kazna * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
@@ -1937,7 +1968,9 @@ def _dodeli_prostorije_obe(
             for soba in moguce_b:
                 koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_b")
                 izbori_b[jedinica.indeks][soba.oznaka] = koristi
-                kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
+                kazna = _kazna_strukturisanih_pravila(
+                    ulaz, zahtev, soba.oznaka, jedinica.trajanje
+                )
                 if kazna:
                     kazne.append(kazna * koristi)
                 kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
@@ -2160,13 +2193,35 @@ def _resi_u_dve_faze(
         nedostupnosti,
         jutarnja_smena,
         sa_nedeljom_b=sa_nedeljom_b,
-        samo_lokacije=True,
+        samo_lokacije=False,
         sa_ciljem=True,
     )
-    for indeks in range(len(model_1.proto.variables)):
-        prethodna = model_1.get_int_var_from_proto_index(indeks)
-        sledeca = model_2.get_int_var_from_proto_index(indeks)
-        model_2.add_hint(sledeca, solver_1.value(prethodna))
+    for jedinica in jedinice_1:
+        p1 = promenljive_1[jedinica.indeks]
+        p2 = promenljive_2[jedinica.indeks]
+        for prethodna, sledeca in (
+            (p1.start, p2.start), (p1.dan, p2.dan), (p1.blok, p2.blok),
+        ):
+            model_2.add_hint(sledeca, solver_1.value(prethodna))
+        for lokacija in set(p1.lokacije) & set(p2.lokacije):
+            model_2.add_hint(
+                p2.lokacije[lokacija], solver_1.value(p1.lokacije[lokacija])
+            )
+        if p1.start_b is not None and p2.start_b is not None:
+            for prethodna, sledeca in (
+                (p1.start_b, p2.start_b),
+                (p1.dan_b, p2.dan_b),
+                (p1.blok_b, p2.blok_b),
+            ):
+                assert prethodna is not None and sledeca is not None
+                if prethodna is not p1.start and sledeca is not p2.start:
+                    model_2.add_hint(sledeca, solver_1.value(prethodna))
+        if p1.lokacije_b is not None and p2.lokacije_b is not None:
+            for lokacija in set(p1.lokacije_b) & set(p2.lokacije_b):
+                prethodna = p1.lokacije_b[lokacija]
+                sledeca = p2.lokacije_b[lokacija]
+                if prethodna is not p1.lokacije.get(lokacija):
+                    model_2.add_hint(sledeca, solver_1.value(prethodna))
 
     preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
     if preostalo <= 0:
@@ -2342,9 +2397,26 @@ def ucitaj_standardne_ulaze(
             direktorijum / "ostali_casovi.csv",
         ]
     )
+    try:
+        pravila = ucitaj_pravila_prostorija(
+            direktorijum / "pravila_prostorija.csv"
+        )
+        dostupnost = ucitaj_dostupnost_prostorija(
+            direktorijum / "dostupnost_prostorija.csv"
+        )
+    except FileNotFoundError as greska:
+        raise UlazGreska(
+            [f"недостаје обавезна датотека „{Path(greska.filename).name}“"]
+        ) from greska
+    prostorije = ucitaj_prostorije(direktorijum / "prostorije.csv")
+    proveri_veze_pravila_prostorija(ulaz, prostorije, pravila, dostupnost)
     return (
-        ulaz,
-        ucitaj_prostorije(direktorijum / "prostorije.csv"),
+        replace(
+            ulaz,
+            pravila_prostorija=pravila,
+            dostupnost_prostorija=dostupnost,
+        ),
+        prostorije,
         ucitaj_nedostupnost(direktorijum / "nedostupnost.csv"),
     )
 

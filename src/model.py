@@ -134,6 +134,39 @@ class Prostorija:
     napomena: str
 
 
+class NivoPravilaProstorije(Enum):
+    """Jačina strukturisanog pravila prostorije."""
+
+    OBAVEZNO = "обавезно"
+    PRVI = "први"
+    DRUGI = "други"
+    IZUZETNO = "изузетно"
+    ZABRANJENO = "забрањено"
+
+
+@dataclass(frozen=True)
+class PraviloProstorije:
+    """Jedno atomsko pravilo za predmet, odeljenje i oblik časa."""
+
+    prostorija: str
+    nivo: NivoPravilaProstorije
+    predmet: str
+    odeljenja: tuple[str, ...]
+    oblik_casa: str | None
+    napomena: str
+
+
+@dataclass(frozen=True)
+class DostupnostProstorije:
+    """Uključivi opseg blokova u kome je prostorija dostupna."""
+
+    prostorija: str
+    dan: str
+    od_bloka: int
+    do_bloka: int
+    napomena: str
+
+
 @dataclass(frozen=True)
 class Nedostupnost:
     """A block range in a day when a teacher cannot be scheduled."""
@@ -183,6 +216,8 @@ class Ulaz:
     predmeti: dict[str, Predmet]
     #: None when the input mixes both schools (the usual, whole-institution case).
     skola: Skola | None
+    pravila_prostorija: tuple[PraviloProstorije, ...] = ()
+    dostupnost_prostorija: tuple[DostupnostProstorije, ...] = ()
 
     @property
     def ukupno_casova(self) -> int:
