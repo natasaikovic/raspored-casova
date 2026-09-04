@@ -20,6 +20,7 @@ from src.resavac import (
     _jedinice,
     _analiziraj_prostorije_hintova,
     _prenesi_resenje_kao_hint,
+    _ponovo_dokazi_veliko_jezgro_soba,
     _upari_hintove,
     _vrednosti_hladnog_mastera,
     _zabrani_i_hintuj_master_dodelu,
@@ -443,6 +444,51 @@ def test_core_rez_deduplikuje_deljene_a_b_master_varijable():
     solver = cp_model.CpSolver()
     assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assert (solver.value(start), solver.value(lokacija)) != (0, 1)
+
+
+def test_objective_free_reproof_smanjuje_jezgro_sa_1128_na_pravi_sukob():
+    model = cp_model.CpModel()
+    cuvari = [model.new_bool_var(f"cuvar_{i}") for i in range(1128)]
+    bezopasne = [model.new_bool_var(f"x_{i}") for i in range(1128)]
+    for cuvar, promenljiva in zip(cuvari, bezopasne, strict=True):
+        model.add(promenljiva == 0).only_enforce_if(cuvar)
+    model.add(cuvari[-2] + cuvari[-1] <= 1)
+    model.add_assumptions(cuvari)
+    model.minimize(sum(bezopasne))
+
+    prvi = cp_model.CpSolver()
+    prvi.parameters.num_search_workers = 1
+    assert prvi.solve(model) == cp_model.INFEASIBLE
+    originalno = list(prvi.sufficient_assumptions_for_infeasibility())
+    assert len(originalno) == 1128
+
+    jezgro = _ponovo_dokazi_veliko_jezgro_soba(model, originalno, 10.0, 1)
+
+    assert len(jezgro) == 2
+    assert set(jezgro) == {cuvari[-2].index, cuvari[-1].index}
+    assert not model.has_objective()
+
+
+def test_unknown_reproof_zadrzava_originalno_jezgro(monkeypatch):
+    model = cp_model.CpModel()
+    cilj = model.new_bool_var("cilj")
+    model.minimize(cilj)
+    originalno = list(range(65))
+
+    class SolverKojiNeDokazuje:
+        def __init__(self):
+            self.parameters = SimpleNamespace()
+
+        def solve(self, prosledjeni_model):
+            assert prosledjeni_model is model
+            assert not prosledjeni_model.has_objective()
+            return cp_model.UNKNOWN
+
+    monkeypatch.setattr(resavac.cp_model, "CpSolver", SolverKojiNeDokazuje)
+
+    assert _ponovo_dokazi_veliko_jezgro_soba(
+        model, originalno, 10.0, 1
+    ) == originalno
 
 
 def test_no_good_menja_kompletnu_master_dodelu():

@@ -106,6 +106,13 @@ REZERVA_ZA_DODELU_PROSTORIJA = 120.0
 NAJVISE_HLADNIH_MASTER_POKUSAJA = 4
 MINIMALNI_BUDZET_HLADNOG_POKUSAJA = 5.0
 
+# Model dodele soba sa funkcijom cilja ponekad vrati sve pretpostavke kao
+# sufficient core. Jedan kratki dokaz bez cilja obicno vrati pravi mali Hall
+# sukob, ali ne sme da uzme vreme narednom master pokusaju.
+PRAG_VELIKOG_JEZGRA_SOBA = 64
+MIN_BUDZET_PONOVNOG_DOKAZA_SOBA = 5.0
+MAX_BUDZET_PONOVNOG_DOKAZA_SOBA = 10.0
+
 
 class _TelemetrijaFaze2(cp_model.CpSolverSolutionCallback):
     """Ispiši svaki novi incumbent tokom optimizacije druge faze."""
@@ -197,6 +204,89 @@ class PromenljiveJedinice:
     prostorije_b: dict[str, cp_model.BoolVar] | None
     lokacije: dict[str, cp_model.BoolVar]
     lokacije_b: dict[str, cp_model.BoolVar] | None
+
+
+KljucSkupaKandidata = tuple[str, TipProstorije, frozenset[str]]
+KljucPomocnogSkupaKandidata = tuple[
+    str, TipProstorije, frozenset[str], frozenset[str]
+]
+
+
+def _intervali_hall_podskupa(
+    kljuc: KljucSkupaKandidata,
+    intervali_skupova: dict[
+        KljucSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+    pomocni_intervali: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+) -> list[cp_model.IntervalVar]:
+    """Vrati intervale ciji je stvarni skup kandidata unutar datog skupa.
+
+    Pomocni interval predstavlja granu jedinice koja bira obicnu salu umesto
+    KM-8. Ukljucuje se samo kada njen izvorni interval nije vec ukljucen, da
+    ista jedinica ne bi bila dvaput uracunata u jednom Hall ogranicenju.
+    """
+
+    lokacija, tip, podskup = kljuc
+    rezultat = [
+        interval
+        for (druga_lokacija, drugi_tip, kandidati), stavke
+        in intervali_skupova.items()
+        if druga_lokacija == lokacija
+        and drugi_tip is tip
+        and kandidati <= podskup
+        for interval in stavke
+    ]
+    rezultat.extend(
+        interval
+        for (
+            druga_lokacija,
+            drugi_tip,
+            kandidati,
+            izvorni_kandidati,
+        ), stavke in pomocni_intervali.items()
+        if druga_lokacija == lokacija
+        and drugi_tip is tip
+        and kandidati <= podskup
+        and not izvorni_kandidati <= podskup
+        for interval in stavke
+    )
+    return rezultat
+
+
+def _dodaj_hall_ogranicenja(
+    model: cp_model.CpModel,
+    kapaciteti: dict[tuple[str, TipProstorije], int],
+    intervali_skupova: dict[
+        KljucSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+    pomocni_intervali: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+) -> None:
+    """Ogranicava svaki registrovani pravi podskup fizickih prostorija."""
+
+    kljucevi = set(intervali_skupova)
+    kljucevi.update(
+        (lokacija, tip, kandidati)
+        for lokacija, tip, kandidati, _ in pomocni_intervali
+    )
+    for kljuc in sorted(
+        kljucevi,
+        key=lambda x: (x[0], x[1].value, len(x[2]), sorted(x[2])),
+    ):
+        lokacija, tip, kandidati = kljuc
+        if not kandidati or len(kandidati) >= kapaciteti[(lokacija, tip)]:
+            # Puni fizicki skup vec pokriva globalni cumulative.
+            continue
+        intervali = _intervali_hall_podskupa(
+            kljuc, intervali_skupova, pomocni_intervali
+        )
+        if len(kandidati) == 1:
+            model.add_no_overlap(intervali)
+        else:
+            model.add_cumulative(intervali, [1] * len(intervali), len(kandidati))
 
 
 @dataclass(frozen=True)
@@ -1024,6 +1114,12 @@ def napravi_model(
     intervali_skupova_kandidata_b: dict[
         tuple[str, TipProstorije, frozenset[str]], list[cp_model.IntervalVar]
     ] = defaultdict(list)
+    pomocni_intervali_skupova_kandidata: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ] = defaultdict(list)
+    pomocni_intervali_skupova_kandidata_b: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
     np_izbori: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
     ima_np_program = all(
@@ -1231,7 +1327,9 @@ def napravi_model(
                         )
                     )
                     obicne = kandidati_na_lokaciji - {"KM-8"}
-                    intervali_skupova_kandidata[(lokacija, tip, obicne)].append(
+                    pomocni_intervali_skupova_kandidata[
+                        (lokacija, tip, obicne, kandidati_na_lokaciji)
+                    ].append(
                         model.new_optional_interval_var(
                             start,
                             jedinica.trajanje,
@@ -1306,8 +1404,8 @@ def napravi_model(
                             )
                         )
                         obicne = kandidati_na_lokaciji - {"KM-8"}
-                        intervali_skupova_kandidata_b[
-                            (lokacija, tip, obicne)
+                        pomocni_intervali_skupova_kandidata_b[
+                            (lokacija, tip, obicne, kandidati_na_lokaciji)
                         ].append(
                             model.new_optional_interval_var(
                                 start_b,
@@ -1492,10 +1590,12 @@ def napravi_model(
         kapaciteti[(prostorija.lokacija, prostorija.tip)] += 1
     for kljuc, intervali in intervali_kapaciteta.items():
         model.add_cumulative(intervali, [1] * len(intervali), kapaciteti[kljuc])
-    for (_, _, kandidati), intervali in intervali_skupova_kandidata.items():
-        model.add_cumulative(
-            intervali, [1] * len(intervali), len(kandidati)
-        )
+    _dodaj_hall_ogranicenja(
+        model,
+        kapaciteti,
+        intervali_skupova_kandidata,
+        pomocni_intervali_skupova_kandidata,
+    )
     if sa_nedeljom_b:
         for osoba in sorted(set(intervali_nastavnika_b) | set(intervali_korepetitora_b)):
             model.add_no_overlap(
@@ -1508,10 +1608,12 @@ def napravi_model(
             model.add_cumulative(
                 intervali, [1] * len(intervali), kapaciteti[kljuc]
             )
-        for (_, _, kandidati), intervali in intervali_skupova_kandidata_b.items():
-            model.add_cumulative(
-                intervali, [1] * len(intervali), len(kandidati)
-            )
+        _dodaj_hall_ogranicenja(
+            model,
+            kapaciteti,
+            intervali_skupova_kandidata_b,
+            pomocni_intervali_skupova_kandidata_b,
+        )
 
     # Identične jedinice istog zahteva uređujemo hronološki da uklonimo
     # veliki broj simetričnih rešenja.
@@ -2107,6 +2209,43 @@ def _dodeli_prostorije(
     }
 
 
+def _ponovo_dokazi_veliko_jezgro_soba(
+    model: cp_model.CpModel,
+    jezgro: Sequence[int],
+    preostalo_vreme: float,
+    broj_radnika: int,
+) -> list[int]:
+    """Bez cilja ponovo dokazi samo veliko jezgro, uz strogo mali budzet."""
+
+    originalno = list(jezgro)
+    if (
+        len(originalno) <= PRAG_VELIKOG_JEZGRA_SOBA
+        or preostalo_vreme < MIN_BUDZET_PONOVNOG_DOKAZA_SOBA
+    ):
+        return originalno
+
+    model.clear_objective()
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = min(
+        MAX_BUDZET_PONOVNOG_DOKAZA_SOBA, preostalo_vreme
+    )
+    solver.parameters.num_search_workers = broj_radnika
+    status = solver.solve(model)
+    if status != cp_model.INFEASIBLE:
+        print(
+            "ROOM CORE — objective-free re-proof nije dokazao INFEASIBLE "
+            f"({_status_tekst(status)}); zadržavam originalno jezgro"
+        )
+        return originalno
+
+    novi_skup = set(solver.sufficient_assumptions_for_infeasibility())
+    novo = [literal for literal in originalno if literal in novi_skup]
+    if not novo:
+        return originalno
+    print(f"ROOM CORE — objective-free re-proof: {len(originalno)} -> {len(novo)}")
+    return novo
+
+
 def _dodeli_prostorije_obe(
     solver_termina: cp_model.CpSolver,
     ulaz: Ulaz,
@@ -2235,11 +2374,18 @@ def _dodeli_prostorije_obe(
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
+    pocetak_resavanja = time.monotonic()
     status = solver.solve(model)
     if status_out is not None:
         status_out.append(status)
     if status == cp_model.INFEASIBLE and sukob_out is not None:
-        for literal in solver.sufficient_assumptions_for_infeasibility():
+        jezgro = _ponovo_dokazi_veliko_jezgro_soba(
+            model,
+            solver.sufficient_assumptions_for_infeasibility(),
+            vremensko_ogranicenje - (time.monotonic() - pocetak_resavanja),
+            broj_radnika,
+        )
+        for literal in jezgro:
             indeks = literal if literal >= 0 else -literal - 1
             if indeks in pretpostavke:
                 sukob_out.append(pretpostavke[indeks])
