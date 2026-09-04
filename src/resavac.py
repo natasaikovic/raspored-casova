@@ -94,6 +94,11 @@ LIMIT_FIKSIRANOG_HINTA = 60.0
 # zastareo; tada pripremni pokušaji lako pojedu gotovo ceo budžet prave pretrage.
 PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA = 20
 
+# Hladni master bira samo termine i lokacije. Poslednji deo ukupnog budzeta
+# cuva se za mali egzaktni model koji zatim zajedno bira konkretne sobe u A i
+# B nedelji. Za kratke testne pozive koristi se polovina dostupnog budzeta.
+REZERVA_ZA_DODELU_PROSTORIJA = 120.0
+
 
 @dataclass(frozen=True)
 class Jedinica:
@@ -2356,6 +2361,8 @@ def _resi_u_dve_faze(
     tuple[Jedinica, ...],
     dict[int, PromenljiveJedinice],
     str,
+    dict[int, str] | None,
+    dict[int, str] | None,
 ]:
     """Nađi lokacije, zatim konkretne sobe, pa optimizuj strogi model."""
 
@@ -2387,7 +2394,7 @@ def _resi_u_dve_faze(
             print(
                 f"HINT: {broj_nevazecih} неважећих додела прелази праг "
                 f"{PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA}; одбацујем hint и "
-                "покрећем хладну строгу фазу."
+                "покрећем хладни локацијски master."
             )
 
     model_pripreme = None
@@ -2404,6 +2411,83 @@ def _resi_u_dve_faze(
             sa_ciljem=False,
             hintovi=hintovi,
             hintovi_b=hintovi_b,
+        )
+    else:
+        print("PRIPREMA — прескочена; хладни локацијски master добија буџет")
+        # Bez upotrebljivog prethodnog rasporeda puni model konkretnih soba je
+        # nepotrebno tezak. Jedan neprekinut master solve bira termine i
+        # lokacije, a mali egzaktni model u rezervisanom vremenu bira sobe.
+        model_lokacija, jedinice_lokacija, promenljive_lokacija = napravi_model(
+            ulaz,
+            prostorije,
+            nedostupnosti,
+            jutarnja_smena,
+            sa_nedeljom_b=sa_nedeljom_b,
+            samo_lokacije=True,
+            sa_ciljem=False,
+        )
+        greska_modela = model_lokacija.validate()
+        if greska_modela:
+            raise RuntimeError(f"Неисправан модел локација: {greska_modela}")
+
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        rezerva = min(REZERVA_ZA_DODELU_PROSTORIJA, max(0.0, preostalo / 2))
+        limit_lokacija = max(0.0, preostalo - rezerva)
+        solver_lokacija = cp_model.CpSolver()
+        solver_lokacija.parameters.num_search_workers = broj_radnika
+        solver_lokacija.parameters.random_seed = seme
+        status_lokacija = cp_model.UNKNOWN
+        pocetak_lokacija = time.monotonic()
+        if limit_lokacija > 0:
+            solver_lokacija.parameters.max_time_in_seconds = limit_lokacija
+            status_lokacija = solver_lokacija.solve(model_lokacija)
+        trajanje_lokacija = time.monotonic() - pocetak_lokacija
+        print(f"FAZA 1 — lokacijski master: {trajanje_lokacija:.3f} s")
+        if status_lokacija not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            status = _status_tekst(status_lokacija)
+            print(f"FAZA 1 — neuspeh/timeout: {status}")
+            print("FAZA 2 — dodela konkretnih prostorija: 0.000 s")
+            return (
+                None, jedinice_lokacija, promenljive_lokacija,
+                f"neuspeh/timeout (lokacijski master): {status}", None, None,
+            )
+
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        if preostalo <= 0:
+            print("FAZA 2 — nema vremena za dodelu konkretnih prostorija")
+            return (
+                None, jedinice_lokacija, promenljive_lokacija,
+                "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
+            )
+        pocetak_soba = time.monotonic()
+        if sa_nedeljom_b:
+            dodela = _dodeli_prostorije_obe(
+                solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                promenljive_lokacija, vremensko_ogranicenje=preostalo,
+                broj_radnika=broj_radnika,
+            )
+        else:
+            dodela_a = _dodeli_prostorije(
+                solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                promenljive_lokacija, vremensko_ogranicenje=preostalo,
+                broj_radnika=broj_radnika,
+            )
+            dodela = (dodela_a, None) if dodela_a is not None else None
+        trajanje_soba = time.monotonic() - pocetak_soba
+        print(f"FAZA 2 — dodela konkretnih prostorija: {trajanje_soba:.3f} s")
+        if dodela is None:
+            print("FAZA 2 — konkretne prostorije nisu dodeljene")
+            return (
+                None, jedinice_lokacija, promenljive_lokacija,
+                "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
+            )
+        dodela_a, dodela_b = dodela
+        print("FAZA 2 — konkretne prostorije dodeljene")
+        return (
+            solver_lokacija, jedinice_lokacija, promenljive_lokacija,
+            "dopustivo (hladni lokacijski master + faza 2 dodela soba); "
+            "objective n/d",
+            dodela_a, dodela_b,
         )
     # Svi modeli koji će se rešavati grade se pre prvog solve poziva, tako da
     # i vreme konstrukcije ulazi u isti ukupni zidni budžet.
@@ -2476,6 +2560,7 @@ def _resi_u_dve_faze(
         return (
             None, jedinice_1, promenljive_1,
             "neuspeh/timeout (faza 1): vremensko ograničenje",
+            None, None,
         )
 
     pocetak_prve = time.monotonic()
@@ -2529,6 +2614,7 @@ def _resi_u_dve_faze(
         return (
             None, jedinice_1, promenljive_1,
             f"neuspeh/timeout (faza 1): {status}",
+            None, None,
         )
     print("FAZA 1 — dopustiv raspored sa konkretnim prostorijama pronađen")
 
@@ -2537,6 +2623,7 @@ def _resi_u_dve_faze(
         return (
             solver_1, jedinice_1, promenljive_1,
             "dopustivo (faza 1); faza 2: timeout",
+            None, None,
         )
 
     pocetak_druge = time.monotonic()
@@ -2553,6 +2640,7 @@ def _resi_u_dve_faze(
         return (
             solver_1, jedinice_1, promenljive_1,
             "dopustivo (faza 1); faza 2: timeout",
+            None, None,
         )
     solver_2 = cp_model.CpSolver()
     solver_2.parameters.max_time_in_seconds = preostalo
@@ -2564,7 +2652,10 @@ def _resi_u_dve_faze(
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)
         print(f"FAZA 2 — optimizovano rešenje: {status}")
-        return solver_2, jedinice_2, promenljive_2, f"optimizovano (faza 2): {status}"
+        return (
+            solver_2, jedinice_2, promenljive_2,
+            f"optimizovano (faza 2): {status}", None, None,
+        )
 
     status = _status_tekst(status_2)
     print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
@@ -2573,6 +2664,8 @@ def _resi_u_dve_faze(
         jedinice_1,
         promenljive_1,
         f"dopustivo (faza 1); faza 2 neuspeh/timeout: {status}",
+        None,
+        None,
     )
 
 
@@ -2590,7 +2683,7 @@ def resi_nedelju(
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
-    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
+    solver, jedinice, promenljive, status_tekst, sobe_a, _ = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2605,8 +2698,14 @@ def resi_nedelju(
     if solver is None:
         return Rezultat(status_tekst, (), None, None)
 
-    casovi = _izvuci_casove(solver, ulaz, jedinice, promenljive)
+    casovi = _izvuci_casove(
+        solver, ulaz, jedinice, promenljive, dodeljene_prostorije=sobe_a
+    )
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
+    if not izvestaj.ispravan:
+        return Rezultat(
+            f"{status_tekst}; hard validacija nije prošla", (), izvestaj, None
+        )
     cilj = solver.objective_value if "faza 2" in status_tekst and "optimizovano" in status_tekst else None
     return Rezultat(status_tekst, casovi, izvestaj, cilj)
 
@@ -2629,7 +2728,7 @@ def resi_obe_nedelje(
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
-    solver, jedinice, promenljive, status_tekst = _resi_u_dve_faze(
+    solver, jedinice, promenljive, status_tekst, sobe_a, sobe_b = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2644,20 +2743,36 @@ def resi_obe_nedelje(
     if solver is None:
         prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
-    casovi_a = _izvuci_casove(solver, ulaz, jedinice, promenljive)
+    casovi_a = _izvuci_casove(
+        solver, ulaz, jedinice, promenljive,
+        dodeljene_prostorije=sobe_a,
+    )
     casovi_b = _izvuci_casove(
         solver, ulaz, jedinice, promenljive, nedelja_b=True,
+        dodeljene_prostorije=sobe_b,
     )
+    izvestaj_a = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA
+    )
+    izvestaj_b = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA
+    )
+    if not izvestaj_a.ispravan or not izvestaj_b.ispravan:
+        status = f"{status_tekst}; hard validacija A/B nije prošla"
+        return (
+            Rezultat(status, (), izvestaj_a, None),
+            Rezultat(status, (), izvestaj_b, None),
+        )
     cilj = solver.objective_value if "optimizovano" in status_tekst else None
     return Rezultat(
         status_tekst,
         casovi_a,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA),
+        izvestaj_a,
         cilj,
     ), Rezultat(
         status_tekst,
         casovi_b,
-        proveri(ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA),
+        izvestaj_b,
         cilj,
     )
 
@@ -2769,16 +2884,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("nedelja_b.csv", rezultat_b),
     ):
         print(f"{ime}: {rezultat.status}")
+        if rezultat.izvestaj is not None:
+            print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.pronadjen:
             izlazni_status = 1
             continue
-        putanja = argumenti.izlaz / ime
-        sacuvaj_csv(putanja, rezultat.casovi)
         assert rezultat.izvestaj is not None
-        print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.izvestaj.ispravan:
             izlazni_status = 1
-    if rezultat_a.pronadjen and rezultat_b.pronadjen:
+    oba_validna = (
+        izlazni_status == 0
+        and rezultat_a.pronadjen
+        and rezultat_b.pronadjen
+        and rezultat_a.izvestaj is not None
+        and rezultat_b.izvestaj is not None
+        and rezultat_a.izvestaj.ispravan
+        and rezultat_b.izvestaj.ispravan
+    )
+    if oba_validna:
+        sacuvaj_csv(argumenti.izlaz / "nedelja_a.csv", rezultat_a.casovi)
+        sacuvaj_csv(argumenti.izlaz / "nedelja_b.csv", rezultat_b.casovi)
         napravi_html(
             argumenti.izlaz / "nedelja_a.csv",
             argumenti.izlaz / "nedelja_b.csv",

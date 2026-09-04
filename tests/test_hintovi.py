@@ -10,6 +10,7 @@ from src.model import (
 from src.proveravac import Cas
 from src.resavac import (
     PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA,
+    Rezultat,
     _broj_nevazecih_dodela_prostorija,
     _jedinice,
     _analiziraj_prostorije_hintova,
@@ -206,7 +207,7 @@ def test_veliki_broj_nevazecih_dodela_preskace_sve_pripremne_pokusaje(
     )
 
     izlaz = capsys.readouterr().out
-    assert "одбацујем hint и покрећем хладну строгу фазу" in izlaz
+    assert "одбацујем hint и покрећем хладни локацијски master" in izlaz
     assert "PRIPREMA — прескочена" in izlaz
     assert drugo_a.pronadjen and drugo_b.pronadjen
 
@@ -233,7 +234,7 @@ def test_mali_broj_nevazecih_dodela_zadrzava_topli_start(monkeypatch, capsys):
     assert drugo_a.pronadjen and drugo_b.pronadjen
 
 
-def test_bez_hinta_ne_gradi_niti_resava_pripremni_model(monkeypatch, capsys):
+def test_bez_hinta_gradi_jedan_lokacijski_master(monkeypatch, capsys):
     pravi_napravi_model = resavac.napravi_model
     samo_lokacije_pozivi = 0
 
@@ -245,12 +246,12 @@ def test_bez_hinta_ne_gradi_niti_resava_pripremni_model(monkeypatch, capsys):
     monkeypatch.setattr(resavac, "napravi_model", izbroj_modele)
     rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
 
-    assert samo_lokacije_pozivi == 0
+    assert samo_lokacije_pozivi == 1
     assert "PRIPREMA — прескочена" in capsys.readouterr().out
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
 
 
-def test_hladna_prva_faza_ima_jedan_solve_i_ceo_preostali_budzet(monkeypatch):
+def test_hladni_master_ima_jedan_solve_i_cuva_rezervu_za_sobe(monkeypatch):
     pravi_solver = cp_model.CpSolver
     solve_pozivi = []
 
@@ -268,16 +269,54 @@ def test_hladna_prva_faza_ima_jedan_solve_i_ceo_preostali_budzet(monkeypatch):
     monkeypatch.setattr(resavac.time, "monotonic", lambda: next(vremena))
     monkeypatch.setattr(resavac.cp_model, "CpSolver", TimeoutSolver)
 
-    solver, _, _, status = resavac._resi_u_dve_faze(
+    solver, _, _, status, sobe_a, sobe_b = resavac._resi_u_dve_faze(
         ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")]),
         (SALA, UCIONICA), (), Smena.CRVENA,
         vremensko_ogranicenje=1800, broj_radnika=1, seme=1,
     )
 
     assert solver is None
-    assert "faza 1" in status
+    assert sobe_a is None and sobe_b is None
+    assert "lokacijski master" in status
     assert len(solve_pozivi) == 1
-    assert solve_pozivi[0][1] == 1799.0
+    assert solve_pozivi[0][1] == 1679.8
+
+
+def test_hladni_tok_dodeljuje_a_i_b_sobe_sa_preostalim_budzetom(monkeypatch):
+    pravi_poziv = resavac._dodeli_prostorije_obe
+    pozivi = []
+
+    def zabelezi(*args, **kwargs):
+        pozivi.append(kwargs["vremensko_ogranicenje"])
+        return pravi_poziv(*args, **kwargs)
+
+    monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", zabelezi)
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert len(pozivi) == 1 and 0 < pozivi[0] <= 5
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+    assert all(cas.prostorija for cas in rezultat_a.casovi)
+    assert all(cas.prostorija for cas in rezultat_b.casovi)
+    assert rezultat_a.izvestaj is not None and rezultat_a.izvestaj.ispravan
+    assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
+    assert rezultat_a.cilj is None and rezultat_b.cilj is None
+
+
+def test_main_ne_izvozi_delimican_par_nedelja(monkeypatch, tmp_path):
+    u = _ulaz_za_dve_nedelje()
+    izvestaj = resavac.proveri(u, (SALA, UCIONICA), (), (), Smena.CRVENA)
+    a = Rezultat("dopustivo", _hint_dvocas("KM-1"), izvestaj, None)
+    b = Rezultat("neuspeh dodele konkretnih prostorija", (), None, None)
+    monkeypatch.setattr(
+        resavac, "ucitaj_standardne_ulaze", lambda _putanja: (u, (SALA, UCIONICA), ())
+    )
+    monkeypatch.setattr(resavac, "resi_obe_nedelje", lambda *_args, **_kwargs: (a, b))
+
+    izlaz = tmp_path / "izlaz"
+    assert resavac.main(["--izlaz", str(izlaz)]) == 1
+    assert not (izlaz / "nedelja_a.csv").exists()
+    assert not (izlaz / "nedelja_b.csv").exists()
+    assert not (izlaz / "raspored.html").exists()
 
 
 def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):
@@ -364,7 +403,7 @@ def test_lokacijska_priprema_daje_dopustiv_hint_strogoj_fazi():
     assert solver_1.solve(model_1) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
-def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
+def test_neuspeh_dodele_soba_ne_vraca_raspored(monkeypatch):
     pravi_solver = cp_model.CpSolver
     broj_solvera = 0
 
@@ -385,12 +424,9 @@ def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
         ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
     )
 
-    assert "faza 2 neuspeh/timeout" in rezultat_a.status
-    assert rezultat_a.pronadjen and rezultat_b.pronadjen
-    assert {cas.prostorija for cas in rezultat_a.casovi} <= {"KM-1", "KM-уч2"}
-    assert {cas.prostorija for cas in rezultat_b.casovi} <= {"KM-1", "KM-уч2"}
-    assert rezultat_a.izvestaj is not None and rezultat_a.izvestaj.ispravan
-    assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
+    assert "dodela konkretnih prostorija" in rezultat_a.status
+    assert not rezultat_a.pronadjen and not rezultat_b.pronadjen
+    assert rezultat_a.casovi == () and rezultat_b.casovi == ()
 
 
 def test_neupotrebljiv_hint_se_popravlja_pomocu_infeasible_jezgra(capsys):
