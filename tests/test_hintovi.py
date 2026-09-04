@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,7 @@ from src.proveravac import Cas
 from src.resavac import (
     PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA,
     Rezultat,
+    SukobProstorije,
     _broj_nevazecih_dodela_prostorija,
     _jedinice,
     _analiziraj_prostorije_hintova,
@@ -21,6 +23,7 @@ from src.resavac import (
     _upari_hintove,
     _vrednosti_hladnog_mastera,
     _zabrani_i_hintuj_master_dodelu,
+    _zabrani_sukob_i_hintuj_master_dodelu,
     napravi_model,
     resi_obe_nedelje,
 )
@@ -320,10 +323,126 @@ def test_hladni_tok_posle_prvog_infeasible_sobe_uspeva_na_drugom(monkeypatch):
         return pravi_poziv(*args, **kwargs)
 
     monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", prvi_neuspeva)
+    pravi_full_rez = resavac._zabrani_i_hintuj_master_dodelu
+    broj_full_rezova = 0
+
+    def izbroj_full_rez(*args, **kwargs):
+        nonlocal broj_full_rezova
+        broj_full_rezova += 1
+        return pravi_full_rez(*args, **kwargs)
+
+    monkeypatch.setattr(
+        resavac, "_zabrani_i_hintuj_master_dodelu", izbroj_full_rez
+    )
     rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
 
     assert broj_poziva == 2
+    assert broj_full_rezova == 1
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
+def _hall_sukob(nedelja_b=False):
+    zahtevi = [
+        zahtev("Предмет 1", "11", 1, "Наставник 1", "Корепетитор 1"),
+        zahtev("Предмет 2", "12", 1, "Наставник 2", "Корепетитор 2"),
+    ]
+    u = ulaz(zahtevi)
+    u = replace(
+        u,
+        pravila_prostorija=tuple(
+            PraviloProstorije(
+                "KM-1", NivoPravilaProstorije.OBAVEZNO,
+                z.predmet, z.odeljenja, None, "",
+            )
+            for z in zahtevi
+        ),
+    )
+    _, jedinice, promenljive = napravi_model(
+        u, (SALA, SALA_2), (), Smena.CRVENA,
+        sa_nedeljom_b=True, samo_lokacije=True, sa_ciljem=False,
+    )
+    vrednosti = {}
+    for redni_broj, jedinica in enumerate(jedinice):
+        p = promenljive[jedinica.indeks]
+        assert p.start_b is not None
+        vrednosti[p.start.index] = 61 if not nedelja_b else 61 + redni_broj
+        vrednosti[p.start_b.index] = 70 if nedelja_b else 70 + redni_broj
+
+    class FiksniMaster:
+        def value(self, varijabla):
+            return vrednosti[varijabla.index]
+
+        def boolean_value(self, _varijabla):
+            return True
+
+    statusi = []
+    sukob = []
+    dodela = resavac._dodeli_prostorije_obe(
+        FiksniMaster(), u, (SALA, SALA_2), jedinice, promenljive,
+        broj_radnika=1, status_out=statusi, sukob_out=sukob,
+    )
+    assert dodela is None
+    assert statusi == [cp_model.INFEASIBLE]
+    return sukob
+
+
+def test_hall_sukob_vraca_malo_jezgro_i_rez_menja_master_odluku():
+    sukob = _hall_sukob()
+    assert len(sukob) == 2
+    assert {stavka.nedelja_b for stavka in sukob} == {False}
+
+    model = cp_model.CpModel()
+    promenljive = {}
+    for stavka in sukob:
+        start = model.new_int_var(60, 62, f"start_{stavka.jedinica_indeks}")
+        lokacija = model.new_bool_var(f"lokacija_{stavka.jedinica_indeks}")
+        model.add(lokacija == 1)
+        promenljive[stavka.jedinica_indeks] = SimpleNamespace(
+            start=start, start_b=start,
+            lokacije={stavka.lokacija: lokacija},
+            lokacije_b={stavka.lokacija: lokacija},
+        )
+    broj_varijabli_reza = _zabrani_sukob_i_hintuj_master_dodelu(
+        model, promenljive, sukob, (), (),
+    )
+    assert broj_varijabli_reza == 4
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert any(
+        solver.value(promenljive[x.jedinica_indeks].start) != x.start
+        for x in sukob
+    )
+
+
+def test_room_jezgro_razlikuje_nedelju_b():
+    sukob = _hall_sukob(nedelja_b=True)
+    assert len(sukob) == 2
+    assert {stavka.nedelja_b for stavka in sukob} == {True}
+
+
+def test_core_rez_deduplikuje_deljene_a_b_master_varijable():
+    model = cp_model.CpModel()
+    start = model.new_int_var(0, 1, "start")
+    lokacija = model.new_bool_var("lokacija")
+    p = SimpleNamespace(
+        start=start, start_b=start,
+        lokacije={"KM": lokacija}, lokacije_b={"KM": lokacija},
+    )
+    sukob = (
+        SukobProstorije(0, False, 0, "KM"),
+        SukobProstorije(0, True, 0, "KM"),
+    )
+    broj_varijabli_reza = _zabrani_sukob_i_hintuj_master_dodelu(
+        model, {0: p}, sukob, (start, lokacija), (0, 1),
+    )
+
+    assert broj_varijabli_reza == 2
+    assert len(model.proto.solution_hint.vars) == 2
+    solver = cp_model.CpSolver()
+    assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert (solver.value(start), solver.value(lokacija)) != (0, 1)
 
 
 def test_no_good_menja_kompletnu_master_dodelu():
@@ -353,6 +472,7 @@ def test_no_good_menja_kompletnu_master_dodelu():
 
 def test_unknown_dodela_soba_ne_pokrece_novi_master(monkeypatch):
     broj_poziva = 0
+    broj_rezova = 0
 
     def timeout_soba(*args, **kwargs):
         nonlocal broj_poziva
@@ -360,10 +480,19 @@ def test_unknown_dodela_soba_ne_pokrece_novi_master(monkeypatch):
         kwargs["status_out"].append(cp_model.UNKNOWN)
         return None
 
+    def rez_ne_sme(*args, **kwargs):
+        nonlocal broj_rezova
+        broj_rezova += 1
+
     monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", timeout_soba)
+    monkeypatch.setattr(resavac, "_zabrani_i_hintuj_master_dodelu", rez_ne_sme)
+    monkeypatch.setattr(
+        resavac, "_zabrani_sukob_i_hintuj_master_dodelu", rez_ne_sme
+    )
     rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
 
     assert broj_poziva == 1
+    assert broj_rezova == 0
     assert not rezultat_a.pronadjen and not rezultat_b.pronadjen
 
 
