@@ -228,6 +228,12 @@ Odgovor administratorke za Solfeđo i Tradicionalno pevanje koristi oznaku
 učionicu vodi kao `KM-уч2`. Dok se ne potvrdi koja je od te dve oznake tačna,
 ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
 
+- U Sportskoj gimnaziji **Solfeđo** (i za OBŠ i za SBŠ) mora da se održava u
+  `SG-музуч`, jer ta učionica ima klavir.
+- **Tradicionalno pevanje** prvenstveno se održava u muzičkim učionicama. Ako
+  u njima nema mesta, sme da se održi u `KM-8`, `SG-2` ili `SG-3`, jer i te
+  sale imaju klavir.
+
 ## Nastavnici i korepetitori
 
 - Pojedini nastavnici nisu dostupni određenim danima (na primer, petkom);
