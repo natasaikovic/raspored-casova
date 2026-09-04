@@ -162,7 +162,9 @@ def test_prethodni_raspored_se_prihvata_kao_fiksirani_hint(capsys):
 
     drugo_a, drugo_b = _resi(u, hintovi=prvo_a.casovi, hintovi_b=prvo_b.casovi)
 
-    assert "prethodni raspored je i dalje dopustiv" in capsys.readouterr().out
+    assert "prethodni raspored prolazi uz 0 oslobođenih jedinica" in (
+        capsys.readouterr().out
+    )
     assert drugo_a.pronadjen and drugo_b.pronadjen
     assert drugo_a.izvestaj is not None and drugo_a.izvestaj.ispravan
     assert drugo_b.izvestaj is not None and drugo_b.izvestaj.ispravan
@@ -281,7 +283,7 @@ def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
     assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
 
 
-def test_neupotrebljiv_hint_se_odbacuje_i_trazi_se_novo_resenje(capsys):
+def test_neupotrebljiv_hint_se_popravlja_pomocu_infeasible_jezgra(capsys):
     u = _ulaz_za_dve_nedelje()
     prvo_a, _ = _resi(u)
     prvi_termin = prvo_a.casovi[0]
@@ -294,7 +296,8 @@ def test_neupotrebljiv_hint_se_odbacuje_i_trazi_se_novo_resenje(capsys):
     drugo_a, drugo_b = _resi(u, hintovi=pokvareni)
 
     izlaz = capsys.readouterr().out
-    assert "nije upotrebljiv kao fiksirani hint" in izlaz
+    assert "језгро" in izlaz
+    assert "prethodni raspored prolazi uz" in izlaz
     assert drugo_a.pronadjen and drugo_b.pronadjen
     assert drugo_a.izvestaj is not None and drugo_a.izvestaj.ispravan
 

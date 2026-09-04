@@ -2166,17 +2166,36 @@ def _resi_fiksiranim_hintom(
         f"локације; {len(pocetno_slobodne)} јединица мора да промени локацију."
     )
 
+    model.clear_hints()
+    cuvari: dict[int, cp_model.BoolVar] = {}
+    for indeks, parovi in pripremljeni.items():
+        cuvar = model.new_bool_var(f"hint_j{indeks}")
+        cuvari[indeks] = cuvar
+        vidjene_promenljive: set[int] = set()
+        for promenljiva, vrednost in parovi:
+            # Start jednoznačno određuje dan i blok; jedna reifikovana
+            # jednakost po nedelji pravi znatno manji assumption model.
+            if not promenljiva.name.endswith(("_start", "_start_b")):
+                continue
+            if promenljiva.index in vidjene_promenljive:
+                continue
+            model.add(promenljiva == vrednost).only_enforce_if(cuvar)
+            vidjene_promenljive.add(promenljiva.index)
+
+    slobodne = _nivoi_oslobadjanja(
+        ulaz, jedinice, pripremljeni, najvise_nivoa=0,
+        pocetno_slobodne=pocetno_slobodne,
+    )[0]
     status = cp_model.UNKNOWN
-    solver.parameters.fix_variables_to_their_hinted_value = True
-    for nivo, slobodne in enumerate(
-        _nivoi_oslobadjanja(
-            ulaz, jedinice, pripremljeni,
-            pocetno_slobodne=pocetno_slobodne,
-        )
-    ):
-        fiksirane = _primeni_hintove(model, pripremljeni, slobodne)
-        if fiksirane == 0:
+    for pokusaj in range(3):
+        aktivni = {
+            indeks: cuvar for indeks, cuvar in cuvari.items()
+            if indeks not in slobodne
+        }
+        if not aktivni:
             break
+        model.clear_assumptions()
+        model.add_assumptions(aktivni.values())
         preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
         if preostalo <= 0:
             break
@@ -2184,23 +2203,37 @@ def _resi_fiksiranim_hintom(
         korak = time.monotonic()
         status = solver.solve(model)
         trajanje = time.monotonic() - korak
-        opis = (
-            "prethodni raspored je i dalje dopustiv"
-            if nivo == 0
-            else f"prethodni raspored prolazi uz {len(slobodne)} oslobođenih jedinica"
-        )
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             print(
-                f"{oznaka_faze} — {opis} "
-                f"(fiksirani hint, nivo {nivo}, {trajanje:.3f} s)"
+                f"{oznaka_faze} — prethodni raspored prolazi uz "
+                f"{len(slobodne)} oslobođenih jedinica "
+                f"(core покушај {pokusaj}, {trajanje:.3f} s)"
             )
             break
+        if status != cp_model.INFEASIBLE:
+            print(
+                f"{oznaka_faze} — core покушај {pokusaj} "
+                f"({len(aktivni)} fiksiranih) nije dao jezgro: "
+                f"{_status_tekst(status)}, {trajanje:.3f} s"
+            )
+            break
+        jezgro_literala = set(solver.sufficient_assumptions_for_infeasibility())
+        po_literalu = {cuvar.index: indeks for indeks, cuvar in aktivni.items()}
+        jezgro = {
+            po_literalu[literal]
+            for literal in jezgro_literala
+            if literal in po_literalu
+        }
+        pre = len(slobodne)
+        slobodne.update(jezgro)
         print(
-            f"{oznaka_faze} — fiksirani hint nivo {nivo} "
-            f"({fiksirane} jedinica) ne prolazi: "
-            f"{_status_tekst(status)}, {trajanje:.3f} s"
+            f"{oznaka_faze} — core покушај {pokusaj}: INFEASIBLE за "
+            f"{trajanje:.3f} s; језгро {len(jezgro)}, "
+            f"укупно слободних {len(slobodne)}."
         )
-    solver.parameters.fix_variables_to_their_hinted_value = False
+        if len(slobodne) == pre:
+            break
+    model.clear_assumptions()
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         _primeni_hintove(model, pripremljeni)
         print(
