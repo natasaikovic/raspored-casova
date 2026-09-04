@@ -2067,6 +2067,7 @@ def _resi_fiksiranim_hintom(
     hintovi_b: Sequence[Cas],
     vremensko_ogranicenje: float,
     pocetak: float,
+    oznaka_faze: str = "FAZA 1",
 ) -> cp_model.CpSolverStatus:
     """Pokušaj prethodni raspored kao fiksiran, sve labavije oko izmena."""
 
@@ -2077,7 +2078,10 @@ def _resi_fiksiranim_hintom(
         ulaz, prostorije, jedinice_zahteva, promenljive, hintovi, hintovi_b
     )
     if not pripremljeni:
-        print("FAZA 1 — hint se ne poklapa ni sa jednom jedinicom; tražim novo rešenje")
+        print(
+            f"{oznaka_faze} — hint se ne poklapa ni sa jednom jedinicom; "
+            "tražim novo rešenje"
+        )
         return cp_model.UNKNOWN
 
     status = cp_model.UNKNOWN
@@ -2101,27 +2105,34 @@ def _resi_fiksiranim_hintom(
             else f"prethodni raspored prolazi uz {len(slobodne)} oslobođenih jedinica"
         )
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            print(f"FAZA 1 — {opis} (fiksirani hint, nivo {nivo}, {trajanje:.3f} s)")
+            print(
+                f"{oznaka_faze} — {opis} "
+                f"(fiksirani hint, nivo {nivo}, {trajanje:.3f} s)"
+            )
             break
         print(
-            f"FAZA 1 — fiksirani hint nivo {nivo} ({fiksirane} jedinica) ne prolazi: "
+            f"{oznaka_faze} — fiksirani hint nivo {nivo} "
+            f"({fiksirane} jedinica) ne prolazi: "
             f"{_status_tekst(status)}, {trajanje:.3f} s"
         )
     solver.parameters.fix_variables_to_their_hinted_value = False
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         _primeni_hintove(model, pripremljeni)
-        print("FAZA 1 — prethodni raspored nije upotrebljiv kao fiksirani hint; tražim novo rešenje")
+        print(
+            f"{oznaka_faze} — prethodni raspored nije upotrebljiv kao "
+            "fiksirani hint; tražim novo rešenje"
+        )
     return status
 
 
-def _prenesi_resenje_prve_faze_kao_hint(
+def _prenesi_resenje_kao_hint(
     model: cp_model.CpModel,
     solver: cp_model.CpSolver,
     jedinice: Sequence[Jedinica],
     prethodne: dict[int, PromenljiveJedinice],
     sledece: dict[int, PromenljiveJedinice],
 ) -> None:
-    """Zameni postojeće hintove nedupliranim rešenjem prve faze."""
+    """Zameni postojeće hintove nedupliranim rešenjem prethodnog modela."""
 
     model.clear_hints()
     hintovani_indeksi: set[int] = set()
@@ -2178,10 +2189,25 @@ def _resi_u_dve_faze(
     dict[int, PromenljiveJedinice],
     str,
 ]:
-    """Prvo nađi dopustivo rešenje, zatim ga koristi kao hint optimizaciji."""
+    """Nađi lokacije, zatim konkretne sobe, pa optimizuj strogi model."""
 
     pocetak = time.monotonic()
-    limit_prve = max(60.0, vremensko_ogranicenje - 300.0)
+    rok_sa_rezervom = max(60.0, vremensko_ogranicenje - 300.0)
+    rok_pripreme = min(rok_sa_rezervom, vremensko_ogranicenje)
+
+    model_pripreme, jedinice_pripreme, promenljive_pripreme = napravi_model(
+        ulaz,
+        prostorije,
+        nedostupnosti,
+        jutarnja_smena,
+        sa_nedeljom_b=sa_nedeljom_b,
+        samo_lokacije=True,
+        sa_ciljem=False,
+        hintovi=hintovi,
+        hintovi_b=hintovi_b,
+    )
+    # Sva tri modela se grade pre prvog solve poziva, tako da i vreme
+    # konstrukcije ulazi u isti ukupni zidni budžet.
     model_1, jedinice_1, promenljive_1 = napravi_model(
         ulaz,
         prostorije,
@@ -2190,50 +2216,7 @@ def _resi_u_dve_faze(
         sa_nedeljom_b=sa_nedeljom_b,
         samo_lokacije=False,
         sa_ciljem=False,
-        hintovi=hintovi,
-        hintovi_b=hintovi_b,
     )
-    solver_1 = cp_model.CpSolver()
-    solver_1.parameters.num_search_workers = broj_radnika
-    solver_1.parameters.random_seed = seme
-    status_1 = cp_model.UNKNOWN
-    if hintovi:
-        # Prethodni raspored je obično i dalje dopustiv. Nepotpun hint CP-SAT
-        # ne uspeva da dopuni pretragom, ali fiksiranje hintovanih termina
-        # daje rešenje za sekundu. Ako ulaz više ne dozvoljava stari
-        # raspored, odgovor je INFEASIBLE za deo sekunde; tada se redom
-        # oslobađaju jedinice oko izmene, pa tek onda ide obična pretraga.
-        status_1 = _resi_fiksiranim_hintom(
-            model_1, solver_1, ulaz, prostorije, jedinice_1, promenljive_1,
-            hintovi, hintovi_b, vremensko_ogranicenje, pocetak,
-        )
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        proteklo = time.monotonic() - pocetak
-        solver_1.parameters.max_time_in_seconds = _preostali_limit_prve_faze(
-            limit_prve,
-            vremensko_ogranicenje,
-            proteklo,
-        )
-        status_1 = solver_1.solve(model_1)
-    trajanje_prve = time.monotonic() - pocetak
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        preostalo = vremensko_ogranicenje - trajanje_prve
-        if preostalo > 0:
-            print(
-                "FAZA 1 — prvi rok je istekao; nastavljam do ukupnog "
-                f"ograničenja ({preostalo:.1f} s preostalo)"
-            )
-            solver_1.parameters.max_time_in_seconds = preostalo
-            status_1 = solver_1.solve(model_1)
-            trajanje_prve = time.monotonic() - pocetak
-    print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        status = _status_tekst(status_1)
-        print(f"FAZA 1 — neuspeh/timeout: {status}")
-        print("FAZA 2 — trajanje: 0.000 s")
-        return None, jedinice_1, promenljive_1, f"neuspeh/timeout (faza 1): {status}"
-    print("FAZA 1 — dopustivo rešenje pronađeno")
-
     model_2, jedinice_2, promenljive_2 = napravi_model(
         ulaz,
         prostorije,
@@ -2243,11 +2226,103 @@ def _resi_u_dve_faze(
         samo_lokacije=False,
         sa_ciljem=True,
     )
+    solver_pripreme = cp_model.CpSolver()
+    solver_pripreme.parameters.num_search_workers = broj_radnika
+    solver_pripreme.parameters.random_seed = seme
+    status_pripreme = cp_model.UNKNOWN
+    if hintovi:
+        status_pripreme = _resi_fiksiranim_hintom(
+            model_pripreme, solver_pripreme, ulaz, prostorije,
+            jedinice_pripreme, promenljive_pripreme,
+            hintovi, hintovi_b, rok_pripreme, pocetak,
+            oznaka_faze="PRIPREMA",
+        )
+    if status_pripreme not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        proteklo = time.monotonic() - pocetak
+        limit_pripreme = _preostali_limit_prve_faze(
+            rok_sa_rezervom,
+            vremensko_ogranicenje,
+            proteklo,
+        )
+        if limit_pripreme > 0:
+            solver_pripreme.parameters.max_time_in_seconds = limit_pripreme
+            status_pripreme = solver_pripreme.solve(model_pripreme)
+    trajanje_pripreme = time.monotonic() - pocetak
+    print(f"PRIPREMA — trajanje: {trajanje_pripreme:.3f} s")
+    priprema_uspela = status_pripreme in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if not priprema_uspela:
+        status = _status_tekst(status_pripreme)
+        print(
+            f"PRIPREMA — neuspeh/timeout: {status}; "
+            "FAZA 1 nastavlja bez pripremnog hinta"
+        )
+    else:
+        print("PRIPREMA — dopustivi termini i lokacije pronađeni")
 
-    _prenesi_resenje_prve_faze_kao_hint(
+    if vremensko_ogranicenje - (time.monotonic() - pocetak) <= 0:
+        print("FAZA 1 — timeout pre rešavanja strogog modela")
+        print("FAZA 1 — trajanje: 0.000 s")
+        print("FAZA 2 — trajanje: 0.000 s")
+        return (
+            None, jedinice_pripreme, promenljive_pripreme,
+            "neuspeh/timeout (faza 1): vremensko ograničenje",
+        )
+
+    pocetak_prve = time.monotonic()
+    if priprema_uspela:
+        _prenesi_resenje_kao_hint(
+            model_1, solver_pripreme, jedinice_pripreme,
+            promenljive_pripreme, promenljive_1,
+        )
+    greska_modela_1 = model_1.validate()
+    if greska_modela_1:
+        raise RuntimeError(f"Неисправан модел фазе 1: {greska_modela_1}")
+
+    solver_1 = cp_model.CpSolver()
+    solver_1.parameters.num_search_workers = broj_radnika
+    solver_1.parameters.random_seed = seme
+    preostalo_do_rezerve = _preostali_limit_prve_faze(
+        rok_sa_rezervom,
+        vremensko_ogranicenje,
+        time.monotonic() - pocetak,
+    )
+    status_1 = cp_model.UNKNOWN
+    if preostalo_do_rezerve > 0:
+        solver_1.parameters.max_time_in_seconds = preostalo_do_rezerve
+        status_1 = solver_1.solve(model_1)
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        if preostalo > 0:
+            print(
+                "FAZA 1 — nema konkretnu dodelu do rezerve; "
+                "koristim rezervu za validan raspored "
+                f"({preostalo:.1f} s preostalo)"
+            )
+            solver_1.parameters.max_time_in_seconds = preostalo
+            status_1 = solver_1.solve(model_1)
+    trajanje_prve = time.monotonic() - pocetak_prve
+    print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        status = _status_tekst(status_1)
+        print(f"FAZA 1 — neuspeh/timeout: {status}")
+        print("FAZA 2 — trajanje: 0.000 s")
+        return (
+            None, jedinice_1, promenljive_1,
+            f"neuspeh/timeout (faza 1): {status}",
+        )
+    print("FAZA 1 — dopustiv raspored sa konkretnim prostorijama pronađen")
+
+    if vremensko_ogranicenje - (time.monotonic() - pocetak) <= 0:
+        print("FAZA 2 — timeout pre početka optimizacije")
+        return (
+            solver_1, jedinice_1, promenljive_1,
+            "dopustivo (faza 1); faza 2: timeout",
+        )
+
+    pocetak_druge = time.monotonic()
+    _prenesi_resenje_kao_hint(
         model_2, solver_1, jedinice_1, promenljive_1, promenljive_2
     )
-
     greska_modela_2 = model_2.validate()
     if greska_modela_2:
         raise RuntimeError(f"Неисправан модел фазе 2: {greska_modela_2}")
@@ -2256,18 +2331,15 @@ def _resi_u_dve_faze(
     if preostalo <= 0:
         print("FAZA 2 — timeout pre početka optimizacije")
         return (
-            solver_1,
-            jedinice_1,
-            promenljive_1,
+            solver_1, jedinice_1, promenljive_1,
             "dopustivo (faza 1); faza 2: timeout",
         )
-
     solver_2 = cp_model.CpSolver()
     solver_2.parameters.max_time_in_seconds = preostalo
     solver_2.parameters.num_search_workers = broj_radnika
     solver_2.parameters.random_seed = seme
     status_2 = solver_2.solve(model_2)
-    trajanje_druge = time.monotonic() - pocetak - trajanje_prve
+    trajanje_druge = time.monotonic() - pocetak_druge
     print(f"FAZA 2 — trajanje: {max(0.0, trajanje_druge):.3f} s")
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)

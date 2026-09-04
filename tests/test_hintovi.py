@@ -9,7 +9,7 @@ from src.model import (
 from src.proveravac import Cas
 from src.resavac import (
     _jedinice,
-    _prenesi_resenje_prve_faze_kao_hint,
+    _prenesi_resenje_kao_hint,
     _upari_hintove,
     napravi_model,
     resi_obe_nedelje,
@@ -104,7 +104,7 @@ def test_druga_faza_prima_jedinstven_potpun_hint_sa_prostorijama():
         samo_lokacije=False, sa_ciljem=True,
     )
 
-    _prenesi_resenje_prve_faze_kao_hint(
+    _prenesi_resenje_kao_hint(
         model_2, solver_1, jedinice, promenljive_1, promenljive_2
     )
 
@@ -123,6 +123,35 @@ def test_druga_faza_prima_jedinstven_potpun_hint_sa_prostorijama():
     assert solver_2.solve(model_2) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
+def test_lokacijska_priprema_daje_dopustiv_hint_strogoj_fazi():
+    u = ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
+    sobe = (SALA, UCIONICA)
+    model_pripreme, jedinice, promenljive_pripreme = napravi_model(
+        u, sobe, (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=True, sa_ciljem=False,
+    )
+    solver_pripreme = cp_model.CpSolver()
+    assert solver_pripreme.solve(model_pripreme) in (
+        cp_model.OPTIMAL, cp_model.FEASIBLE,
+    )
+    model_1, _, promenljive_1 = napravi_model(
+        u, sobe, (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=False, sa_ciljem=False,
+    )
+
+    _prenesi_resenje_kao_hint(
+        model_1, solver_pripreme, jedinice,
+        promenljive_pripreme, promenljive_1,
+    )
+
+    hintovani = list(model_1.proto.solution_hint.vars)
+    assert len(hintovani) == len(set(hintovani))
+    assert model_1.validate() == ""
+    solver_1 = cp_model.CpSolver()
+    solver_1.parameters.fix_variables_to_their_hinted_value = True
+    assert solver_1.solve(model_1) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
 def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
     pravi_solver = cp_model.CpSolver
     broj_solvera = 0
@@ -137,7 +166,7 @@ def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
     def solver_fabrika():
         nonlocal broj_solvera
         broj_solvera += 1
-        return pravi_solver() if broj_solvera == 1 else TimeoutSolver()
+        return pravi_solver() if broj_solvera <= 2 else TimeoutSolver()
 
     monkeypatch.setattr(resavac.cp_model, "CpSolver", solver_fabrika)
     rezultat_a, rezultat_b = _resi(
