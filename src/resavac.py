@@ -1030,6 +1030,39 @@ def napravi_model(
                 intervali_skupova_kandidata[kljuc_kandidata].append(
                     interval_lokacije
                 )
+                if kandidati_na_lokaciji == frozenset({"KM-8"}):
+                    intervali_prostorija["KM-8"].append(interval_lokacije)
+                elif (
+                    "KM-8" in kandidati_na_lokaciji
+                    and (kazna_km8 := _kazna_sale_km8(zahtev, "KM-8"))
+                ):
+                    koristi_km8 = model.new_bool_var(
+                        f"{prefiks}_lok_{broj_lokacije}_km8"
+                    )
+                    koristi_obicnu = model.new_bool_var(
+                        f"{prefiks}_lok_{broj_lokacije}_obicna"
+                    )
+                    model.add(koristi_km8 + koristi_obicnu == koristi)
+                    intervali_prostorija["KM-8"].append(
+                        model.new_optional_interval_var(
+                            start,
+                            jedinica.trajanje,
+                            kraj,
+                            koristi_km8,
+                            f"{prefiks}_lok_{broj_lokacije}_km8_i",
+                        )
+                    )
+                    obicne = kandidati_na_lokaciji - {"KM-8"}
+                    intervali_skupova_kandidata[(lokacija, tip, obicne)].append(
+                        model.new_optional_interval_var(
+                            start,
+                            jedinica.trajanje,
+                            kraj,
+                            koristi_obicnu,
+                            f"{prefiks}_lok_{broj_lokacije}_obicna_i",
+                        )
+                    )
+                    kazne.append(kazna_km8 * koristi_km8)
                 if lokacija == "Народно позориште":
                     np_izbori[zahtev.odeljenja[0]].append(koristi)
                     if jedinica.trajanje != 2:
@@ -1060,6 +1093,50 @@ def napravi_model(
                     intervali_skupova_kandidata_b[kljuc_kandidata].append(
                         interval_b_lokacije
                     )
+                    if kandidati_na_lokaciji == frozenset({"KM-8"}):
+                        intervali_prostorija_b["KM-8"].append(
+                            interval_b_lokacije
+                        )
+                    elif (
+                        "KM-8" in kandidati_na_lokaciji
+                        and (kazna_km8 := _kazna_sale_km8(zahtev, "KM-8"))
+                    ):
+                        if zahtev.smena.menja_se:
+                            koristi_km8_b = model.new_bool_var(
+                                f"{prefiks}_lok_{broj_lokacije}_km8_b"
+                            )
+                            koristi_obicnu_b = model.new_bool_var(
+                                f"{prefiks}_lok_{broj_lokacije}_obicna_b"
+                            )
+                            model.add(
+                                koristi_km8_b + koristi_obicnu_b == koristi_b
+                            )
+                        else:
+                            koristi_km8_b = koristi_km8
+                            koristi_obicnu_b = koristi_obicnu
+                        intervali_prostorija_b["KM-8"].append(
+                            model.new_optional_interval_var(
+                                start_b,
+                                jedinica.trajanje,
+                                kraj_b,
+                                koristi_km8_b,
+                                f"{prefiks}_lok_{broj_lokacije}_km8_i_b",
+                            )
+                        )
+                        obicne = kandidati_na_lokaciji - {"KM-8"}
+                        intervali_skupova_kandidata_b[
+                            (lokacija, tip, obicne)
+                        ].append(
+                            model.new_optional_interval_var(
+                                start_b,
+                                jedinica.trajanje,
+                                kraj_b,
+                                koristi_obicnu_b,
+                                f"{prefiks}_lok_{broj_lokacije}_obicna_i_b",
+                            )
+                        )
+                        if zahtev.smena.menja_se:
+                            kazne.append(kazna_km8 * koristi_km8_b)
             model.add_exactly_one(lokacije.values())
             if sa_nedeljom_b and zahtev.smena.menja_se:
                 assert lokacije_b is not None
