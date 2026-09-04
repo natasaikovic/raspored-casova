@@ -148,9 +148,10 @@ popunjena.
 - jedna učionica.
 - Predmeti **Narodna igra – glavni predmet** i **Repertoar narodne igre**
   održavaju se isključivo u salama `SG-1`, `SG-2` i `SG-3`.
-- Za **Narodnu igru – glavni predmet** prioritet je `SG-1`. Ako ona nije
-  dostupna, `SG-2` ili `SG-3` prvenstveno se dodeljuju odeljenju `IV5`, koje
-  ima najmanje učenika; odstupanje za druga odeljenja je lošije rešenje.
+- **Narodna igra – glavni predmet** mora da bude u `SG-1`. Odeljenje `IV5`
+  ima manje učenika i u nuždi sme da se smesti u manju salu. Nije potvrđeno da
+  li se pod „manjom salom“ misli samo na `SG-2` ili i na `SG-3`, niti je
+  izričito odgovoreno da li isti izuzetak sme da važi za druga odeljenja.
 
 ### Narodno pozorište
 
