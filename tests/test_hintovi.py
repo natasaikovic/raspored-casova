@@ -13,6 +13,7 @@ from src.model import (
 )
 from src.proveravac import Cas
 from src.resavac import (
+    LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA,
     PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA,
     Rezultat,
     SukobProstorije,
@@ -340,6 +341,88 @@ def test_hladni_tok_posle_prvog_infeasible_sobe_uspeva_na_drugom(monkeypatch):
     assert broj_poziva == 2
     assert broj_full_rezova == 1
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
+def test_popravka_hinta_vazi_samo_za_hladni_master_retry(monkeypatch):
+    pravi_solver = cp_model.CpSolver
+    parametri_mastera = []
+
+    class SolverKojiBelezi:
+        def __init__(self):
+            self._solver = pravi_solver()
+            self.parameters = self._solver.parameters
+
+        def solve(self, model):
+            parametri_mastera.append(
+                (self.parameters.repair_hint, self.parameters.hint_conflict_limit)
+            )
+            return self._solver.solve(model)
+
+        def __getattr__(self, naziv):
+            return getattr(self._solver, naziv)
+
+    broj_dodela = 0
+
+    def prvi_room_core_pa_timeout(*args, **kwargs):
+        nonlocal broj_dodela
+        broj_dodela += 1
+        if broj_dodela == 1:
+            solver, _, _, jedinice, promenljive = args[:5]
+            jedinica = jedinice[0]
+            p = promenljive[jedinica.indeks]
+            lokacija = next(
+                naziv for naziv, koristi in p.lokacije.items()
+                if solver.boolean_value(koristi)
+            )
+            kwargs["sukob_out"].append(
+                SukobProstorije(
+                    jedinica.indeks, False, solver.value(p.start), lokacija
+                )
+            )
+            kwargs["status_out"].append(cp_model.INFEASIBLE)
+        else:
+            kwargs["status_out"].append(cp_model.UNKNOWN)
+        return None
+
+    monkeypatch.setattr(resavac.cp_model, "CpSolver", SolverKojiBelezi)
+    monkeypatch.setattr(
+        resavac, "_dodeli_prostorije_obe", prvi_room_core_pa_timeout
+    )
+
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert not rezultat_a.pronadjen and not rezultat_b.pronadjen
+    assert parametri_mastera == [
+        (False, 10),
+        (True, LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA),
+    ]
+
+
+def test_mali_core_rez_sa_popravkom_hinta_nalazi_susedno_resenje():
+    model = cp_model.CpModel()
+    izbori = [model.new_bool_var(f"izbor_{i}") for i in range(40)]
+    model.add_exactly_one(izbori)
+
+    prvi = cp_model.CpSolver()
+    prvi.parameters.num_search_workers = 1
+    assert prvi.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    staro = tuple(prvi.boolean_value(x) for x in izbori)
+    model.add(sum(x for x, vrednost in zip(izbori, staro) if vrednost) == 0)
+    for promenljiva, vrednost in zip(izbori, staro):
+        model.add_hint(promenljiva, vrednost)
+
+    retry = cp_model.CpSolver()
+    retry.parameters.num_search_workers = 1
+    retry.parameters.repair_hint = True
+    retry.parameters.hint_conflict_limit = (
+        LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA
+    )
+    assert retry.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    novo = tuple(retry.boolean_value(x) for x in izbori)
+
+    # Jedan mali no-good pomera izbor na neposrednog suseda: stari true postaje
+    # false, a tačno jedan drugi false postaje true.
+    assert sum(a != b for a, b in zip(staro, novo)) == 2
 
 
 def _hall_sukob(nedelja_b=False):

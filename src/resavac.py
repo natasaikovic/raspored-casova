@@ -106,6 +106,13 @@ REZERVA_ZA_DODELU_PROSTORIJA = 120.0
 NAJVISE_HLADNIH_MASTER_POKUSAJA = 4
 MINIMALNI_BUDZET_HLADNOG_POKUSAJA = 5.0
 
+# Posle room UNSAT reza model već sadrži kompletan interni hint upravo
+# pronađenog master rešenja. CP-SAT tada može da traži njegovu malu popravku
+# pre prelaska na redovnu pretragu. Podrazumevanih 10 konflikata je premalo za
+# ovaj master; 100k daje popravci realnu šansu, a ukupni zidni limit pokušaja i
+# dalje čvrsto ograničava njeno trajanje.
+LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA = 100_000
+
 # Model dodele soba sa funkcijom cilja ponekad vrati sve pretpostavke kao
 # sufficient core. Jedan kratki dokaz bez cilja obicno vrati pravi mali Hall
 # sukob, ali ne sme da uzme vreme narednom master pokusaju.
@@ -2883,6 +2890,11 @@ def _resi_u_dve_faze(
             solver_lokacija.parameters.num_search_workers = broj_radnika
             solver_lokacija.parameters.random_seed = seme
             solver_lokacija.parameters.max_time_in_seconds = limit_lokacija
+            if pokusaj > 1:
+                solver_lokacija.parameters.repair_hint = True
+                solver_lokacija.parameters.hint_conflict_limit = (
+                    LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA
+                )
             pocetak_lokacija = time.monotonic()
             status_lokacija = solver_lokacija.solve(model_lokacija)
             trajanje_lokacija = time.monotonic() - pocetak_lokacija
