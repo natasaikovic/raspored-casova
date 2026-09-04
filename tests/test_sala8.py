@@ -326,6 +326,51 @@ def test_zajednicki_dodeljivac_obe_nedelje_bira_obicnu_salu():
     assert set(dodela[1].values()) == {"KM-1"}
 
 
+def test_location_model_kaznjava_km8_i_u_zasebnom_izboru_nedelje_b():
+    sale = tuple(
+        Prostorija(f"KM-{broj}", KM, TipProstorije.SALA, None, "")
+        for broj in range(1, 7)
+    ) + (Prostorija("KM-8", KM, TipProstorije.SALA, 3, ""),)
+    ulaz = _ulaz_kapaciteta(("drugi",) * 7, menjaju_se=True)
+    model, jedinice, promenljive = napravi_model(
+        ulaz,
+        sale,
+        (),
+        Smena.CRVENA,
+        sa_nedeljom_b=True,
+        samo_lokacije=True,
+        sa_ciljem=True,
+    )
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        assert p.dan_b is not None and p.lokacije_b is not None
+        model.add(p.dan == 0)
+        model.add(p.lokacije[KM] == 1)
+        model.add(p.dan_b == 0)
+        model.add(p.lokacije_b[KM] == 1)
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+
+    assert solver.solve(model) == cp_model.OPTIMAL
+    assert len(
+        {
+            solver.value(promenljive[j.indeks].blok_b)
+            for j in jedinice
+        }
+    ) > 1
+    dodela_b = _dodeli_prostorije(
+        solver,
+        ulaz,
+        sale,
+        jedinice,
+        promenljive,
+        nedelja_b=True,
+        broj_radnika=1,
+    )
+    assert dodela_b is not None
+    assert "KM-8" not in dodela_b.values()
+
+
 def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
     ulaz = _ulaz_kapaciteta(("drugi", "drugi"), menjaju_se=True)
     model, jedinice, promenljive = napravi_model(
