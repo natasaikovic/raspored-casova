@@ -2114,6 +2114,46 @@ def _resi_fiksiranim_hintom(
     return status
 
 
+def _prenesi_resenje_prve_faze_kao_hint(
+    model: cp_model.CpModel,
+    solver: cp_model.CpSolver,
+    jedinice: Sequence[Jedinica],
+    prethodne: dict[int, PromenljiveJedinice],
+    sledece: dict[int, PromenljiveJedinice],
+) -> None:
+    """Zameni postojeće hintove nedupliranim rešenjem prve faze."""
+
+    model.clear_hints()
+    hintovani_indeksi: set[int] = set()
+
+    def prenesi(prethodna: cp_model.IntVar, sledeca: cp_model.IntVar) -> None:
+        if sledeca.index in hintovani_indeksi:
+            return
+        model.add_hint(sledeca, solver.value(prethodna))
+        hintovani_indeksi.add(sledeca.index)
+
+    for jedinica in jedinice:
+        p1 = prethodne[jedinica.indeks]
+        p2 = sledece[jedinica.indeks]
+        for prethodna, sledeca in (
+            (p1.start, p2.start), (p1.dan, p2.dan), (p1.blok, p2.blok),
+        ):
+            prenesi(prethodna, sledeca)
+        for lokacija in set(p1.lokacije) & set(p2.lokacije):
+            prenesi(p1.lokacije[lokacija], p2.lokacije[lokacija])
+        if p1.start_b is not None and p2.start_b is not None:
+            for prethodna, sledeca in (
+                (p1.start_b, p2.start_b),
+                (p1.dan_b, p2.dan_b),
+                (p1.blok_b, p2.blok_b),
+            ):
+                assert prethodna is not None and sledeca is not None
+                prenesi(prethodna, sledeca)
+        if p1.lokacije_b is not None and p2.lokacije_b is not None:
+            for lokacija in set(p1.lokacije_b) & set(p2.lokacije_b):
+                prenesi(p1.lokacije_b[lokacija], p2.lokacije_b[lokacija])
+
+
 def _resi_u_dve_faze(
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
@@ -2196,32 +2236,14 @@ def _resi_u_dve_faze(
         samo_lokacije=False,
         sa_ciljem=True,
     )
-    for jedinica in jedinice_1:
-        p1 = promenljive_1[jedinica.indeks]
-        p2 = promenljive_2[jedinica.indeks]
-        for prethodna, sledeca in (
-            (p1.start, p2.start), (p1.dan, p2.dan), (p1.blok, p2.blok),
-        ):
-            model_2.add_hint(sledeca, solver_1.value(prethodna))
-        for lokacija in set(p1.lokacije) & set(p2.lokacije):
-            model_2.add_hint(
-                p2.lokacije[lokacija], solver_1.value(p1.lokacije[lokacija])
-            )
-        if p1.start_b is not None and p2.start_b is not None:
-            for prethodna, sledeca in (
-                (p1.start_b, p2.start_b),
-                (p1.dan_b, p2.dan_b),
-                (p1.blok_b, p2.blok_b),
-            ):
-                assert prethodna is not None and sledeca is not None
-                if prethodna is not p1.start and sledeca is not p2.start:
-                    model_2.add_hint(sledeca, solver_1.value(prethodna))
-        if p1.lokacije_b is not None and p2.lokacije_b is not None:
-            for lokacija in set(p1.lokacije_b) & set(p2.lokacije_b):
-                prethodna = p1.lokacije_b[lokacija]
-                sledeca = p2.lokacije_b[lokacija]
-                if prethodna is not p1.lokacije.get(lokacija):
-                    model_2.add_hint(sledeca, solver_1.value(prethodna))
+
+    _prenesi_resenje_prve_faze_kao_hint(
+        model_2, solver_1, jedinice_1, promenljive_1, promenljive_2
+    )
+
+    greska_modela_2 = model_2.validate()
+    if greska_modela_2:
+        raise RuntimeError(f"Неисправан модел фазе 2: {greska_modela_2}")
 
     preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
     if preostalo <= 0:

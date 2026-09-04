@@ -59,6 +59,23 @@ def test_prethodni_raspored_se_prihvata_kao_fiksirani_hint(capsys):
     assert drugo_b.izvestaj is not None and drugo_b.izvestaj.ispravan
 
 
+def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):
+    z = replace(
+        zahtev("Класичан балет", "11", 2, "Мила", "Ива"),
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+    )
+    u = ulaz([z])
+
+    rezultat_a, rezultat_b = _resi(u)
+
+    izlaz = capsys.readouterr().out
+    assert "INVALID_MODEL" not in izlaz
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+    assert rezultat_a.izvestaj is not None and rezultat_a.izvestaj.ispravan
+    assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
+
+
 def test_neupotrebljiv_hint_se_odbacuje_i_trazi_se_novo_resenje(capsys):
     u = _ulaz_za_dve_nedelje()
     prvo_a, _ = _resi(u)
