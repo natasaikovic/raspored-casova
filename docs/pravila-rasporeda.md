@@ -24,6 +24,15 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
   je **uvek dvočas, tačno jedan dnevno, nikad dva u istom danu**. Iz toga sledi
   da odseci sa 12 časova glavnog predmeta imaju čas i **subotom** (6 dvočasa).
 - Ostali igrački predmeti sa neparnim fondom: dvočas + samostalan čas (3 = 2+1).
+- Potvrđeni neparni fondovi nisu greška u prepisu: Istorijsko balske igre po
+  1 čas za `41`, `42` i `43`; Primenjena gimnastika po 1 čas za `31`, `32`,
+  `33` i `34`; Karakterne igre po 3 časa za `I1`, `I2`, `II1`, `II2`, `II5А`
+  i `II5Б`; Klasičan balet po 3 časa za `II5А`, `II5Б` i `П1`; Repertoar
+  klasičnog baleta po 3 časa za `I1`, `I2`, `II1` i `II2`; Savremena igra po
+  3 časa za `II1` i `II2`. Fond od 3 časa raspoređuje se kao jedan spojeni
+  dvočas i jedan samostalan čas, osim što za `П1` ostaje nerazjašnjena
+  protivrečnost sa postojećim pravilom o tri pojedinačna časa ponedeljkom,
+  sredom i petkom.
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
 
