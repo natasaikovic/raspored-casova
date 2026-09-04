@@ -2141,6 +2141,8 @@ def _prenesi_resenje_prve_faze_kao_hint(
             prenesi(prethodna, sledeca)
         for lokacija in set(p1.lokacije) & set(p2.lokacije):
             prenesi(p1.lokacije[lokacija], p2.lokacije[lokacija])
+        for prostorija in set(p1.prostorije) & set(p2.prostorije):
+            prenesi(p1.prostorije[prostorija], p2.prostorije[prostorija])
         if p1.start_b is not None and p2.start_b is not None:
             for prethodna, sledeca in (
                 (p1.start_b, p2.start_b),
@@ -2152,6 +2154,11 @@ def _prenesi_resenje_prve_faze_kao_hint(
         if p1.lokacije_b is not None and p2.lokacije_b is not None:
             for lokacija in set(p1.lokacije_b) & set(p2.lokacije_b):
                 prenesi(p1.lokacije_b[lokacija], p2.lokacije_b[lokacija])
+        if p1.prostorije_b is not None and p2.prostorije_b is not None:
+            for prostorija in set(p1.prostorije_b) & set(p2.prostorije_b):
+                prenesi(
+                    p1.prostorije_b[prostorija], p2.prostorije_b[prostorija]
+                )
 
 
 def _resi_u_dve_faze(
@@ -2181,7 +2188,7 @@ def _resi_u_dve_faze(
         nedostupnosti,
         jutarnja_smena,
         sa_nedeljom_b=sa_nedeljom_b,
-        samo_lokacije=True,
+        samo_lokacije=False,
         sa_ciljem=False,
         hintovi=hintovi,
         hintovi_b=hintovi_b,
@@ -2306,16 +2313,7 @@ def resi_nedelju(
     if solver is None:
         return Rezultat(status_tekst, (), None, None)
 
-    dodela = _dodeli_prostorije(
-        solver, ulaz, prostorije, jedinice, promenljive,
-        broj_radnika=broj_radnika,
-    )
-    if dodela is None:
-        return Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
-    casovi = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive,
-        dodeljene_prostorije=dodela,
-    )
+    casovi = _izvuci_casove(solver, ulaz, jedinice, promenljive)
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
     cilj = solver.objective_value if "faza 2" in status_tekst and "optimizovano" in status_tekst else None
     return Rezultat(status_tekst, casovi, izvestaj, cilj)
@@ -2354,21 +2352,9 @@ def resi_obe_nedelje(
     if solver is None:
         prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
-    dodele = _dodeli_prostorije_obe(
-        solver, ulaz, prostorije, jedinice, promenljive,
-        broj_radnika=broj_radnika,
-    )
-    if dodele is None:
-        prazan = Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
-        return prazan, prazan
-    dodela_a, dodela_b = dodele
-    casovi_a = _izvuci_casove(
-        solver, ulaz, jedinice, promenljive,
-        dodeljene_prostorije=dodela_a,
-    )
+    casovi_a = _izvuci_casove(solver, ulaz, jedinice, promenljive)
     casovi_b = _izvuci_casove(
         solver, ulaz, jedinice, promenljive, nedelja_b=True,
-        dodeljene_prostorije=dodela_b,
     )
     cilj = solver.objective_value if "optimizovano" in status_tekst else None
     return Rezultat(

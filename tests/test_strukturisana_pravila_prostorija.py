@@ -109,24 +109,25 @@ def test_loader_odbija_sukob_nivoa_posle_np_kanonizacije():
         proveri_veze_pravila_prostorija(ulaz, sobe, pravila, ())
 
 
-def test_brzi_model_prve_faze_ima_samo_lokacije_i_nema_cilj():
+def test_model_prve_faze_ima_konkretne_prostorije_i_nema_cilj():
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze("ulazi")
     model, jedinice, promenljive = napravi_model(
         ulaz, prostorije, nedostupnosti,
         next(iter((ulaz.odeljenja[o].smena for o in ulaz.odeljenja if o == "11"))),
-        samo_lokacije=True,
+        samo_lokacije=False,
         sa_ciljem=False,
     )
 
     assert not model.has_objective()
     assert jedinice
-    assert all(not p.prostorije for p in promenljive.values())
+    assert all(p.prostorije for p in promenljive.values())
     assert len(model.proto.constraints) > 0
     pg_jedinica = next(
         j for j in jedinice
         if ulaz.zahtevi[j.zahtev_indeks].predmet == "Примењена гимнастика"
     )
     assert set(promenljive[pg_jedinica.indeks].lokacije) == {"Кнез Милетина 8"}
+    assert set(promenljive[pg_jedinica.indeks].prostorije) == {"KM-8"}
 
 
 def _mali_ulaz(pravila):

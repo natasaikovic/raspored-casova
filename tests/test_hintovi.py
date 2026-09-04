@@ -1,10 +1,19 @@
 from dataclasses import replace
 
+from ortools.sat.python import cp_model
+
+import src.resavac as resavac
 from src.model import (
     Odeljenje, Predmet, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev,
 )
 from src.proveravac import Cas
-from src.resavac import _jedinice, _upari_hintove, resi_obe_nedelje
+from src.resavac import (
+    _jedinice,
+    _prenesi_resenje_prve_faze_kao_hint,
+    _upari_hintove,
+    napravi_model,
+    resi_obe_nedelje,
+)
 
 
 SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
@@ -72,6 +81,73 @@ def test_stalna_smena_ne_duplira_hintove_izmedju_nedelja(capsys):
     izlaz = capsys.readouterr().out
     assert "INVALID_MODEL" not in izlaz
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
+    assert rezultat_a.izvestaj is not None and rezultat_a.izvestaj.ispravan
+    assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
+
+
+def test_druga_faza_prima_jedinstven_potpun_hint_sa_prostorijama():
+    z = replace(
+        zahtev("Класичан балет", "11", 2, "Мила", "Ива"),
+        smena=Smena.CEO_DAN,
+        smena_opis=Smena.CEO_DAN.value,
+    )
+    u = ulaz([z])
+    sobe = (SALA, UCIONICA)
+    model_1, jedinice, promenljive_1 = napravi_model(
+        u, sobe, (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=False, sa_ciljem=False,
+    )
+    solver_1 = cp_model.CpSolver()
+    assert solver_1.solve(model_1) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    model_2, _, promenljive_2 = napravi_model(
+        u, sobe, (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=False, sa_ciljem=True,
+    )
+
+    _prenesi_resenje_prve_faze_kao_hint(
+        model_2, solver_1, jedinice, promenljive_1, promenljive_2
+    )
+
+    hintovani = list(model_2.proto.solution_hint.vars)
+    room_indeksi = {
+        promenljiva.index
+        for p in promenljive_2.values()
+        for izbori in (p.prostorije, p.prostorije_b or {})
+        for promenljiva in izbori.values()
+    }
+    assert len(hintovani) == len(set(hintovani))
+    assert room_indeksi <= set(hintovani)
+    assert model_2.validate() == ""
+    solver_2 = cp_model.CpSolver()
+    solver_2.parameters.fix_variables_to_their_hinted_value = True
+    assert solver_2.solve(model_2) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_fallback_prve_faze_vec_sadrzi_konkretne_prostorije(monkeypatch):
+    pravi_solver = cp_model.CpSolver
+    broj_solvera = 0
+
+    class TimeoutSolver:
+        def __init__(self):
+            self.parameters = pravi_solver().parameters
+
+        def solve(self, _model):
+            return cp_model.UNKNOWN
+
+    def solver_fabrika():
+        nonlocal broj_solvera
+        broj_solvera += 1
+        return pravi_solver() if broj_solvera == 1 else TimeoutSolver()
+
+    monkeypatch.setattr(resavac.cp_model, "CpSolver", solver_fabrika)
+    rezultat_a, rezultat_b = _resi(
+        ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
+    )
+
+    assert "faza 2 neuspeh/timeout" in rezultat_a.status
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+    assert {cas.prostorija for cas in rezultat_a.casovi} <= {"KM-1", "KM-уч2"}
+    assert {cas.prostorija for cas in rezultat_b.casovi} <= {"KM-1", "KM-уч2"}
     assert rezultat_a.izvestaj is not None and rezultat_a.izvestaj.ispravan
     assert rezultat_b.izvestaj is not None and rezultat_b.izvestaj.ispravan
 
