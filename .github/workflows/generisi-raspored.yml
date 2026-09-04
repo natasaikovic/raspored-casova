@@ -169,3 +169,4 @@ jobs:
           retention-days: 14
 
 # Duži run posle pravila za peti cas Solfedja: UNKNOWN u brzoj proveri vise ne zaustavlja glavni solver.
+# Ponovno pokretanje posle integracije strogih pravila prostorija: 2026-09-04.
