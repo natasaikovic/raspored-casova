@@ -4,7 +4,13 @@ from src.model import (
     Odeljenje, Predmet, Prostorija, Skola, Smena, TipProstorije, Ulaz, Zahtev,
 )
 from src.proveravac import Cas
-from src.resavac import _jedinice, _upari_hintove, resi_obe_nedelje
+from src.resavac import (
+    _jedinice,
+    _pripremi_hintove,
+    _upari_hintove,
+    napravi_model,
+    resi_obe_nedelje,
+)
 
 
 SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, None, "")
@@ -99,7 +105,39 @@ def test_uparivanje_hintova_postuje_obrazac_korepeticije():
 
     upareno = _upari_hintove(u, jedinice_zahteva, hintovi)
 
-    assert upareno == {jedinice[0].indeks: (2, 1), jedinice[1].indeks: (0, 1)}
+    assert upareno == {
+        jedinice[0].indeks: (2, 1, "KM-1"),
+        jedinice[1].indeks: (0, 1, "KM-1"),
+    }
+
+
+def test_hint_u_nedozvoljenoj_prostoriji_oslobadja_jedinicu():
+    u = ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
+    km8 = Prostorija("KM-8", SALA.lokacija, TipProstorije.SALA, 3, "")
+    prostorije = (SALA, km8, UCIONICA)
+    model, jedinice, promenljive = napravi_model(
+        u, prostorije, (), Smena.CRVENA, sa_ciljem=False
+    )
+    jedinice_zahteva = {0: list(jedinice)}
+    hintovi = tuple(
+        Cas(
+            dan="понедељак",
+            blok=blok,
+            predmet="Класичан балет",
+            odeljenja=("11",),
+            nastavnik="Мила",
+            korepetitor="Ива",
+            prostorija="KM-8",
+            red=0,
+        )
+        for blok in (1, 2)
+    )
+
+    pripremljeni = _pripremi_hintove(
+        u, prostorije, jedinice_zahteva, promenljive, hintovi
+    )
+
+    assert pripremljeni == {}
 
 
 def test_nivoi_oslobadjanja_sire_se_preko_zajednickih_resursa():

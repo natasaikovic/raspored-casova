@@ -1584,8 +1584,8 @@ def _upari_hintove(
     ulaz: Ulaz,
     jedinice_zahteva: dict[int, list[Jedinica]],
     hintovi: Sequence[Cas],
-) -> dict[int, tuple[int, int]]:
-    """Za svaku jedinicu nađi (dan, blok) u prethodnom rasporedu.
+) -> dict[int, tuple[int, int, str]]:
+    """Za svaku jedinicu nađi (dan, blok, prostoriju) u starom rasporedu.
 
     Redovi CSV-a se uparuju sa jedinicama istog zahteva tako da se poklope
     trajanje i obrazac korepeticije. Jedinice bez para se preskaču, pa se
@@ -1596,7 +1596,7 @@ def _upari_hintove(
     for cas in hintovi:
         po_kljucu[(cas.predmet, cas.nastavnik, tuple(cas.odeljenja))].append(cas)
 
-    rezultat: dict[int, tuple[int, int]] = {}
+    rezultat: dict[int, tuple[int, int, str]] = {}
     for zahtev_indeks, jedinice in jedinice_zahteva.items():
         zahtev = ulaz.zahtevi[zahtev_indeks]
         redovi = po_kljucu.get(
@@ -1637,7 +1637,9 @@ def _upari_hintove(
                 continue
             neiskorisceni.difference_update(izabran)
             cas = redovi[izabran[0]]
-            rezultat[jedinica.indeks] = (DANI.index(cas.dan), cas.blok)
+            rezultat[jedinica.indeks] = (
+                DANI.index(cas.dan), cas.blok, cas.prostorija
+            )
     return rezultat
 
 
@@ -1667,6 +1669,12 @@ def _pripremi_hintove(
     """
 
     rezultat: HintoviJedinica = defaultdict(list)
+    neuskladjene_prostorije: set[int] = set()
+    zahtev_po_jedinici = {
+        jedinica.indeks: ulaz.zahtevi[zahtev_indeks]
+        for zahtev_indeks, jedinice in jedinice_zahteva.items()
+        for jedinica in jedinice
+    }
     if not hintovi:
         return {}
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
@@ -1675,7 +1683,16 @@ def _pripremi_hintove(
         upareno = _upari_hintove(
             ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
-        for indeks, (dan, blok) in upareno.items():
+        for indeks, (dan, blok, prostorija) in upareno.items():
+            dozvoljene_prostorije = {
+                p.oznaka
+                for p in _moguce_prostorije(
+                    zahtev_po_jedinici[indeks], ulaz, prostorije
+                )
+            }
+            if prostorija not in dozvoljene_prostorije:
+                neuskladjene_prostorije.add(indeks)
+                continue
             p = promenljive[indeks]
             if nedelja_b:
                 if p.start_b is None or p.start_b is p.start:
@@ -1690,6 +1707,8 @@ def _pripremi_hintove(
             rezultat[indeks].extend(
                 [(dan_var, dan), (blok_var, blok), (start_var, start_hinta)]
             )
+    for indeks in neuskladjene_prostorije:
+        rezultat.pop(indeks, None)
     return dict(rezultat)
 
 
