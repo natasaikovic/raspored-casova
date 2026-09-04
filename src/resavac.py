@@ -79,6 +79,57 @@ KORAK_DANA = 20
 LIMIT_FIKSIRANOG_HINTA = 60.0
 
 
+class _TelemetrijaFaze2(cp_model.CpSolverSolutionCallback):
+    """Ispiši svaki novi incumbent tokom optimizacije druge faze."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._najbolji_cilj: float | None = None
+        self.broj_incumbenata = 0
+
+    def on_solution_callback(self) -> None:
+        cilj = self.objective_value
+        if self._najbolji_cilj is not None and cilj >= self._najbolji_cilj:
+            return
+        self._najbolji_cilj = cilj
+        self.broj_incumbenata += 1
+        print(
+            f"FAZA 2 — incumbent {self.broj_incumbenata}: "
+            f"t={self.wall_time:.3f} s, objective={cilj:.0f}, "
+            f"best_bound={self.best_objective_bound:.0f}"
+        )
+
+
+def _relativni_gap(cilj: float, granica: float) -> float:
+    """Relativno odstupanje incumbenta od najbolje poznate granice."""
+
+    return abs(cilj - granica) / max(1.0, abs(cilj), abs(granica))
+
+
+def _ispisi_zavrsnu_telemetriju_faze_2(
+    solver: cp_model.CpSolver,
+    status: cp_model.CpSolverStatus,
+) -> None:
+    """Ispiši završne pokazatelje pretrage bez obzira na njen ishod."""
+
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        cilj = solver.objective_value
+        granica = solver.best_objective_bound
+        gap = _relativni_gap(cilj, granica)
+        print(
+            "FAZA 2 — završno: "
+            f"objective={cilj:.0f}, best_bound={granica:.0f}, "
+            f"relativni_gap={gap:.6%}, branches={solver.num_branches}, "
+            f"conflicts={solver.num_conflicts}"
+        )
+    else:
+        print(
+            "FAZA 2 — završno: objective=n/a, best_bound=n/a, "
+            f"relativni_gap=n/a, branches={solver.num_branches}, "
+            f"conflicts={solver.num_conflicts}"
+        )
+
+
 @dataclass(frozen=True)
 class Jedinica:
     """Jedna sesija koju solver raspoređuje, dužine jednog ili dva bloka."""
@@ -2182,9 +2233,11 @@ def _resi_u_dve_faze(
     solver_2.parameters.max_time_in_seconds = preostalo
     solver_2.parameters.num_search_workers = broj_radnika
     solver_2.parameters.random_seed = seme
-    status_2 = solver_2.solve(model_2)
+    telemetrija = _TelemetrijaFaze2()
+    status_2 = solver_2.solve(model_2, telemetrija)
     trajanje_druge = time.monotonic() - pocetak - trajanje_prve
     print(f"FAZA 2 — trajanje: {max(0.0, trajanje_druge):.3f} s")
+    _ispisi_zavrsnu_telemetriju_faze_2(solver_2, status_2)
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)
         print(f"FAZA 2 — optimizovano rešenje: {status}")

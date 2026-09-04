@@ -97,6 +97,8 @@ Glavni model se rešava dvofazno: prva faza bez funkcije cilja traži
 dopustivo rešenje, a druga faza uključuje postojeći cilj i dobija rešenje prve
 faze preko običnih CP-SAT `add_hint` poziva. Ako optimizacija ne završi,
 dopustivo rešenje prve faze se ipak proverava i čuva kao CSV i HTML pregled.
+Tokom druge faze log beleži vreme, vrednost cilja i najbolju granicu svakog
+novog incumbenta, a na kraju i relativni gap, broj grana i broj konflikata.
 
 Prethodni raspored (`--hintovi nedelja_a.csv --hintovi-b nedelja_b.csv`)
 skraćuje prvu fazu sa više minuta na oko sekund. Termini iz CSV-a se uparuju
