@@ -111,15 +111,23 @@ def test_uparivanje_hintova_postuje_obrazac_korepeticije():
     }
 
 
-def test_hint_u_nedozvoljenoj_prostoriji_oslobadja_jedinicu():
-    u = ulaz([zahtev("Класичан балет", "11", 2, "Мила", "Ива")])
+def test_hint_u_nedozvoljenoj_prostoriji_oslobadja_i_prostorni_konflikt():
+    u = ulaz([
+        zahtev("Класичан балет", "11", 2, "Мила", "Ива"),
+        zahtev("Друга игра", "12", 2, "Нина", "Ана"),
+    ])
     km8 = Prostorija("KM-8", SALA.lokacija, TipProstorije.SALA, 3, "")
     prostorije = (SALA, km8, UCIONICA)
     model, jedinice, promenljive = napravi_model(
         u, prostorije, (), Smena.CRVENA, sa_ciljem=False
     )
-    jedinice_zahteva = {0: list(jedinice)}
-    hintovi = tuple(
+    jedinice_zahteva = {
+        zahtev_indeks: [
+            j for j in jedinice if j.zahtev_indeks == zahtev_indeks
+        ]
+        for zahtev_indeks in range(len(u.zahtevi))
+    }
+    hintovi_km8 = tuple(
         Cas(
             dan="понедељак",
             blok=blok,
@@ -132,9 +140,26 @@ def test_hint_u_nedozvoljenoj_prostoriji_oslobadja_jedinicu():
         )
         for blok in (1, 2)
     )
+    hintovi_km1 = tuple(
+        Cas(
+            dan="понедељак",
+            blok=blok,
+            predmet="Друга игра",
+            odeljenja=("12",),
+            nastavnik="Нина",
+            korepetitor="Ана",
+            prostorija="KM-1",
+            red=0,
+        )
+        for blok in (1, 2)
+    )
 
     pripremljeni = _pripremi_hintove(
-        u, prostorije, jedinice_zahteva, promenljive, hintovi
+        u,
+        prostorije,
+        jedinice_zahteva,
+        promenljive,
+        hintovi_km8 + hintovi_km1,
     )
 
     assert pripremljeni == {}

@@ -1670,11 +1670,20 @@ def _pripremi_hintove(
 
     rezultat: HintoviJedinica = defaultdict(list)
     neuskladjene_prostorije: set[int] = set()
+    uparivanja_po_nedelji: list[
+        tuple[dict[int, tuple[int, int, str]], set[int]]
+    ] = []
     zahtev_po_jedinici = {
         jedinica.indeks: ulaz.zahtevi[zahtev_indeks]
         for zahtev_indeks, jedinice in jedinice_zahteva.items()
         for jedinica in jedinice
     }
+    jedinica_po_indeksu = {
+        jedinica.indeks: jedinica
+        for jedinice in jedinice_zahteva.values()
+        for jedinica in jedinice
+    }
+    prostorija_po_oznaci = {p.oznaka: p for p in prostorije}
     if not hintovi:
         return {}
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
@@ -1683,6 +1692,7 @@ def _pripremi_hintove(
         upareno = _upari_hintove(
             ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
+        neuskladjene_nedelje: set[int] = set()
         for indeks, (dan, blok, prostorija) in upareno.items():
             dozvoljene_prostorije = {
                 p.oznaka
@@ -1692,6 +1702,7 @@ def _pripremi_hintove(
             }
             if prostorija not in dozvoljene_prostorije:
                 neuskladjene_prostorije.add(indeks)
+                neuskladjene_nedelje.add(indeks)
                 continue
             p = promenljive[indeks]
             if nedelja_b:
@@ -1707,6 +1718,38 @@ def _pripremi_hintove(
             rezultat[indeks].extend(
                 [(dan_var, dan), (blok_var, blok), (start_var, start_hinta)]
             )
+        uparivanja_po_nedelji.append((upareno, neuskladjene_nedelje))
+
+    # Ako je stara prostorija postala zabranjena, samo pomeranje te jedinice
+    # često nije dovoljno: u istom terminu svih šest običnih sala već je
+    # zauzeto. Zato zajedno sa njom oslobodi i jedinice koje su se u starom
+    # rasporedu preklapale na istoj lokaciji. To je uži i korisniji početni
+    # skup od širenja preko svih nastavnika, korepetitora i odeljenja.
+    for upareno, neuskladjene_nedelje in uparivanja_po_nedelji:
+        sporni_intervali: list[tuple[int, int, int, str]] = []
+        for indeks in neuskladjene_nedelje:
+            dan, blok, oznaka = upareno[indeks]
+            prostorija = prostorija_po_oznaci.get(oznaka)
+            if prostorija is None:
+                continue
+            trajanje = jedinica_po_indeksu[indeks].trajanje
+            sporni_intervali.append(
+                (dan, blok, blok + trajanje, prostorija.lokacija)
+            )
+        for indeks, (dan, blok, oznaka) in upareno.items():
+            prostorija = prostorija_po_oznaci.get(oznaka)
+            if prostorija is None:
+                continue
+            kraj = blok + jedinica_po_indeksu[indeks].trajanje
+            if any(
+                dan == sporni_dan
+                and prostorija.lokacija == sporna_lokacija
+                and blok < sporni_kraj
+                and sporni_blok < kraj
+                for sporni_dan, sporni_blok, sporni_kraj, sporna_lokacija
+                in sporni_intervali
+            ):
+                neuskladjene_prostorije.add(indeks)
     for indeks in neuskladjene_prostorije:
         rezultat.pop(indeks, None)
     return dict(rezultat)
