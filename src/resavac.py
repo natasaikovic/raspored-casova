@@ -806,8 +806,7 @@ def _dodaj_dnevno_pravilo_lokacije(
         posle = model.new_bool_var(
             f"{token}_d{indeks_dana}_j{jedinica.indeks}_posle_puta{sufiks}"
         )
-        model.add(posle <= prisutan)
-        model.add(posle <= menja_lokaciju)
+        model.add_bool_and([prisutan, menja_lokaciju]).only_enforce_if(posle)
         model.add(blok >= granica_prelaza + ima_putni_blok).only_enforce_if(posle)
         model.add(blok + jedinica.trajanje <= granica_prelaza).only_enforce_if(
             [prisutan, ~posle, menja_lokaciju]
