@@ -39,7 +39,8 @@ Rešavač ne sme da prekrši:
 - smene osnovne škole i posebne termine P1;
 - zauzetost odeljenja i polugrupa, nastavnika, korepetitora i prostorija;
 - subotom završetak najkasnije do 15:05, uz snažnu prednost završetka do 13:15
-  i korišćenja sala Sportske gimnazije;
+  i korišćenja sala Sportske gimnazije; sama subota se dodatno naplaćuje, pa
+  je solver koristi samo kad je jeftinija od alternative;
 - tip prostorije i posebnu učionicu za informatiku;
 - sale `SG-1`, `SG-2` ili `SG-3` za Narodnu igru – glavni predmet i
   Repertoar narodne igre;

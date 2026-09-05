@@ -52,6 +52,15 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
 
 ### Subota
 
+- **Subota je krajnje sredstvo, a ne ravnopravan šesti dan.** U idealnom
+  rasporedu subotom nema nastave; čas se subotom drži samo kad se drugačije
+  ne može iskombinovati. Formalizovano je kao cena, ne kao zabrana: svaka
+  sesija subotom nosi kaznu u cilju (`KAZNA_ZA_SUBOTU`), veću od kazne za
+  prekid nastavniku i za salu van Sportske gimnazije.
+- Jedini slučaj u kom je subota neizbežna je glavni predmet sa fondom 12
+  (Klasičan balet SBŠ): šest dvočasa na šest različitih dana znači da tačno
+  jedan uvek pada subotom. Kazna se i njima naplaćuje, ali je tada konstantan
+  pomeraj cilja koji ne menja izbor ostalih dana, pa izuzetak nije potreban.
 - Subotom se prvo popunjavaju sale Sportske gimnazije.
 - Nastava treba da se završi do 13:15 (zaključno sa blokom 6).
 - Ako raspored nije moguće napraviti u tom okviru, dozvoljeni su blokovi 7 i 8,

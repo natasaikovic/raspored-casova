@@ -123,6 +123,13 @@ PRAG_VELIKOG_JEZGRA_SOBA = 64
 MIN_BUDZET_PONOVNOG_DOKAZA_SOBA = 5.0
 MAX_BUDZET_PONOVNOG_DOKAZA_SOBA = 10.0
 
+# Subota je krajnje sredstvo, a ne ravnopravan šesti dan. Težina je iznad
+# kazne za prekid nastavniku (500) i za salu van Sportske gimnazije (500),
+# pa solver radije prihvata rupu u rasporedu nego čas subotom; ostaje ispod
+# reda veličine tvrdih pravila, da subota i dalje bude moguća kad drugačije
+# ne ide. Podizanje ove vrednosti gura subotu ka „samo ako mora“.
+KAZNA_ZA_SUBOTU = 1500
+
 
 class _TelemetrijaFaze2(cp_model.CpSolverSolutionCallback):
     """Ispiši svaki novi incumbent tokom optimizacije druge faze."""
@@ -577,6 +584,23 @@ def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
         and predmet.igracki
         and all(o.oznaka.rstrip("АБ")[-1] in "1234" for o in odeljenja)
     )
+
+
+def _dodaj_kaznu_za_subotu(
+    kazne: list[cp_model.LinearExprT],
+    prisutan_subotom: cp_model.BoolVar,
+    tezina: int = KAZNA_ZA_SUBOTU,
+) -> None:
+    """Naplati svaku sesiju subotom, pa je solver uzima samo kad se isplati.
+
+    Kazna se dodaje bez izuzetaka, i onima kojima je subota neizbežna. Glavni
+    predmet sa fondom 12 ima šest dvočasa na šest različitih dana, pa mu tačno
+    jedan uvek pada subotom — u svakom dopustivom rešenju. Takva kazna je
+    konstantan pomeraj cilja i ne menja koje je rešenje najbolje, dok se za
+    odseke sa fondom 10 (pet dvočasa, šest mogućih dana) subota stvarno plaća.
+    """
+
+    kazne.append(tezina * prisutan_subotom)
 
 
 def _dodaj_subotnje_ogranicenje(
@@ -1286,6 +1310,7 @@ def napravi_model(
         if not dozvoljena_subota:
             model.add(po_danu[len(DANI) - 1] == 0)
         else:
+            _dodaj_kaznu_za_subotu(kazne, po_danu[len(DANI) - 1])
             _dodaj_subotnje_ogranicenje(
                 model,
                 kazne,
@@ -1309,6 +1334,9 @@ def napravi_model(
                 po_danu_b = tuple(b_dani)
                 if not dozvoljena_subota:
                     model.add(b_dani[len(DANI) - 1] == 0)
+                else:
+                    # Nedelja B je zaseban termin, pa se i njena subota plaća.
+                    _dodaj_kaznu_za_subotu(kazne, b_dani[len(DANI) - 1])
             else:
                 po_danu_b = tuple(po_danu)
 
