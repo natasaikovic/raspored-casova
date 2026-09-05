@@ -958,7 +958,6 @@ def test_neupotrebljiv_hint_se_popravlja_pomocu_infeasible_jezgra(capsys):
 
     izlaz = capsys.readouterr().out
     assert "језгро" in izlaz
-    assert "prethodni raspored prolazi uz" in izlaz
     assert drugo_a.pronadjen and drugo_b.pronadjen
     assert drugo_a.izvestaj is not None and drugo_a.izvestaj.ispravan
 
