@@ -1870,7 +1870,6 @@ def _kanonizuj_hintove(
             red=c.red,
         )
         for c in hintovi
-        if bezbedna_namena_km8(c.prostorija, c.predmet)
     )
 
 
@@ -1970,8 +1969,14 @@ def _pripremi_hintove(
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
         if not casovi:
             continue
+        # Dijagnostika mora videti izvorne sporne sobe, ali u model ne
+        # unosimo ni njihove termine. Zato filtriramo tek na ovom ulazu.
+        bezbedni = tuple(
+            c for c in casovi
+            if bezbedna_namena_km8(c.prostorija, c.predmet)
+        )
         upareno = _upari_hintove(
-            ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
+            ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, bezbedni, prostorije)
         )
         for indeks, (dan, blok, _prostorija) in upareno.items():
             p = promenljive[indeks]

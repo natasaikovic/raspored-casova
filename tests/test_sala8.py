@@ -462,16 +462,15 @@ def test_pg_u_oba_pisma_i_u_drugim_salama(soba, predmet):
 
 @pytest.mark.parametrize("samo_lokacije", [False, True])
 def test_stari_hint_ne_zaobilazi_zabranu(samo_lokacije):
-    from src.resavac import _kanonizuj_hintove
     ulaz = _ulaz_kapaciteta(("drugi",))
     z = ulaz.zahtevi[0]
     hint = (Cas("понедељак", 1, z.predmet, z.odeljenja,
                 z.nastavnik, z.korepetitor, "КМ-8", 2),)
-    assert _kanonizuj_hintove(ulaz, hint, SALE) == ()
     model, jedinice, promenljive = napravi_model(
         ulaz, SALE[:2], (), Smena.CRVENA, hintovi=hint, hintovi_b=hint,
         sa_nedeljom_b=True, samo_lokacije=samo_lokacije, sa_ciljem=False,
     )
+    assert list(model.proto.solution_hint.vars) == []
     solver = cp_model.CpSolver()
     assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     if samo_lokacije:
@@ -481,3 +480,31 @@ def test_stari_hint_ne_zaobilazi_zabranu(samo_lokacije):
         assert all(set(d.values()) == {"KM-1"} for d in dodela)
     else:
         assert all("KM-8" not in p.prostorije for p in promenljive.values())
+
+
+
+def test_analiza_broji_zabranjene_hintove_iako_se_ne_unose_u_model():
+    from collections import defaultdict
+    from src.resavac import (
+        _analiziraj_prostorije_hintova, _broj_nevazecih_dodela_prostorija,
+        _kandidat_originalnog_hinta, _validan_kandidat_para,
+    )
+    ulaz = _ulaz_kapaciteta(("drugi",) * 21)
+    hint = tuple(
+        Cas("понедељак", 1, z.predmet, z.odeljenja, z.nastavnik,
+            z.korepetitor, "КМ-8", i+2)
+        for i,z in enumerate(ulaz.zahtevi)
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=True, sa_ciljem=False, hintovi=hint, hintovi_b=hint,
+    )
+    po_zahtevu = defaultdict(list)
+    for j in jedinice:
+        po_zahtevu[j.zahtev_indeks].append(j)
+    assert list(model.proto.solution_hint.vars) == []
+    analiza = _analiziraj_prostorije_hintova(ulaz, SALE[:2], po_zahtevu, hint, hint)
+    assert _broj_nevazecih_dodela_prostorija(analiza) == 21
+    assert not _validan_kandidat_para(_kandidat_originalnog_hinta(
+        ulaz, SALE[:2], (), hint, hint,
+    ))
