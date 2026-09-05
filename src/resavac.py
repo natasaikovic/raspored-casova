@@ -206,12 +206,10 @@ class SukobProstorije:
 @dataclass
 class PromenljiveJedinice:
     start: cp_model.IntVar
-    kraj: cp_model.IntVar
     dan: cp_model.IntVar
     blok: cp_model.IntVar
     interval: cp_model.IntervalVar
     start_b: cp_model.IntVar | None
-    kraj_b: cp_model.IntVar | None
     dan_b: cp_model.IntVar | None
     blok_b: cp_model.IntVar | None
     interval_b: cp_model.IntervalVar | None
@@ -1236,15 +1234,14 @@ def napravi_model(
         start = model.new_int_var_from_domain(
             cp_model.Domain.from_values(vrednosti_starta), f"{prefiks}_start"
         )
-        kraj = model.new_int_var(1, (len(DANI) - 1) * KORAK_DANA + 15, f"{prefiks}_kraj")
-        model.add(kraj == start + jedinica.trajanje)
         dan = model.new_int_var(0, len(DANI) - 1, f"{prefiks}_dan")
         blok = model.new_int_var(1, len(BLOKOVI), f"{prefiks}_blok")
         model.add(start == dan * KORAK_DANA + blok)
-        interval = model.new_interval_var(start, jedinica.trajanje, kraj, f"{prefiks}_i")
+        interval = model.new_fixed_size_interval_var(
+            start, jedinica.trajanje, f"{prefiks}_i"
+        )
 
         start_b: cp_model.IntVar | None = None
-        kraj_b: cp_model.IntVar | None = None
         dan_b: cp_model.IntVar | None = None
         blok_b: cp_model.IntVar | None = None
         interval_b: cp_model.IntervalVar | None = None
@@ -1283,19 +1280,14 @@ def napravi_model(
                     cp_model.Domain.from_values(vrednosti_starta_b),
                     f"{prefiks}_start_b",
                 )
-                kraj_b = model.new_int_var(
-                    1, (len(DANI) - 1) * KORAK_DANA + 15,
-                    f"{prefiks}_kraj_b",
-                )
-                model.add(kraj_b == start_b + jedinica.trajanje)
                 dan_b = model.new_int_var(0, len(DANI) - 1, f"{prefiks}_dan_b")
                 blok_b = model.new_int_var(1, len(BLOKOVI), f"{prefiks}_blok_b")
                 model.add(start_b == dan_b * KORAK_DANA + blok_b)
-                interval_b = model.new_interval_var(
-                    start_b, jedinica.trajanje, kraj_b, f"{prefiks}_i_b"
+                interval_b = model.new_fixed_size_interval_var(
+                    start_b, jedinica.trajanje, f"{prefiks}_i_b"
                 )
             else:
-                start_b, kraj_b = start, kraj
+                start_b = start
                 dan_b, blok_b = dan, blok
                 interval_b = interval
 
@@ -1378,10 +1370,9 @@ def napravi_model(
                     f"{prefiks}_lok_{broj_lokacije}"
                 )
                 lokacije[lokacija] = koristi
-                interval_lokacije = model.new_optional_interval_var(
+                interval_lokacije = model.new_optional_fixed_size_interval_var(
                     start,
                     jedinica.trajanje,
-                    kraj,
                     koristi,
                     f"{prefiks}_lok_{broj_lokacije}_i",
                 )
@@ -1407,10 +1398,9 @@ def napravi_model(
                     )
                     model.add(koristi_km8 + koristi_obicnu == koristi)
                     intervali_prostorija["KM-8"].append(
-                        model.new_optional_interval_var(
+                        model.new_optional_fixed_size_interval_var(
                             start,
                             jedinica.trajanje,
-                            kraj,
                             koristi_km8,
                             f"{prefiks}_lok_{broj_lokacije}_km8_i",
                         )
@@ -1419,10 +1409,9 @@ def napravi_model(
                     pomocni_intervali_skupova_kandidata[
                         (lokacija, tip, obicne, kandidati_na_lokaciji)
                     ].append(
-                        model.new_optional_interval_var(
+                        model.new_optional_fixed_size_interval_var(
                             start,
                             jedinica.trajanje,
-                            kraj,
                             koristi_obicnu,
                             f"{prefiks}_lok_{broj_lokacije}_obicna_i",
                         )
@@ -1435,18 +1424,19 @@ def napravi_model(
                     else:
                         model.add(blok == 10).only_enforce_if(koristi)
                 if sa_nedeljom_b:
-                    assert start_b is not None and kraj_b is not None
+                    assert start_b is not None
                     assert lokacije_b is not None
                     if zahtev.smena.menja_se:
                         koristi_b = model.new_bool_var(
                             f"{prefiks}_lok_{broj_lokacije}_b"
                         )
-                        interval_b_lokacije = model.new_optional_interval_var(
-                            start_b,
-                            jedinica.trajanje,
-                            kraj_b,
-                            koristi_b,
-                            f"{prefiks}_lok_{broj_lokacije}_i_b",
+                        interval_b_lokacije = (
+                            model.new_optional_fixed_size_interval_var(
+                                start_b,
+                                jedinica.trajanje,
+                                koristi_b,
+                                f"{prefiks}_lok_{broj_lokacije}_i_b",
+                            )
                         )
                     else:
                         koristi_b = koristi
@@ -1484,10 +1474,9 @@ def napravi_model(
                             koristi_km8_b = koristi_km8
                             koristi_obicnu_b = koristi_obicnu
                         intervali_prostorija_b["KM-8"].append(
-                            model.new_optional_interval_var(
+                            model.new_optional_fixed_size_interval_var(
                                 start_b,
                                 jedinica.trajanje,
-                                kraj_b,
                                 koristi_km8_b,
                                 f"{prefiks}_lok_{broj_lokacije}_km8_i_b",
                             )
@@ -1496,10 +1485,9 @@ def napravi_model(
                         pomocni_intervali_skupova_kandidata_b[
                             (lokacija, tip, obicne, kandidati_na_lokaciji)
                         ].append(
-                            model.new_optional_interval_var(
+                            model.new_optional_fixed_size_interval_var(
                                 start_b,
                                 jedinica.trajanje,
-                                kraj_b,
                                 koristi_obicnu_b,
                                 f"{prefiks}_lok_{broj_lokacije}_obicna_i_b",
                             )
@@ -1535,20 +1523,20 @@ def napravi_model(
                 model, koristi, start, dozvoljeni, ulaz,
                 prostorija.oznaka, jedinica.trajanje,
             )
-            opcion = model.new_optional_interval_var(
-                start, jedinica.trajanje, kraj, koristi,
+            opcion = model.new_optional_fixed_size_interval_var(
+                start, jedinica.trajanje, koristi,
                 f"{prefiks}_{prostorija.oznaka}_i",
             )
             intervali_prostorija[prostorija.oznaka].append(opcion)
             if sa_nedeljom_b:
-                assert start_b is not None and kraj_b is not None
+                assert start_b is not None
                 assert izbor_prostorije_b is not None
                 if zahtev.smena.menja_se:
                     koristi_b = model.new_bool_var(
                         f"{prefiks}_{prostorija.oznaka}_b"
                     )
-                    opcion_b = model.new_optional_interval_var(
-                        start_b, jedinica.trajanje, kraj_b, koristi_b,
+                    opcion_b = model.new_optional_fixed_size_interval_var(
+                        start_b, jedinica.trajanje, koristi_b,
                         f"{prefiks}_{prostorija.oznaka}_i_b",
                     )
                 else:
@@ -1600,12 +1588,10 @@ def napravi_model(
 
         promenljive[jedinica.indeks] = PromenljiveJedinice(
             start=start,
-            kraj=kraj,
             dan=dan,
             blok=blok,
             interval=interval,
             start_b=start_b,
-            kraj_b=kraj_b,
             dan_b=dan_b,
             blok_b=blok_b,
             interval_b=interval_b,
@@ -1622,39 +1608,17 @@ def napravi_model(
         if zahtev.korepetitor:
             resurs = _resurs_korepetitora(zahtev.korepetitor)
             for pomeraj in jedinica.korepeticija:
-                pocetak_korepeticije = model.new_int_var(
-                    1, (len(DANI) - 1) * KORAK_DANA + 14,
-                    f"{prefiks}_kor_{pomeraj}_start",
-                )
-                model.add(pocetak_korepeticije == start + pomeraj)
-                kraj_korepeticije = model.new_int_var(
-                    2, (len(DANI) - 1) * KORAK_DANA + 15,
-                    f"{prefiks}_kor_{pomeraj}_kraj",
-                )
-                model.add(kraj_korepeticije == pocetak_korepeticije + 1)
                 intervali_korepetitora[resurs].append(
-                    model.new_interval_var(
-                        pocetak_korepeticije, 1, kraj_korepeticije,
-                        f"{prefiks}_kor_{pomeraj}_i",
+                    model.new_fixed_size_interval_var(
+                        start + pomeraj, 1, f"{prefiks}_kor_{pomeraj}_i",
                     )
                 )
                 if sa_nedeljom_b:
                     assert start_b is not None
-                    pocetak_korepeticije_b = model.new_int_var(
-                        1, (len(DANI) - 1) * KORAK_DANA + 14,
-                        f"{prefiks}_kor_{pomeraj}_start_b",
-                    )
-                    model.add(pocetak_korepeticije_b == start_b + pomeraj)
-                    kraj_korepeticije_b = model.new_int_var(
-                        2, (len(DANI) - 1) * KORAK_DANA + 15,
-                        f"{prefiks}_kor_{pomeraj}_kraj_b",
-                    )
-                    model.add(kraj_korepeticije_b == pocetak_korepeticije_b + 1)
                     intervali_korepetitora_b[resurs].append(
-                        model.new_interval_var(
-                            pocetak_korepeticije_b,
+                        model.new_fixed_size_interval_var(
+                            start_b + pomeraj,
                             1,
-                            kraj_korepeticije_b,
                             f"{prefiks}_kor_{pomeraj}_i_b",
                         )
                     )
