@@ -16,6 +16,8 @@ from typing import Any, Iterable
 
 from dataclasses import replace
 
+from .pravila_prostorija import kanonska_prostorija
+
 from .model import (
     BLOKOVI,
     DANI,
@@ -389,7 +391,7 @@ def ucitaj_prostorije(putanja: str | Path) -> tuple[Prostorija, ...]:
     tipovi = {tip.value: tip for tip in TipProstorije}
     for broj_reda, red in enumerate(redovi, start=2):
         pocetni_broj_gresaka = len(greske)
-        oznaka = red["ознака"]
+        oznaka = kanonska_prostorija(red["ознака"])
         if not oznaka:
             greske.append(f"ред {broj_reda}: „ознака“ не сме бити празно")
         elif oznaka in vidjeno:
@@ -444,7 +446,7 @@ def ucitaj_pravila_prostorija(
     nivoi = {nivo.value: nivo for nivo in NivoPravilaProstorije}
     for broj_reda, red in enumerate(redovi, start=2):
         pocetni_broj_gresaka = len(greske)
-        prostorija = red["просторија"]
+        prostorija = kanonska_prostorija(red["просторија"])
         predmet = " ".join(red["предмет"].split())
         if not prostorija:
             greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
@@ -519,7 +521,7 @@ def ucitaj_dostupnost_prostorija(
     vidjeno: dict[tuple[str, str, str, str], int] = {}
     for broj_reda, red in enumerate(redovi, start=2):
         pocetni_broj_gresaka = len(greske)
-        prostorija = red["просторија"]
+        prostorija = kanonska_prostorija(red["просторија"])
         if not prostorija:
             greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
         dan = red["дан"]

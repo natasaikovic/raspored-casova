@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable, Sequence
 
+from .pismo import kljuc_pisma
+
 from .model import (
     DANI,
     DostupnostProstorije,
@@ -23,9 +25,9 @@ KAZNA_NEPOKRIVENO = 10_000
 
 
 def kanonska_prostorija(oznaka: str) -> str:
-    """Oznaka prostorije je sama sebi kanonska; NP-1 i NP-2 su dve sale."""
+    """Prepoznaj oba pisma za KM-8; NP-1 i NP-2 ostaju različite sale."""
 
-    return oznaka
+    return "KM-8" if kljuc_pisma(oznaka).casefold() == "km-8" else oznaka
 
 
 def _oblik_odgovara(pravilo: PraviloProstorije, trajanje: int) -> bool:

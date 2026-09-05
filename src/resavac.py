@@ -43,6 +43,7 @@ from .model import (
     Zahtev,
 )
 from .pismo import kljuc_pisma, u_latinicu
+from .km8 import dozvoljen_km8, dozvola_za, ucitaj_dozvole_km8
 from .pravila_prostorija import (
     dozvoljena_prostorija,
     kanonska_prostorija,
@@ -470,7 +471,16 @@ def _moguce_prostorije(
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
     trajanje: int = 2,
+    jutarnja: Smena | None = None,
+    blok: int | None = None,
 ) -> tuple[Prostorija, ...]:
+    # Filtriranje pre svih ranih povrataka važi i bez CSV pravila,
+    # za master, puni model i obe naknadne dodele konkretnih sala.
+    prostorije = tuple(
+        p for p in prostorije
+        if kanonska_prostorija(p.oznaka) != "KM-8"
+        or dozvoljen_km8(ulaz, zahtev, trajanje, jutarnja, blok)
+    )
     predmet = ulaz.predmeti[zahtev.predmet]
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
     if zahtev.predmet == REPERTOAR_NARODNE:
@@ -509,14 +519,6 @@ def _moguce_prostorije(
             ulaz.pravila_prostorija, zahtev, p.oznaka, trajanje
         )
     )
-
-
-def _kazna_sale_km8(zahtev: Zahtev, oznaka: str) -> int:
-    """KM-8 čuvamo za Primenjenu gimnastiku osim kada nema drugog rešenja."""
-
-    if oznaka == "KM-8" and zahtev.predmet != PRIMENJENA_GIMNASTIKA:
-        return 100_000
-    return 0
 
 
 def _kazna_strukturisanih_pravila(
@@ -1347,6 +1349,11 @@ def napravi_model(
         )
         if not moguce:
             raise ValueError(f"{zahtev.gde}: нема одговарајуће просторије")
+        jutarnja_b = Smena.PLAVA if jutarnja_smena is Smena.CRVENA else Smena.CRVENA
+        moguce_a = tuple(p for p in moguce if p.oznaka != "KM-8" or
+                         dozvoljen_km8(ulaz, zahtev, jedinica.trajanje, jutarnja_smena))
+        moguce_b = tuple(p for p in moguce if p.oznaka != "KM-8" or
+                         dozvoljen_km8(ulaz, zahtev, jedinica.trajanje, jutarnja_b))
         izbor_prostorije: dict[str, cp_model.BoolVar] = {}
         izbor_prostorije_b: dict[str, cp_model.BoolVar] | None = (
             {} if sa_nedeljom_b else None
@@ -1367,13 +1374,18 @@ def napravi_model(
             )
             for broj_lokacije, lokacija in enumerate(lokacije_mogucih):
                 kandidati_na_lokaciji = frozenset(
-                    p.oznaka for p in moguce if p.lokacija == lokacija
+                    p.oznaka for p in moguce_a if p.lokacija == lokacija
+                )
+                kandidati_na_lokaciji_b = frozenset(
+                    p.oznaka for p in moguce_b if p.lokacija == lokacija
                 )
                 kljuc_kandidata = (lokacija, tip, kandidati_na_lokaciji)
                 koristi = model.new_bool_var(
                     f"{prefiks}_lok_{broj_lokacije}"
                 )
                 lokacije[lokacija] = koristi
+                if not kandidati_na_lokaciji:
+                    model.add(koristi == 0)
                 interval_lokacije = model.new_optional_fixed_size_interval_var(
                     start,
                     jedinica.trajanje,
@@ -1390,37 +1402,6 @@ def napravi_model(
                 )
                 if kandidati_na_lokaciji == frozenset({"KM-8"}):
                     intervali_prostorija["KM-8"].append(interval_lokacije)
-                elif (
-                    "KM-8" in kandidati_na_lokaciji
-                    and (kazna_km8 := _kazna_sale_km8(zahtev, "KM-8"))
-                ):
-                    koristi_km8 = model.new_bool_var(
-                        f"{prefiks}_lok_{broj_lokacije}_km8"
-                    )
-                    koristi_obicnu = model.new_bool_var(
-                        f"{prefiks}_lok_{broj_lokacije}_obicna"
-                    )
-                    model.add(koristi_km8 + koristi_obicnu == koristi)
-                    intervali_prostorija["KM-8"].append(
-                        model.new_optional_fixed_size_interval_var(
-                            start,
-                            jedinica.trajanje,
-                            koristi_km8,
-                            f"{prefiks}_lok_{broj_lokacije}_km8_i",
-                        )
-                    )
-                    obicne = kandidati_na_lokaciji - {"KM-8"}
-                    pomocni_intervali_skupova_kandidata[
-                        (lokacija, tip, obicne, kandidati_na_lokaciji)
-                    ].append(
-                        model.new_optional_fixed_size_interval_var(
-                            start,
-                            jedinica.trajanje,
-                            koristi_obicnu,
-                            f"{prefiks}_lok_{broj_lokacije}_obicna_i",
-                        )
-                    )
-                    kazne.append(kazna_km8 * koristi_km8)
                 if lokacija == "Народно позориште":
                     np_izbori[zahtev.odeljenja[0]].append(koristi)
                     if jedinica.trajanje != 2:
@@ -1446,58 +1427,22 @@ def napravi_model(
                         koristi_b = koristi
                         interval_b_lokacije = interval_lokacije
                     lokacije_b[lokacija] = koristi_b
+                    if not kandidati_na_lokaciji_b:
+                        model.add(koristi_b == 0)
                     intervali_kapaciteta_b[(lokacija, tip)].append(
                         interval_b_lokacije
                     )
-                    intervali_skupova_kandidata_b[kljuc_kandidata].append(
+                    intervali_skupova_kandidata_b[(lokacija, tip, kandidati_na_lokaciji_b)].append(
                         interval_b_lokacije
                     )
                     _ogranici_dostupnost_lokacije(
                         model, koristi_b, start_b, dozvoljeni_b, ulaz,
-                        kandidati_na_lokaciji, jedinica.trajanje,
+                        kandidati_na_lokaciji_b, jedinica.trajanje,
                     )
-                    if kandidati_na_lokaciji == frozenset({"KM-8"}):
+                    if kandidati_na_lokaciji_b == frozenset({"KM-8"}):
                         intervali_prostorija_b["KM-8"].append(
                             interval_b_lokacije
                         )
-                    elif (
-                        "KM-8" in kandidati_na_lokaciji
-                        and (kazna_km8 := _kazna_sale_km8(zahtev, "KM-8"))
-                    ):
-                        if zahtev.smena.menja_se:
-                            koristi_km8_b = model.new_bool_var(
-                                f"{prefiks}_lok_{broj_lokacije}_km8_b"
-                            )
-                            koristi_obicnu_b = model.new_bool_var(
-                                f"{prefiks}_lok_{broj_lokacije}_obicna_b"
-                            )
-                            model.add(
-                                koristi_km8_b + koristi_obicnu_b == koristi_b
-                            )
-                        else:
-                            koristi_km8_b = koristi_km8
-                            koristi_obicnu_b = koristi_obicnu
-                        intervali_prostorija_b["KM-8"].append(
-                            model.new_optional_fixed_size_interval_var(
-                                start_b,
-                                jedinica.trajanje,
-                                koristi_km8_b,
-                                f"{prefiks}_lok_{broj_lokacije}_km8_i_b",
-                            )
-                        )
-                        obicne = kandidati_na_lokaciji - {"KM-8"}
-                        pomocni_intervali_skupova_kandidata_b[
-                            (lokacija, tip, obicne, kandidati_na_lokaciji)
-                        ].append(
-                            model.new_optional_fixed_size_interval_var(
-                                start_b,
-                                jedinica.trajanje,
-                                koristi_obicnu_b,
-                                f"{prefiks}_lok_{broj_lokacije}_obicna_i_b",
-                            )
-                        )
-                        if zahtev.smena.menja_se:
-                            kazne.append(kazna_km8 * koristi_km8_b)
             model.add_exactly_one(lokacije.values())
             if sa_nedeljom_b and zahtev.smena.menja_se:
                 assert lokacije_b is not None
@@ -1508,15 +1453,14 @@ def napravi_model(
         for prostorija in (() if samo_lokacije else moguce):
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
+            if prostorija not in moguce_a:
+                model.add(koristi == 0)
             po_lokaciji[prostorija.lokacija].append(koristi)
             kazna_pravila = _kazna_strukturisanih_pravila(
                 ulaz, zahtev, prostorija.oznaka, jedinica.trajanje
             )
             if kazna_pravila:
                 kazne.append(kazna_pravila * koristi)
-            kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
-            if kazna_km8:
-                kazne.append(kazna_km8 * koristi)
             if prostorija.lokacija == NARODNO_POZORISTE:
                 np_izbori[zahtev.odeljenja[0]].append(koristi)
                 if jedinica.trajanje != 2:
@@ -1547,6 +1491,8 @@ def napravi_model(
                     koristi_b = koristi
                     opcion_b = opcion
                 izbor_prostorije_b[prostorija.oznaka] = koristi_b
+                if prostorija not in moguce_b:
+                    model.add(koristi_b == 0)
                 po_lokaciji_b[prostorija.lokacija].append(koristi_b)
                 intervali_prostorija_b[prostorija.oznaka].append(opcion_b)
                 _ogranici_dostupnost_prostorije(
@@ -1555,8 +1501,6 @@ def napravi_model(
                 )
                 if zahtev.smena.menja_se and kazna_pravila:
                     kazne.append(kazna_pravila * koristi_b)
-                if zahtev.smena.menja_se and kazna_km8:
-                    kazne.append(kazna_km8 * koristi_b)
         if not samo_lokacije:
             model.add_exactly_one(izbor_prostorije.values())
         if not samo_lokacije and sa_nedeljom_b and zahtev.smena.menja_se:
@@ -1628,6 +1572,12 @@ def napravi_model(
                     )
         jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
 
+    if not samo_lokacije:
+        _ogranici_fond_km8(model, ulaz, jedinice,
+                          {i: p.prostorije for i, p in promenljive.items()})
+        if sa_nedeljom_b:
+            _ogranici_fond_km8(model, ulaz, jedinice,
+                              {i: p.prostorije_b for i, p in promenljive.items()})
     if ima_np_program:
         model.add(sum(np_izbori["IV1"]) == 2)
         model.add(sum(np_izbori["IV2"]) == 2)
@@ -2044,10 +1994,23 @@ def _pripremi_hintove(
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
         if not casovi:
             continue
+        # Najpre sačuvaj identitet jedinica iz celog starog rasporeda.
+        # Filtriranje redova pre uparivanja pomerilo bi preostale termine
+        # na druge jedinice, različito u A i B, i stvaralo lažne sukobe.
         upareno = _upari_hintove(
             ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
+        zahtevi_jedinica = {
+            j.indeks: ulaz.zahtevi[zahtev_indeks]
+            for zahtev_indeks, jedinice in jedinice_zahteva.items()
+            for j in jedinice
+        }
         for indeks, (dan, blok, _prostorija) in upareno.items():
+            trajanje = next(j.trajanje for js in jedinice_zahteva.values() for j in js if j.indeks == indeks)
+            if kanonska_prostorija(_prostorija) == "KM-8" and not dozvoljen_km8(
+                ulaz, zahtevi_jedinica[indeks], trajanje, blok=blok
+            ):
+                continue
             p = promenljive[indeks]
             if nedelja_b:
                 if p.start_b is None or p.start_b is p.start:
@@ -2181,6 +2144,25 @@ def _preostali_limit_prve_faze(
     )
 
 
+def _ogranici_fond_km8(model, ulaz, jedinice, izbori):
+    """Saberi stvarne časove, zasebno po tačnoj grupi i nedelji."""
+    izrazi = defaultdict(list)
+    granice = {}
+    for j in jedinice:
+        z = ulaz.zahtevi[j.zahtev_indeks]
+        koristi = izbori.get(j.indeks, {}).get("KM-8")
+        if koristi is None:
+            continue
+        for o in z.odeljenja:
+            d = dozvola_za(ulaz, z.predmet, o)
+            if d is not None and d.najvise_casova is not None:
+                key = (d.skola, d.predmet, d.odeljenje)
+                izrazi[key].append(j.trajanje * koristi)
+                granice[key] = d.najvise_casova
+    for key, stavke in izrazi.items():
+        model.add(sum(stavke) <= granice[key])
+
+
 def _dodeli_prostorije(
     solver_termina: cp_model.CpSolver,
     ulaz: Ulaz,
@@ -2215,7 +2197,7 @@ def _dodeli_prostorije(
         moguce = [
             prostorija
             for prostorija in _moguce_prostorije(
-                zahtev, ulaz, prostorije, jedinica.trajanje
+                zahtev, ulaz, prostorije, jedinica.trajanje, blok=start % KORAK_DANA
             )
             if prostorija.lokacija == lokacija
             and prostorija_dostupna(
@@ -2242,9 +2224,6 @@ def _dodeli_prostorije(
             )
             if kazna:
                 kazne.append(kazna * koristi)
-            kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
-            if kazna_km8:
-                kazne.append(kazna_km8 * koristi)
             intervali[prostorija.oznaka].append(
                 model.new_optional_fixed_size_interval_var(
                     start,
@@ -2254,6 +2233,7 @@ def _dodeli_prostorije(
                 )
             )
         model.add_exactly_one(izbori[jedinica.indeks].values())
+    _ogranici_fond_km8(model, ulaz, jedinice, izbori)
     for stavke in intervali.values():
         model.add_no_overlap(stavke)
     if kazne:
@@ -2378,6 +2358,7 @@ def _dodeli_prostorije_obe(
         moguce_a = [
             s for s in moguce
             if s.lokacija == lokacija_a
+            and (s.oznaka != "KM-8" or dozvoljen_km8(ulaz, zahtev, jedinica.trajanje, blok=start_a % KORAK_DANA))
             and prostorija_dostupna(
                 ulaz.dostupnost_prostorija, s.oznaka,
                 DANI[start_a // KORAK_DANA],
@@ -2387,6 +2368,7 @@ def _dodeli_prostorije_obe(
         moguce_b = [
             s for s in moguce
             if s.lokacija == lokacija_b
+            and (s.oznaka != "KM-8" or dozvoljen_km8(ulaz, zahtev, jedinica.trajanje, blok=start_b % KORAK_DANA))
             and prostorija_dostupna(
                 ulaz.dostupnost_prostorija, s.oznaka,
                 DANI[start_b // KORAK_DANA],
@@ -2403,9 +2385,6 @@ def _dodeli_prostorije_obe(
             )
             if kazna:
                 kazne.append(kazna * koristi)
-            kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
-            if kazna_km8:
-                kazne.append(kazna_km8 * koristi)
             intervali_a[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
                 start_a, jedinica.trajanje, koristi,
                 f"j{jedinica.indeks}_{soba.oznaka}_i_a",
@@ -2421,9 +2400,6 @@ def _dodeli_prostorije_obe(
             )
             if kazna:
                 kazne.append(kazna * koristi)
-            kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
-            if kazna_km8:
-                kazne.append(kazna_km8 * koristi)
             intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
                 start_b, jedinica.trajanje, koristi,
                 f"j{jedinica.indeks}_{soba.oznaka}_i_b",
@@ -2440,6 +2416,8 @@ def _dodeli_prostorije_obe(
                     izbori_a[jedinica.indeks].get(oznaka, 0)
                     == izbori_b[jedinica.indeks].get(oznaka, 0)
                 ).only_enforce_if((aktivna_a, aktivna_b))
+    _ogranici_fond_km8(model, ulaz, jedinice, izbori_a)
+    _ogranici_fond_km8(model, ulaz, jedinice, izbori_b)
     for stavke in intervali_a.values():
         model.add_no_overlap(stavke)
     for stavke in intervali_b.values():
@@ -2767,7 +2745,7 @@ def _analiziraj_prostorije_hintova(
             dostupne = [
                 kandidat
                 for kandidat in _moguce_prostorije(
-                    zahtev, ulaz, prostorije, jedinica.trajanje
+                    zahtev, ulaz, prostorije, jedinica.trajanje, blok=blok
                 )
                 if prostorija_dostupna(
                     ulaz.dostupnost_prostorija,
@@ -3840,6 +3818,7 @@ def ucitaj_standardne_ulaze(
             ulaz,
             pravila_prostorija=pravila,
             dostupnost_prostorija=dostupnost,
+            dozvole_km8=ucitaj_dozvole_km8(direktorijum / "dozvole_km8.csv"),
         ),
         prostorije,
         ucitaj_nedostupnost(direktorijum / "nedostupnost.csv"),

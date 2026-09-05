@@ -286,10 +286,10 @@ class TestProstorije:
 
 
 class TestStrukturisanaPravilaProstorija:
-    def test_ucitava_svih_69_atomskih_pravila(self):
+    def test_ucitava_svih_88_atomskih_pravila(self):
         pravila = ucitaj_pravila_prostorija("ulazi/pravila_prostorija.csv")
 
-        assert len(pravila) == 69
+        assert len(pravila) == 88
         assert {p.nivo for p in pravila} == set(NivoPravilaProstorije)
         assert all(";" not in p.predmet for p in pravila)
         assert all(len(p.odeljenja) <= 1 for p in pravila)
