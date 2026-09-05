@@ -170,8 +170,7 @@ kolona `приоритет` nije dovoljan izvor za ova višedimenzionalna pravil
 - šest redovnih sala;
 - `KM-3` i `KM-6` su manje sale. Najčešće se koriste za OBŠ, a u SBŠ za
   sporedne predmete kada nema dovoljno prostora;
-- sala br. 8, u kojoj se načelno održava **Primenjena gimnastika**, jer su u
-  njoj gimnastički rekviziti, a neravan pod nije pogodan za igračke predmete;
+- sala br. 8: **isključivo Primenjena gimnastika**, bez izuzetaka (2026/27);
 - četiri učionice;
 - jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
   samo u nuždi;
@@ -222,9 +221,10 @@ pozorištu sme da traje do 17:40.
   bilo kojoj sali. Ako se časovi Klasičnog baleta nekog odeljenja održavaju u
   Sportskoj gimnaziji, časovi Primenjene gimnastike tog odeljenja moraju se
   održati na istoj lokaciji, kako učenici ne bi menjali lokaciju.
-- `KM-8` nije pogodna za igračke predmete zbog neravnog poda. Izuzetno, u njoj
-  sme da se održava **Tradicionalno pevanje**, jer sala ima klavir, a učenici
-  mogu da sede na podu. Drugi predmeti nisu potvrđeni kao dozvoljeni u `KM-8`.
+- `KM-8` je zbog neravnog poda i bezbednosti **strogo zabranjena za sve
+  predmete i aktivnosti osim Primenjene gimnastike**, uključujući
+  Tradicionalno pevanje. Sme ostati prazna; stari rasporedi i nedostatak
+  drugih sala nisu izuzeci. Ovo zamenjuje sve ranije dozvole za KM-8.
 - Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
   glavni predmet**.
 - Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
@@ -266,7 +266,7 @@ ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
 - U Sportskoj gimnaziji **Solfeđo** (i za OBŠ i za SBŠ) mora da se održava u
   `SG-музуч`, jer ta učionica ima klavir.
 - **Tradicionalno pevanje** prvenstveno se održava u muzičkim učionicama. Ako
-  u njima nema mesta, sme da se održi u `KM-8`, `SG-2` ili `SG-3`, jer i te
+  u njima nema mesta, sme da se održi u `SG-2` ili `SG-3`, jer i te
   sale imaju klavir.
 
 ## Nastavnici i korepetitori

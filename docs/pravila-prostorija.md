@@ -43,7 +43,10 @@ kapacitet lokacije zauzima u terminima kada ta sala ne radi.
 CSV označava KM-8 kao prvi izbor za Primenjenu gimnastiku, ali su joj dozvoljene
 i druge sale. Ako je Klasičan balet istog odeljenja tog dana u Sportskoj
 gimnaziji, lokacija Primenjene gimnastike se sa njim obavezno usklađuje.
-Tradicionalno pevanje sme izuzetno u KM-8 jer sala ima klavir. CSV još ne može
+KM-8 je 2026/27. strogo zabranjena za sve osim Primenjene gimnastike,
+uključujući Tradicionalno pevanje. Obe oznake KM-8/КМ-8 označavaju istu salu.
+CSV još ne može
 da izrazi kvote pet termina u Narodnom pozorištu ni subotnji prioritet lokacije
-Sportske gimnazije. Ta pravila zato ostaju u kodu do proširenja formata. Velika
-kazna za korišćenje neravnog poda KM-8 za druge igračke predmete takođe ostaje.
+Sportske gimnazije. Ta pravila zato ostaju u kodu do proširenja formata.
+Bezbednosna zabrana drugih namena KM-8 primenjuje se u svim fazama,
+čak i bez CSV pravila. Proveravač svaku povredu prijavljuje kao grešku.

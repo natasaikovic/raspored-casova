@@ -19,7 +19,6 @@ from src.proveravac import Cas, proveri
 from src.resavac import (
     _dodeli_prostorije,
     _dodeli_prostorije_obe,
-    _kazna_sale_km8,
     _moguce_prostorije,
     napravi_model,
 )
@@ -92,16 +91,14 @@ def _casovi_pg(prostorija, sa_drugim_u_sg=False):
     return tuple(casovi)
 
 
-def test_solver_csv_obavezno_ogranicava_pg_a_drugi_moze_u_km8_u_nuzdi():
+def test_solver_zabranjuje_km8_drugim_predmetima():
     ulaz = _ulaz()
     pg, drugi = ulaz.zahtevi
 
     assert {p.oznaka for p in _moguce_prostorije(pg, ulaz, SALE)} == {"KM-8"}
-    assert "KM-8" in {
+    assert "KM-8" not in {
         p.oznaka for p in _moguce_prostorije(drugi, ulaz, SALE)
     }
-    assert _kazna_sale_km8(pg, "KM-8") == 0
-    assert _kazna_sale_km8(drugi, "KM-8") == 100_000
 
 
 def test_proveravac_prihvata_km8_za_pg():
@@ -116,7 +113,7 @@ def test_proveravac_odbija_pg_u_drugoj_sali(prostorija):
     assert any("структурисана правила забрањују" in g for g in izvestaj.greske)
 
 
-def test_proveravac_upozorava_za_drugi_predmet_u_km8():
+def test_proveravac_odbija_svaki_drugi_cas_u_km8():
     ulaz = _ulaz()
     casovi = (
         Cas("понедељак", 1, PG, ("11",), "Бранислава", "Ђорђина", "KM-8", 2),
@@ -125,9 +122,8 @@ def test_proveravac_upozorava_za_drugi_predmet_u_km8():
         Cas("уторак", 2, DRUGA_IGRA, ("11",), "Мила", "Ива", "KM-8", 5),
     )
     izvestaj = proveri(ulaz, SALE, (), casovi)
-    assert izvestaj.ispravan, izvestaj.tekst()
-    assert any("дозвољен само у нужди" in u for u in izvestaj.upozorenja)
-    assert sum("дозвољен само у нужди" in u for u in izvestaj.upozorenja) == 1
+    assert not izvestaj.ispravan
+    assert sum("КМ-8 је строго забрањена" in g for g in izvestaj.greske) == 2
 
 
 def _ulaz_pg_i_klasicni():
@@ -231,17 +227,14 @@ def _fiksiraj_sve(model, jedinice, promenljive, lokacija, blok=1, nedelja_b=Fals
         model.add(lokacije[lokacija] == 1)
 
 
-def test_location_model_km8_je_dozvoljena_za_drugi_predmet_u_nuzdi():
+def test_location_model_ne_moze_koristiti_km8_kada_nema_druge_sale():
     ulaz = _ulaz_kapaciteta(("drugi", "drugi"))
     model, jedinice, promenljive = napravi_model(
         ulaz, SALE[:2], (), Smena.CRVENA, samo_lokacije=True, sa_ciljem=False
     )
     _fiksiraj_sve(model, jedinice, promenljive, KM)
 
-    assert cp_model.CpSolver().solve(model) in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE,
-    )
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_location_model_dve_pg_ne_mogu_istovremeno_u_km8():
@@ -373,7 +366,7 @@ def test_location_model_kaznjava_km8_i_u_zasebnom_izboru_nedelje_b():
     assert "KM-8" not in dodela_b.values()
 
 
-def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
+def test_location_model_zabrana_vazi_i_za_nedelju_b():
     ulaz = _ulaz_kapaciteta(("drugi", "drugi"), menjaju_se=True)
     model, jedinice, promenljive = napravi_model(
         ulaz,
@@ -391,10 +384,7 @@ def test_location_model_meko_pravilo_vazi_i_za_nedelju_b():
         model.add(p.lokacije[KM] == 1)
     _fiksiraj_sve(model, jedinice, promenljive, KM, blok=9, nedelja_b=True)
 
-    assert cp_model.CpSolver().solve(model) in (
-        cp_model.OPTIMAL,
-        cp_model.FEASIBLE,
-    )
+    assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
 
 
 def test_location_model_dve_informatike_dele_jedinu_specijalnu_ucionicu():
@@ -438,3 +428,111 @@ def test_location_model_dve_informatike_dele_jedinu_specijalnu_ucionicu():
     _fiksiraj_sve(model, jedinice, promenljive, KM)
 
     assert cp_model.CpSolver().solve(model) == cp_model.INFEASIBLE
+
+
+@pytest.mark.parametrize("soba", ["KM-8", "КМ-8", " КМ-8 ", "km-8"])
+@pytest.mark.parametrize("predmet", [DRUGA_IGRA, "Традиционално певање", "", "Непознат"])
+def test_zabrana_ne_zavisi_od_pisma_pravila_ili_poznatog_predmeta(soba, predmet):
+    from src.pravila_prostorija import dozvoljena_prostorija
+    z = _zahtev(predmet, "Мила", "Ива", 2)
+    # Čak ni stara eksplicitna dozvola ne nadjačava bezbednosno pravilo.
+    stara_pravila = (PraviloProstorije(soba, NivoPravilaProstorije.PRVI,
+                                      predmet, (), None, ""),)
+    assert not dozvoljena_prostorija(stara_pravila, z, soba, 1)
+    cas = Cas("уторак", 3, predmet, ("11",), "Мила", "Ива", soba, 2)
+    izvestaj = proveri(_ulaz(), SALE, (), (cas,), Smena.PLAVA)
+    assert not izvestaj.ispravan
+    poruka = next(g for g in izvestaj.greske if "КМ-8 је строго забрањена" in g)
+    for tekst in ("Недеља Б", "уторак", "блок 3", "11", predmet):
+        assert tekst in poruka
+
+
+@pytest.mark.parametrize("soba", ["KM-8", "КМ-8"])
+@pytest.mark.parametrize("predmet", [PG, "Primenjena gimnastika"])
+def test_pg_u_oba_pisma_i_u_drugim_salama(soba, predmet):
+    from src.pravila_prostorija import bezbedna_namena_km8
+    assert bezbedna_namena_km8(soba, predmet)
+    ulaz = replace(_ulaz(False), pravila_prostorija=())
+    assert {p.oznaka for p in _moguce_prostorije(ulaz.zahtevi[0], ulaz, SALE)} == {
+        p.oznaka for p in SALE
+    }
+    casovi = tuple(replace(c, predmet=predmet) for c in _casovi_pg(soba))
+    assert proveri(ulaz, SALE, (), casovi).ispravan
+
+
+@pytest.mark.parametrize("samo_lokacije", [False, True])
+def test_stari_hint_ne_zaobilazi_zabranu(samo_lokacije):
+    ulaz = _ulaz_kapaciteta(("drugi",))
+    z = ulaz.zahtevi[0]
+    hint = (Cas("понедељак", 1, z.predmet, z.odeljenja,
+                z.nastavnik, z.korepetitor, "КМ-8", 2),)
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, hintovi=hint, hintovi_b=hint,
+        sa_nedeljom_b=True, samo_lokacije=samo_lokacije, sa_ciljem=False,
+    )
+    assert list(model.proto.solution_hint.vars) == []
+    solver = cp_model.CpSolver()
+    assert solver.solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if samo_lokacije:
+        dodela = _dodeli_prostorije_obe(solver, ulaz, SALE[:2], jedinice,
+                                      promenljive, broj_radnika=1)
+        assert dodela is not None
+        assert all(set(d.values()) == {"KM-1"} for d in dodela)
+    else:
+        assert all("KM-8" not in p.prostorije for p in promenljive.values())
+
+
+
+def test_analiza_broji_zabranjene_hintove_iako_se_ne_unose_u_model():
+    from collections import defaultdict
+    from src.resavac import (
+        _analiziraj_prostorije_hintova, _broj_nevazecih_dodela_prostorija,
+        _kandidat_originalnog_hinta, _validan_kandidat_para,
+    )
+    ulaz = _ulaz_kapaciteta(("drugi",) * 21)
+    hint = tuple(
+        Cas("понедељак", 1, z.predmet, z.odeljenja, z.nastavnik,
+            z.korepetitor, "КМ-8", i+2)
+        for i,z in enumerate(ulaz.zahtevi)
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, sa_nedeljom_b=True,
+        samo_lokacije=True, sa_ciljem=False, hintovi=hint, hintovi_b=hint,
+    )
+    po_zahtevu = defaultdict(list)
+    for j in jedinice:
+        po_zahtevu[j.zahtev_indeks].append(j)
+    assert list(model.proto.solution_hint.vars) == []
+    analiza = _analiziraj_prostorije_hintova(ulaz, SALE[:2], po_zahtevu, hint, hint)
+    assert _broj_nevazecih_dodela_prostorija(analiza) == 21
+    assert not _validan_kandidat_para(_kandidat_originalnog_hinta(
+        ulaz, SALE[:2], (), hint, hint,
+    ))
+
+
+def test_odbacivanje_km8_hinta_ne_pomera_preostale_jedinice():
+    from collections import defaultdict
+    from src.resavac import _pripremi_hintove, KORAK_DANA
+
+    ulaz = _ulaz_kapaciteta(("drugi",))
+    z = replace(ulaz.zahtevi[0], fond=3)
+    ulaz = replace(ulaz, zahtevi=(z,))
+    hint = tuple(
+        Cas(dan, 1, z.predmet, z.odeljenja, z.nastavnik, None, soba, i+2)
+        for i, (dan, soba) in enumerate((
+            ("понедељак", "КМ-8"), ("уторак", "KM-1"), ("среда", "KM-1"),
+        ))
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, sa_ciljem=False,
+    )
+    po_zahtevu = defaultdict(list)
+    for j in jedinice:
+        po_zahtevu[j.zahtev_indeks].append(j)
+    pripremljeni = _pripremi_hintove(
+        ulaz, SALE[:2], po_zahtevu, promenljive, hint,
+    )
+    assert jedinice[0].indeks not in pripremljeni
+    for dan, j in enumerate(jedinice[1:], start=1):
+        vrednosti = {var.index: value for var, value in pripremljeni[j.indeks]}
+        assert vrednosti[promenljive[j.indeks].start.index] == dan * KORAK_DANA + 1

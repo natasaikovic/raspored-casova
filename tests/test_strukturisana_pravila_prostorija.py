@@ -212,13 +212,13 @@ def test_aktivna_pravila_dozvoljavaju_pg_u_svim_salama_i_filtriraju_np():
     assert {p.oznaka for p in _moguce_prostorije(rkb, ulaz, sobe, 2)} == {"NP-1", "NP-2"}
 
 
-def test_tradicionalno_pevanje_sme_izuzetno_u_km8():
+def test_tradicionalno_pevanje_ne_sme_u_km8():
     ulaz, sobe, _ = ucitaj_standardne_ulaze("ulazi")
     pevanje = next(
         z for z in ulaz.zahtevi if z.predmet == "Традиционално певање"
     )
 
-    assert "KM-8" in {
+    assert "KM-8" not in {
         p.oznaka for p in _moguce_prostorije(pevanje, ulaz, sobe, 1)
     }
 
