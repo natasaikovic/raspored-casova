@@ -19,6 +19,7 @@ from typing import Callable, Collection, Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
+from .blokovi import INFORMATIKA, OBAVEZNI_DVOCASI, SRPSKI, sukobi_fonda
 from .loader import (
     UlazGreska,
     proveri_veze_pravila_prostorija,
@@ -376,11 +377,20 @@ class Rezultat:
 
 
 def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
+    greske = sukobi_fonda(ulaz)
+    if greske:
+        raise UlazGreska(greske)
     rezultat: list[Jedinica] = []
     for zahtev_indeks, zahtev in enumerate(ulaz.zahtevi):
         predmet = ulaz.predmeti[zahtev.predmet]
-        if zahtev.smena is Smena.POSEBNA:
-            trajanja = [1] * zahtev.fond
+        if zahtev.fond == 1:
+            trajanja = [1]
+        elif zahtev.fond == 3:
+            trajanja = [2, 1]
+        elif zahtev.predmet in OBAVEZNI_DVOCASI or (zahtev.predmet == INFORMATIKA and zahtev.fond == 2):
+            trajanja = [2] * (zahtev.fond // 2)
+        elif predmet.trazi_salu and zahtev.fond % 2 == 0:
+            trajanja = [2] * (zahtev.fond // 2)
         elif predmet.igracki:
             trajanja = [2] * (zahtev.fond // 2) + [1] * (zahtev.fond % 2)
         else:
@@ -389,6 +399,10 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
         preostala_korepeticija = zahtev.fond_korepeticije
         for redni_broj, trajanje in enumerate(trajanja):
             broj = min(trajanje, preostala_korepeticija)
+            # Fond 3 / korepeticija 1: korepetitor prati pojedinačni čas,
+            # ne polovinu dvočasa; ukupno zaduženje ostaje isto.
+            if trajanje == 2 and broj == 1 and 1 in trajanja[redni_broj + 1:]:
+                broj = 0
             korepeticija = tuple(range(broj))
             preostala_korepeticija -= broj
             rezultat.append(
@@ -426,7 +440,7 @@ def _dozvoljeni_poceci(
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis != poznati_opis:
             return ()
-        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 1)
+        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje in (1, 2))
         return tuple(
             (dan, blok)
             for dan, blok in kandidati
@@ -1155,6 +1169,43 @@ def _dodaj_jednakost_lokacije(
             model.add(a == b)
 
 
+def _dodaj_neprekinute_predmete(model, ulaz, jedinice, promenljive, sa_nedeljom_b):
+    """Za svaku učeničku grupu/predmet: raspon dnevnog bloka = broj časova."""
+    grupe = defaultdict(dict)
+    for j in jedinice:
+        z = ulaz.zahtevi[j.zahtev_indeks]
+        for token in _tokeni_odeljenja(ulaz, z.odeljenja):
+            grupe[(token, z.predmet)][j.indeks] = j
+    for (token, predmet), stavke in grupe.items():
+        if len(stavke) < 2:
+            continue
+        for b in range(2 if sa_nedeljom_b else 1):
+            for dan in range(len(DANI)):
+                pocetci, krajevi, trajanja = [], [], []
+                ime = f"kontinuitet_{token}_{predmet}_{b}_{dan}"
+                for j in stavke.values():
+                    v = promenljive[j.indeks]
+                    prisutan = (v.po_danu_b if b else v.po_danu)[dan]
+                    blok = v.blok_b if b else v.blok
+                    poc = model.new_int_var(1, 15, f"{ime}_{j.indeks}_p")
+                    kraj = model.new_int_var(0, 15, f"{ime}_{j.indeks}_k")
+                    model.add(poc == blok).only_enforce_if(prisutan)
+                    model.add(poc == 15).only_enforce_if(prisutan.Not())
+                    model.add(kraj == blok + j.trajanje).only_enforce_if(prisutan)
+                    model.add(kraj == 0).only_enforce_if(prisutan.Not())
+                    pocetci.append(poc)
+                    krajevi.append(kraj)
+                    trajanja.append(j.trajanje * prisutan)
+                prvi = model.new_int_var(1, 15, ime + "_prvi")
+                poslednji = model.new_int_var(0, 15, ime + "_poslednji")
+                ima = model.new_bool_var(ime + "_ima")
+                model.add_min_equality(prvi, pocetci)
+                model.add_max_equality(poslednji, krajevi)
+                model.add(sum(trajanja) > 0).only_enforce_if(ima)
+                model.add(sum(trajanja) == 0).only_enforce_if(ima.Not())
+                model.add(poslednji - prvi == sum(trajanja)).only_enforce_if(ima)
+
+
 def napravi_model(
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
@@ -1178,6 +1229,10 @@ def napravi_model(
     model = cp_model.CpModel()
     kazne: list[cp_model.LinearExprT] = []
     jedinice = _jedinice(ulaz)
+    # Jedan dvočas ne može imati korepetitora samo u polovini sesije.
+    for j in jedinice:
+        if j.trajanje == 2 and len(j.korepeticija) == 1:
+            model.add(False)
     promenljive: dict[int, PromenljiveJedinice] = {}
     intervali_nastavnika: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_korepetitora: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
@@ -1683,6 +1738,14 @@ def napravi_model(
                 for dan in dani_b:
                     assert dan is not None
                     model.add(dan <= 4)
+
+    for indeks, stavke in jedinice_zahteva.items():
+        z = ulaz.zahtevi[indeks]
+        if z.fond == 3:
+            model.add_all_different([promenljive[j.indeks].dan for j in stavke])
+            if sa_nedeljom_b:
+                model.add_all_different([promenljive[j.indeks].dan_b for j in stavke])
+    _dodaj_neprekinute_predmete(model, ulaz, jedinice, promenljive, sa_nedeljom_b)
 
     # Verska i Građansko istog razreda dele termin i lokaciju.
     alternativni: dict[tuple[str, str], Jedinica] = {}
@@ -3410,6 +3473,10 @@ def resi_nedelju(
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
+    greske = sukobi_fonda(ulaz)
+    if greske:
+        return Rezultat("НЕУСАГЛАШЕН УЛАЗ", (), Izvestaj(greske=greske), None)
+
     solver, jedinice, promenljive, status_tekst, sobe_a, _ = _resi_u_dve_faze(
         ulaz,
         prostorije,
@@ -3669,6 +3736,11 @@ def resi_obe_nedelje(
     hintovi_b: Sequence[Cas] = (),
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
+
+    greske = sukobi_fonda(ulaz)
+    if greske:
+        rezultat = Rezultat("НЕУСАГЛАШЕН УЛАЗ", (), Izvestaj(greske=greske), None)
+        return rezultat, rezultat
 
     solver, jedinice, promenljive, status_tekst, sobe_a, sobe_b = _resi_u_dve_faze(
         ulaz,

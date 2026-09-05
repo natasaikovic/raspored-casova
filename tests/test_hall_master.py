@@ -49,6 +49,11 @@ def test_pomocni_obicni_interval_se_ne_broji_dvaput():
 
 def test_stvarni_skupovi_kandidata_prate_inkluziju_fizickih_soba():
     ulaz, prostorije, _ = ucitaj_standardne_ulaze("ulazi")
+    # Ovaj test ispituje sobe na usaglašenom podskupu, ne rešivost punog ulaza.
+    from dataclasses import replace
+    from src.blokovi import OBAVEZNI_DVOCASI
+    ulaz = replace(ulaz, zahtevi=tuple(z for z in ulaz.zahtevi
+        if not (z.predmet in OBAVEZNI_DVOCASI and z.fond % 2)))
     po_kljucu = defaultdict(list)
     for jedinica in _jedinice(ulaz):
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]

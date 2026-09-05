@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from .izuzeci import dozvoljen_peti_cas, izuzet_od_ogranicenja_pauza
+from .blokovi import INFORMATIKA, OBAVEZNI_DVOCASI, SRPSKI, sukobi_fonda
 from .loader import (
     UlazGreska,
     proveri_veze_pravila_prostorija,
@@ -303,6 +304,7 @@ def proveri(
     _proveri_fondove(ulaz, casovi, pogodjeni, izvestaj)
     _proveri_sudare(ulaz, casovi, izvestaj)
     _proveri_dnevni_raspored(ulaz, prostorije_po_oznaci, casovi, izvestaj)
+    _proveri_stroge_blokove(ulaz, casovi, izvestaj)
     _proveri_dvocase(ulaz, casovi, izvestaj)
     _proveri_versku_i_gradjansko(ulaz, casovi, izvestaj)
     _proveri_narodno_pozoriste(ulaz, prostorije, casovi, izvestaj)
@@ -710,10 +712,10 @@ def _proveri_smenu(
     elif smena is Smena.POSEBNA:
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis == poznati_opis:
-            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok != 13:
+            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok not in ((13, 14) if zahtev.fond == 3 else (13,)):
                 izvestaj.greske.append(
                     f"{cas.gde}: {zahtev.odeljenja[0]} сме само понедељком, "
-                    "средом и петком у блоку 13"
+                    "средом и петком, са почетком сесије у блоку 13"
                 )
         else:
             izvestaj.greske.append(
@@ -1030,6 +1032,52 @@ def _proveri_lokaciju_primenjene_gimnastike(
             f"{grupa}: {PRIMENJENA_GIMNASTIKA} у дану {dan} мора бити у "
             "Спортској гимназији јер је тамо Класичан балет тог одељења"
         )
+
+
+def _proveri_stroge_blokove(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:
+    # Ne koristi solver, njegove jedinice niti hintove: proverava stvarne CSV redove.
+    izvestaj.greske.extend(sukobi_fonda(ulaz))
+    polugrupe = defaultdict(list)
+    for o in ulaz.odeljenja.values():
+        if o.roditelj:
+            polugrupe[o.roditelj].append(o.oznaka)
+    dnevni = defaultdict(dict)
+    po_grupi = defaultdict(list)
+    for i, c in enumerate(casovi):
+        for o in c.odeljenja:
+            po_grupi[(c.predmet, o)].append(c)
+            for token in polugrupe.get(o, [o]):
+                dnevni[(token, c.predmet, c.dan)][i] = c
+    for (o, p, dan), redovi in dnevni.items():
+        blokovi = sorted({c.blok for c in redovi.values()})
+        if blokovi[-1] - blokovi[0] + 1 != len(blokovi):
+            izvestaj.greske.append(f"„{p}“ за {o}, {dan}: часови нису један непрекинут блок")
+    for z in ulaz.zahtevi:
+        if z.fond == 1:
+            continue  # Tačan broj proverava _proveri_fondove.
+        fond_tri = z.fond == 3
+        obavezni = z.predmet in OBAVEZNI_DVOCASI or (z.predmet == INFORMATIKA and z.fond == 2)
+        parni_igracki = ulaz.predmeti[z.predmet].trazi_salu and z.fond % 2 == 0
+        if not (fond_tri or obavezni or parni_igracki):
+            continue
+        for o in z.odeljenja:
+            dani = defaultdict(list)
+            for c in po_grupi[(z.predmet, o)]:
+                dani[c.dan].append(c)
+            if fond_tri and sorted(map(len, dani.values())) != [1, 2]:
+                izvestaj.greske.append(f"„{z.predmet}“ за {o}: обавезан распоред 2+1 у различитим данима")
+            for dan, redovi in dani.items():
+                redovi.sort(key=lambda c: c.blok)
+                if z.smena is Smena.POSEBNA and redovi[0].blok != 13:
+                    izvestaj.greske.append(f"„{z.predmet}“ за {o}, {dan}: сесија мора почети у блоку 13")
+                if fond_tri and len(redovi) == 1:
+                    continue
+                if len(redovi) % 2:
+                    izvestaj.greske.append(f"„{z.predmet}“ за {o}, {dan}: часови нису организовани у двочасима")
+                for a, b in zip(redovi[::2], redovi[1::2]):
+                    identitet = lambda c: (c.predmet, c.odeljenja, c.nastavnik, c.korepetitor, c.prostorija)
+                    if b.blok != a.blok + 1 or identitet(a) != identitet(b):
+                        izvestaj.greske.append(f"„{z.predmet}“ за {o}, {dan}: неисправан двочас {a.blok}–{b.blok} (термини или особље/група/просторија)")
 
 
 def _proveri_dvocase(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvestaj) -> None:

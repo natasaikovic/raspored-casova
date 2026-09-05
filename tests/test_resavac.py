@@ -150,7 +150,7 @@ def test_prva_faza_cuva_cvrsti_subotnji_kraj_bez_soft_promenljivih():
     assert cp_model.CpSolver().solve(bez_cilja) == cp_model.INFEASIBLE
 
 
-def test_p1_ima_tri_pojedinacna_casa_u_1830():
+def test_p1_ima_dva_plus_jedan_sa_pocetkom_u_1830():
     z = Zahtev(
         predmet="Класичан балет",
         razred="припремно",
@@ -176,11 +176,12 @@ def test_p1_ima_tri_pojedinacna_casa_u_1830():
     )
 
     assert rezultat.pronadjen
-    assert {(cas.dan, cas.blok) for cas in rezultat.casovi} == {
-        ("понедељак", 13),
-        ("среда", 13),
-        ("петак", 13),
-    }
+    from collections import defaultdict
+    po_danu = defaultdict(list)
+    for cas in rezultat.casovi:
+        po_danu[cas.dan].append(cas.blok)
+    assert set(po_danu) <= {"понедељак", "среда", "петак"}
+    assert sorted(sorted(v) for v in po_danu.values()) == [[13], [13, 14]]
     assert rezultat.izvestaj is not None
     assert rezultat.izvestaj.ispravan, rezultat.izvestaj.tekst()
 
