@@ -383,14 +383,14 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
     rezultat: list[Jedinica] = []
     for zahtev_indeks, zahtev in enumerate(ulaz.zahtevi):
         predmet = ulaz.predmeti[zahtev.predmet]
-        if zahtev.predmet in OBAVEZNI_DVOCASI or (zahtev.predmet == INFORMATIKA and zahtev.fond == 2):
-            trajanja = [2] * (zahtev.fond // 2)
-        elif zahtev.predmet == SRPSKI and zahtev.fond == 3:
+        if zahtev.fond == 1:
+            trajanja = [1]
+        elif zahtev.fond == 3:
             trajanja = [2, 1]
+        elif zahtev.predmet in OBAVEZNI_DVOCASI or (zahtev.predmet == INFORMATIKA and zahtev.fond == 2):
+            trajanja = [2] * (zahtev.fond // 2)
         elif predmet.trazi_salu and zahtev.fond % 2 == 0:
             trajanja = [2] * (zahtev.fond // 2)
-        elif zahtev.smena is Smena.POSEBNA:
-            trajanja = [1] * zahtev.fond
         elif predmet.igracki:
             trajanja = [2] * (zahtev.fond // 2) + [1] * (zahtev.fond % 2)
         else:
@@ -399,6 +399,10 @@ def _jedinice(ulaz: Ulaz) -> tuple[Jedinica, ...]:
         preostala_korepeticija = zahtev.fond_korepeticije
         for redni_broj, trajanje in enumerate(trajanja):
             broj = min(trajanje, preostala_korepeticija)
+            # Fond 3 / korepeticija 1: korepetitor prati pojedinačni čas,
+            # ne polovinu dvočasa; ukupno zaduženje ostaje isto.
+            if trajanje == 2 and broj == 1 and 1 in trajanja[redni_broj + 1:]:
+                broj = 0
             korepeticija = tuple(range(broj))
             preostala_korepeticija -= broj
             rezultat.append(
@@ -436,7 +440,7 @@ def _dozvoljeni_poceci(
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis != poznati_opis:
             return ()
-        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje == 1)
+        kandidati = tuple((dan, 13) for dan in (0, 2, 4) if trajanje in (1, 2))
         return tuple(
             (dan, blok)
             for dan, blok in kandidati
@@ -1737,7 +1741,7 @@ def napravi_model(
 
     for indeks, stavke in jedinice_zahteva.items():
         z = ulaz.zahtevi[indeks]
-        if z.predmet == SRPSKI and z.fond == 3:
+        if z.fond == 3:
             model.add_all_different([promenljive[j.indeks].dan for j in stavke])
             if sa_nedeljom_b:
                 model.add_all_different([promenljive[j.indeks].dan_b for j in stavke])

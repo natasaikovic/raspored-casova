@@ -525,9 +525,9 @@ def test_odbacivanje_km8_hinta_ne_pomera_preostale_jedinice():
     z = replace(ulaz.zahtevi[0], fond=3)
     ulaz = replace(ulaz, zahtevi=(z,))
     hint = tuple(
-        Cas(dan, 1, z.predmet, z.odeljenja, z.nastavnik, None, soba, i+2)
-        for i, (dan, soba) in enumerate((
-            ("понедељак", "КМ-8"), ("уторак", "KM-1"), ("среда", "KM-1"),
+        Cas(dan, blok, z.predmet, z.odeljenja, z.nastavnik, None, soba, i+2)
+        for i, (dan, blok, soba) in enumerate((
+            ("понедељак", 1, "КМ-8"), ("понедељак", 2, "КМ-8"), ("уторак", 1, "KM-1"),
         ))
     )
     model, jedinice, promenljive = napravi_model(

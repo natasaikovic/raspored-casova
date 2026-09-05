@@ -89,19 +89,20 @@ def test_model_strogo_odbija_razdvajanje_i_srpski_isti_dan(b, p, fond, blokovi):
     assert solver.solve(m) == cp_model.INFEASIBLE
 
 
-def test_neparni_fondovi_se_prijavljuju_zbirno_i_hint_ne_zaobilazi():
+def test_drugi_neparni_fondovi_se_prijavljuju_zbirno_i_hint_ne_zaobilazi():
     u, sobe, n = ucitaj_standardne_ulaze('ulazi')
+    assert sukobi_fonda(u) == []
+    u = ulaz([zahtev('Солфеђо', '11', 5, 'Ана'), zahtev('Теорија', '12', 7, 'Мила')])
     greske = sukobi_fonda(u)
-    assert len(greske) == 13
-    assert all('ред' in e and 'фонд' in e for e in greske)
+    assert len(greske) == 2
     with pytest.raises(UlazGreska) as exc:
         napravi_model(u, sobe, n, Smena.CRVENA)
-    assert len(exc.value.greske) == 13
+    assert len(exc.value.greske) == 2
     a, b = resi_obe_nedelje(u, sobe, n, hintovi=casovi(u.zahtevi[0], [(0, 1)]))
     for r in (a, b):
         assert r.status == 'НЕУСАГЛАШЕН УЛАЗ'
         assert not r.pronadjen
-        assert len(r.izvestaj.greske) == 13
+        assert len(r.izvestaj.greske) == 2
 
 
 def test_spojena_odeljenja_i_polugrupa_kontinuitet():
@@ -138,3 +139,27 @@ def test_dvocas_ne_moze_imati_korepetitora_samo_na_jednom_casu():
     m, _, _ = napravi_model(ulaz([z]), (SALA,), (), Smena.CRVENA)
     solver = cp_model.CpSolver()
     assert solver.solve(m) == cp_model.INFEASIBLE
+
+@pytest.mark.parametrize('p', sorted(OBAVEZNI_DVOCASI) + ['Теорија', 'Класичан балет'])
+@pytest.mark.parametrize('fond', [1, 3])
+def test_najnovija_dopuna_vazi_za_sve_predmete_i_spojene_grupe(p, fond):
+    z = replace(zahtev(p, '11', fond, 'Ана'), odeljenja=('11', '12'))
+    u = ulaz([z])
+    assert sukobi_fonda(u) == []
+    assert [j.trajanje for j in _jedinice(u)] == ([1] if fond == 1 else [2, 1])
+    assert not provera(z, [(0, 1)] if fond == 1 else [(0, 1), (0, 2), (1, 1)]).greske
+    if fond == 3:
+        for termini in ([(0, 1), (1, 1), (2, 1)], [(0, 1), (0, 2), (0, 3)], [(0, 1), (0, 3), (1, 1)]):
+            assert provera(z, termini).greske
+
+
+def test_fond_jedan_ne_dozvoljava_dodavanje_casa():
+    z = zahtev('Солфеђо', '11', 1, 'Ана')
+    assert proveri(ulaz([z]), (UCIONICA,), (), casovi(z, [(0, 1)])).ispravan
+    assert not proveri(ulaz([z]), (UCIONICA,), (), casovi(z, [(0, 1), (0, 2)])).ispravan
+
+
+def test_fond_tri_jedan_cas_korepeticije_ne_razbija_dvocas():
+    z = replace(zahtev('Класичан балет', '11', 3, 'Ана', 'Ива'), fond_korepeticije=1)
+    js = _jedinice(ulaz([z]))
+    assert [(j.trajanje, j.korepeticija) for j in js] == [(2, ()), (1, (0,))]

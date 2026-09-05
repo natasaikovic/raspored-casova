@@ -11,10 +11,10 @@ SRPSKI = "Српски језик и књижевност"
 def sukobi_fonda(ulaz: Ulaz) -> list[str]:
     greske = []
     for z in ulaz.zahtevi:
-        if z.predmet in OBAVEZNI_DVOCASI and z.fond % 2:
+        if z.fond % 2 and z.fond not in (1, 3):
             greske.append(
                 f"{z.datoteka or 'улаз'}, ред {z.red}: „{z.predmet}“, "
                 f"{', '.join(z.odeljenja)}, недељни фонд {z.fond}; "
-                "обавезни су искључиво двочаси, а фонд је непаран"
+                "нема изричито одобрене расподеле за овај непаран фонд"
             )
     return greske

@@ -536,7 +536,7 @@ def test_nepoznato_prvo_odeljenje_ne_obara_proveravac():
     assert any("непознато одељење XX" in g for g in izvestaj.greske)
 
 
-def test_p1_ima_tri_pojedinacna_casa_u_1830():
+def test_p1_ima_dva_plus_jedan_u_1830():
     z = zahtev(
         "Класичан балет",
         ["П1"],
@@ -554,7 +554,7 @@ def test_p1_ima_tri_pojedinacna_casa_u_1830():
         for red, (dan, blok) in enumerate(
             [
                 ("понедељак", 13),
-                ("среда", 13),
+                ("понедељак", 14),
                 ("петак", 13),
             ],
             start=2,
@@ -586,4 +586,4 @@ def test_p1_ne_sme_u_blok_14():
 
     izvestaj = proveri(ulaz, SALE, (), casovi)
 
-    assert any("средом и петком у блоку 13" in g for g in izvestaj.greske)
+    assert any("средом и петком, са почетком сесије у блоку 13" in g for g in izvestaj.greske)

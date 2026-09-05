@@ -712,10 +712,10 @@ def _proveri_smenu(
     elif smena is Smena.POSEBNA:
         poznati_opis = "стално од 18,30 часова понедељком средом петком"
         if zahtev.smena_opis == poznati_opis:
-            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok != 13:
+            if cas.dan not in ("понедељак", "среда", "петак") or cas.blok not in ((13, 14) if zahtev.fond == 3 else (13,)):
                 izvestaj.greske.append(
                     f"{cas.gde}: {zahtev.odeljenja[0]} сме само понедељком, "
-                    "средом и петком у блоку 13"
+                    "средом и петком, са почетком сесије у блоку 13"
                 )
         else:
             izvestaj.greske.append(
@@ -1053,20 +1053,24 @@ def _proveri_stroge_blokove(ulaz: Ulaz, casovi: Sequence[Cas], izvestaj: Izvesta
         if blokovi[-1] - blokovi[0] + 1 != len(blokovi):
             izvestaj.greske.append(f"„{p}“ за {o}, {dan}: часови нису један непрекинут блок")
     for z in ulaz.zahtevi:
-        srpski = z.predmet == SRPSKI and z.fond == 3
+        if z.fond == 1:
+            continue  # Tačan broj proverava _proveri_fondove.
+        fond_tri = z.fond == 3
         obavezni = z.predmet in OBAVEZNI_DVOCASI or (z.predmet == INFORMATIKA and z.fond == 2)
         parni_igracki = ulaz.predmeti[z.predmet].trazi_salu and z.fond % 2 == 0
-        if not (srpski or obavezni or parni_igracki):
+        if not (fond_tri or obavezni or parni_igracki):
             continue
         for o in z.odeljenja:
             dani = defaultdict(list)
             for c in po_grupi[(z.predmet, o)]:
                 dani[c.dan].append(c)
-            if srpski and sorted(map(len, dani.values())) != [1, 2]:
+            if fond_tri and sorted(map(len, dani.values())) != [1, 2]:
                 izvestaj.greske.append(f"„{z.predmet}“ за {o}: обавезан распоред 2+1 у различитим данима")
             for dan, redovi in dani.items():
                 redovi.sort(key=lambda c: c.blok)
-                if srpski and len(redovi) == 1:
+                if z.smena is Smena.POSEBNA and redovi[0].blok != 13:
+                    izvestaj.greske.append(f"„{z.predmet}“ за {o}, {dan}: сесија мора почети у блоку 13")
+                if fond_tri and len(redovi) == 1:
                     continue
                 if len(redovi) % 2:
                     izvestaj.greske.append(f"„{z.predmet}“ за {o}, {dan}: часови нису организовани у двочасима")

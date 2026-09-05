@@ -33,12 +33,10 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
   i `II5Б`; Klasičan balet po 3 časa za `II5А`, `II5Б` i `П1`; Repertoar
   klasičnog baleta po 3 časa za `I1`, `I2`, `II1` i `II2`; Savremena igra po
   3 časa za `II1` i `II2`. Fond od 3 časa raspoređuje se kao jedan spojeni
-  dvočas i jedan samostalan čas, osim što za `П1` ostaje nerazjašnjena
-  protivrečnost sa postojećim pravilom o tri pojedinačna časa ponedeljkom,
-  sredom i petkom.
+  dvočas i jedan samostalan čas, uključujući `П1` prema poslednjoj dopuni o fondu 3.
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Novo izričito pravilo 2026/27 zamenjuje raniji izuzetak za Solfeđo sa fondom 1:
-  neparan fond predmeta koji zahteva isključivo dvočase predstavlja sukob ulaza.
+  fond 1 daje jedan čas, a fond 3 daje 2+1 u različitim danima.
 - Srpski jezik sa fondom 3 raspoređuje se kao jedan spojeni dvočas jednog dana
   i jedan samostalan čas drugog dana.
 - Biologija, Sociologija, Psihologija, Filozofija i Istorija igre obavezno se
@@ -149,9 +147,10 @@ Organizacija smena po razredima:
 - u trećem razredu odeljenje 33 je uvek u popodnevnoj smeni, dok ostala odeljenja menjaju smene;
 - četvrti razred nema odeljenje koje je uvek u popodnevnoj smeni.
 
-Pripremno odeljenje `П1` ima nedeljni fond od **3 časa**, koji se održavaju kao
-tri pojedinačna časa: ponedeljkom, sredom i petkom u bloku 13 (18:30–19:15).
-Časovi se ne spajaju u dvočase.
+Pripremno odeljenje `П1` ima nedeljni fond **3 časa**. Najnovije pravilo za
+sve fondove 3 zamenjuje ranija tri pojedinačna časa: sada je **2+1 u dva
+različita dana**, iz skupa ponedeljak/sreda/petak, uz očuvan početak svake
+sesije u 18:30 (blok 13; dvočas obuhvata i blok 14).
 
 Poželjno je da odeljenja koja menjaju smene budu simetrično raspoređena.
 Odeljenje 14 nema parnjaka u suprotnoj smeni, ali i dalje redovno menja smene
@@ -400,5 +399,10 @@ Sociologija, Psihologija i Filozofija zahtevaju isključivo dvočase. Ranije
 pravilo za Računarstvo i informatiku ostaje. Tačni ključevi predmeta su u
 `src/blokovi.py`; ulaz nema zasebne numeričke šifre predmeta.
 Srpski jezik i književnost sa fondom 3 zahteva 2+1 u različitim danima.
-Neparni fondovi obaveznih dvočasa prijavljuju se zbirno sa izvornim CSV redom;
-rešavač odbija ulaz pre korišćenja starog rasporeda/hintova. Fondovi se ne menjaju.
+Najnovija dopuna važi za SVE predmete u obe škole, i spojene grupe:
+- Fond 1: jedan pojedinačni čas; obaveza dvočasa ne važi.
+- Fond 3: tačno jedan dvočas i jedan pojedinačni čas u dva različita dana.
+  Zabranjeni su 1+1+1, tročas i razdvojeni dvočas.
+Ova dopuna ima prednost nad ranijom obavezom isključivih dvočasa. Fondovi
+ostaju nepromenjeni. Za druge neparne fondove nema novog obrasca; bez
+izričitog pravila prijavljuju se zbirno sa izvornim CSV redom, pre hintova.
