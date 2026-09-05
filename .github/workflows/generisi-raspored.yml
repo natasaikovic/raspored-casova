@@ -25,6 +25,9 @@ permissions:
 jobs:
   generisi:
     runs-on: ubuntu-latest
+    # Hladni master je najuže grlo i traje od deset do preko dvadeset minuta.
+    # Granica je kapa, a ne trajanje: sa upotrebljivim hintom prva faza i
+    # dalje traje oko sekund. Job nema svoj timeout, pa GitHub dozvoljava 6h.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -159,7 +162,7 @@ jobs:
           python -m src.resavac \
             --ulazi ulazi \
             --izlaz izlaz \
-            --vremensko-ogranicenje 1800 \
+            --vremensko-ogranicenje 5400 \
             --broj-radnika 4 \
             --seme 1 \
             "${hint_args[@]}" \

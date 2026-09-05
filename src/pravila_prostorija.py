@@ -13,8 +13,6 @@ from .model import (
     Zahtev,
 )
 
-NP_SALA = "NP-сала"
-NP_ALIASI = frozenset({"NP-1", "NP-2", NP_SALA})
 
 KAZNE_NIVOA = {
     NivoPravilaProstorije.PRVI: 0,
@@ -25,9 +23,9 @@ KAZNA_NEPOKRIVENO = 10_000
 
 
 def kanonska_prostorija(oznaka: str) -> str:
-    """NP-1/NP-2 privremeno predstavljaju postojeću zbirnu NP-salu."""
+    """Oznaka prostorije je sama sebi kanonska; NP-1 i NP-2 su dve sale."""
 
-    return NP_SALA if oznaka in NP_ALIASI else oznaka
+    return oznaka
 
 
 def _oblik_odgovara(pravilo: PraviloProstorije, trajanje: int) -> bool:
@@ -56,7 +54,6 @@ def _nivo_za_odeljenje(
     izabrana = konkretna or [p for p in kandidati if p.predmet == "*"]
     if not izabrana:
         return None
-    # Posle kanonizacije NP-1 i NP-2 mogu dati isti nivo za zbirnu salu.
     nivoi = {p.nivo for p in izabrana}
     if len(nivoi) != 1:
         raise ValueError(
@@ -189,7 +186,7 @@ def prostorija_dostupna(
     dan: str,
     blokovi: Iterable[int],
 ) -> bool:
-    """Whitelist važi samo za sobe koje imaju redove; NP aliasi čine uniju."""
+    """Whitelist važi samo za sobe koje imaju svoje redove u dostupnosti."""
 
     oznaka = kanonska_prostorija(prostorija)
     po_sobi: dict[str, list[DostupnostProstorije]] = defaultdict(list)

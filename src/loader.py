@@ -572,7 +572,7 @@ def proveri_veze_pravila_prostorija(
     """Proveri reference tek kada su učitani svi standardni ulazi."""
 
     greske: list[str] = []
-    oznake_soba = {p.oznaka for p in prostorije} | {"NP-1", "NP-2"}
+    oznake_soba = {p.oznaka for p in prostorije}
     pravila = tuple(pravila)
     for pravilo in pravila:
         if pravilo.prostorija not in oznake_soba:
@@ -594,12 +594,10 @@ def proveri_veze_pravila_prostorija(
                 "доступност просторија: непозната просторија "
                 f"„{dostupnost.prostorija}“"
             )
-    from .pravila_prostorija import kanonska_prostorija
-
     kanonski_nivoi: dict[tuple[object, ...], set[NivoPravilaProstorije]] = defaultdict(set)
     for pravilo in pravila:
         kljuc = (
-            kanonska_prostorija(pravilo.prostorija),
+            pravilo.prostorija,
             pravilo.predmet,
             pravilo.odeljenja,
             pravilo.oblik_casa,
@@ -608,7 +606,7 @@ def proveri_veze_pravila_prostorija(
     for (soba, predmet, odeljenja, oblik), nivoi in kanonski_nivoi.items():
         if len(nivoi) > 1:
             greske.append(
-                f"правила просторија: NP канонизација даје сукоб за {soba}, "
+                f"правила просторија: противречни нивои за {soba}, "
                 f"„{predmet}“, {odeljenja or 'сва одељења'}, {oblik or 'сваки облик'}"
             )
     if greske:

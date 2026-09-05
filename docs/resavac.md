@@ -111,6 +111,33 @@ Među kandidatima bez grešaka bira se najmanji zbir upozorenja obe nedelje, a p
 istom zbiru prednost ima faza 2. Ova dodatna evaluacija radi nakon solvera i
 ne umanjuje niti menja njegov zadati vremenski budžet.
 
+## Hladni start bez upotrebljivog hinta
+
+Kada hinta nema ili je zastareo, pun model se pokazao pretežak za jedan solve,
+pa se prvo rešava lakši **lokacijski master**: bira dan, blok i lokaciju, ali ne
+i konkretnu salu. Njegovo rešenje se zatim dopunjava u dva koraka:
+
+1. **Tačna dodela soba** uz zakucane termine i lokacije. Traje nekoliko sekundi.
+2. Ako taj korak ne uspe, **isti termini** se rešavaju punim modelom u kojem
+   su i lokacije i sale ponovo slobodne.
+3. Ako ni to ne prođe, isti model se rešava još jednom, s tim da časovi iz
+   UNSAT jezgra soba smeju i da promene termin.
+4. Ako je i to pretesno, oslobađaju se svi časovi koje master drži na istoj
+   lokaciji istog dana kao jezgro — jedan dan jedne zgrade. Ostatak nedelje
+   ostaje zakucan, pa je to i dalje popravka, a ne nova pretraga.
+
+Drugi korak postoji zato što master vidi samo koliko časova lokacija prima u
+jednom trenutku, a ne koja sala može da primi koji čas. Tipičan primer: `SG-1`
+je obavezna za Narodnu igru i zauzeta je u blokovima 1–2 i 4–5, pa tri dvočasa
+klasičnog baleta u blokovima 2–4 ostaju za samo dve preostale sale. Po broju
+časova po trenutku sve staje, a po salama ne staje. Umesto novog master solvea,
+koji traje stotinama sekundi, isti termini se dopune za nekoliko sekundi.
+
+Tek ako i to padne, master dobija zabranu nad dodelom iz UNSAT jezgra soba i
+traži susedno rešenje. Log tada ispisuje i sadržaj jezgra — predmet, odeljenje,
+dan, blok i sale među kojima se biralo — da se uzrok vidi bez ponavljanja
+pokretanja.
+
 Prethodni raspored (`--hintovi nedelja_a.csv --hintovi-b nedelja_b.csv`)
 skraćuje prvu fazu sa više minuta na oko sekund. Termini iz CSV-a se uparuju
 sa jedinicama modela i prvo se pokušavaju kao **fiksirane** vrednosti
@@ -120,6 +147,11 @@ raspored, CP-SAT to javi za deo sekunde i pretraga prve faze ide od nule.
 Obični, nefiksirani hintovi ovde ne pomažu: hint pokriva samo termine, a CP-SAT
 ne uspeva da ga dopuni do potpunog rešenja. Nedelja B je potrebna zato što
 naizmenična odeljenja osnovne škole imaju zasebne termine u B.
+
+Hladni master je najuže grlo: na četiri radnika traje od deset do preko
+dvadeset minuta, i to vreme jako varira po semenu. Zato radni tok koristi
+granicu od 5400 sekundi. To je gornja granica, a ne trajanje — čim postoji
+upotrebljiv hint, prva faza se vraća na oko sekund.
 
 Podrazumevano vremensko ograničenje je pet minuta za zajednički model obe
 nedelje. Može se promeniti:

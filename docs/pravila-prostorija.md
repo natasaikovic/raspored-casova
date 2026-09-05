@@ -24,15 +24,19 @@ Ista semantika se koristi u modelu termina, završnoj dodeli prostorija i
 nezavisnom proveravaču. Model termina ima skrivenu konkretnu sobu, pa ne može
 izabrati termin koji tek naknadna dodela soba ne može da realizuje.
 
-## Dostupnost i privremeno NP mapiranje
+## Dostupnost sala
 
 `ulazi/dostupnost_prostorija.csv` je whitelist: prostorija koja ima makar jedan
 red sme se koristiti samo u navedenim danima i blokovima. Za prostorije bez
 redova nema dodatnog vremenskog ograničenja.
 
-Dok administrator ne razjasni identitet sala, `NP-1` i `NP-2` se obe mapiraju
-na postojeću `NP-сала`. Njihovi opsezi dostupnosti čine uniju, čime se ne
-uvodi drugi paralelni resurs i čuva postojeće ponašanje jedne sale.
+Narodno pozorište ima dve sale i obe su u katalogu prostorija. `NP-1` radi
+svakog radnog dana od 16 časova, a `NP-2` samo sredom. Ranija zbirna oznaka
+`NP-сала` više ne postoji, pa se sredom zaista mogu držati dva časa odjednom.
+
+Model termina ne bira konkretnu salu, pa bi bez dodatnog uslova gledao lokaciju
+kao da sve njene sale rade svakog dana. Zato se za svaku salu sa whitelistom
+kapacitet lokacije zauzima u terminima kada ta sala ne radi.
 
 ## Pravila koja ostaju u kodu
 

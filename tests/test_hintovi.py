@@ -35,7 +35,8 @@ SALA = Prostorija("KM-1", "Кнез Милетина 8", TipProstorije.SALA, Non
 UCIONICA = Prostorija("KM-уч2", "Кнез Милетина 8", TipProstorije.UCIONICA, None, "")
 SALA_2 = Prostorija("KM-2", "Кнез Милетина 8", TipProstorije.SALA, None, "")
 SG_1 = Prostorija("SG-1", "Спортска гимназија", TipProstorije.SALA, None, "")
-NP_SALA = Prostorija("NP-сала", "Народно позориште", TipProstorije.SALA, None, "")
+NP_1 = Prostorija("NP-1", "Народно позориште", TipProstorije.SALA, None, "")
+NP_2 = Prostorija("NP-2", "Народно позориште", TipProstorije.SALA, None, "")
 
 
 def zahtev(predmet, odeljenje, fond, nastavnik, korepetitor=None, fond_korepeticije=None):
@@ -94,7 +95,7 @@ def _analiza_soba(pravila=(), dostupnost=(), hintovi_b=()):
     jedinice = _jedinice(u)
     jedinice_zahteva = {0: list(jedinice)}
     slobodne, transformisane = _analiziraj_prostorije_hintova(
-        u, (SALA, SALA_2, SG_1, NP_SALA), jedinice_zahteva,
+        u, (SALA, SALA_2, SG_1, NP_1), jedinice_zahteva,
         _hint_dvocas("KM-1"), hintovi_b,
     )
     return jedinice[0].indeks, slobodne, transformisane
@@ -130,7 +131,9 @@ def test_obavezna_druga_lokacija_oslobadja_jedinicu():
     assert transformisane == 0
 
 
-def test_np_alias_postuje_dostupnost_kanonske_sale():
+def test_np_sale_imaju_svoju_dostupnost():
+    """Sreda u NP-2 ne pokriva ponedeljak u NP-1: to su dve razlicite sale."""
+
     predmet = "Репертоар класичног балета"
     u = ulaz([zahtev(predmet, "11", 2, "Мила", "Ива")])
     u = replace(
@@ -139,17 +142,25 @@ def test_np_alias_postuje_dostupnost_kanonske_sale():
             "NP-1", NivoPravilaProstorije.OBAVEZNO,
             predmet, ("11",), None, "",
         ),),
-        dostupnost_prostorija=(DostupnostProstorije(
-            "NP-2", "понедељак", 1, 2, "",
-        ),),
+        dostupnost_prostorija=(
+            DostupnostProstorije("NP-1", "понедељак", 1, 2, ""),
+            DostupnostProstorije("NP-2", "среда", 1, 2, ""),
+        ),
     )
     jedinice = _jedinice(u)
     slobodne, transformisane = _analiziraj_prostorije_hintova(
-        u, (NP_SALA,), {0: list(jedinice)},
+        u, (NP_1, NP_2), {0: list(jedinice)},
         _hint_dvocas("NP-1", predmet=predmet), (),
     )
     assert slobodne == set()
     assert transformisane == 0
+
+    slobodne, transformisane = _analiziraj_prostorije_hintova(
+        u, (NP_1, NP_2), {0: list(jedinice)},
+        _hint_dvocas("NP-2", predmet=predmet), (),
+    )
+    assert slobodne == set()
+    assert transformisane == 1
 
 
 def test_problem_samo_u_nedelji_b_oslobadja_oba_termina():
@@ -261,7 +272,7 @@ def test_bez_hinta_gradi_jedan_lokacijski_master(monkeypatch, capsys):
     assert rezultat_a.pronadjen and rezultat_b.pronadjen
 
 
-def test_hladni_master_ima_jedan_solve_i_cuva_rezervu_za_sobe(monkeypatch):
+def test_hladni_master_cuva_rezervu_za_sobe_i_iste_termine(monkeypatch):
     pravi_solver = cp_model.CpSolver
     solve_pozivi = []
 
@@ -289,7 +300,7 @@ def test_hladni_master_ima_jedan_solve_i_cuva_rezervu_za_sobe(monkeypatch):
     assert sobe_a is None and sobe_b is None
     assert "lokacijski master" in status
     assert len(solve_pozivi) == 1
-    assert solve_pozivi[0][1] == 1679.8
+    assert solve_pozivi[0][1] == 1439.8
 
 
 def test_hladni_tok_dodeljuje_a_i_b_sobe_sa_preostalim_budzetom(monkeypatch):
@@ -312,6 +323,79 @@ def test_hladni_tok_dodeljuje_a_i_b_sobe_sa_preostalim_budzetom(monkeypatch):
     assert rezultat_a.cilj is None and rezultat_b.cilj is None
 
 
+def _termini_bez_resenja(*_args, **_kwargs):
+    """Faza istih termina koja ne nadje resenje, da retry ostane pokriven."""
+
+    return None, (), {}, cp_model.INFEASIBLE
+
+
+def test_neizvodljive_sobe_resava_faza_istih_termina(monkeypatch):
+    """Kada sobe padnu uz fiksne lokacije, isti termini se resavaju ponovo."""
+
+    pozivi_soba = 0
+
+    def sobe_neizvodljive(*_args, **kwargs):
+        nonlocal pozivi_soba
+        pozivi_soba += 1
+        kwargs["status_out"].append(cp_model.INFEASIBLE)
+        return None
+
+    rezovi = 0
+
+    def izbroj_rez(*args, **kwargs):
+        nonlocal rezovi
+        rezovi += 1
+        return 0
+
+    monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", sobe_neizvodljive)
+    monkeypatch.setattr(resavac, "_zabrani_i_hintuj_master_dodelu", izbroj_rez)
+    monkeypatch.setattr(
+        resavac, "_zabrani_sukob_i_hintuj_master_dodelu", izbroj_rez
+    )
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert pozivi_soba == 1
+    assert rezovi == 0
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
+def test_jezgro_dobija_slobodne_termine_kada_isti_termini_padnu(monkeypatch):
+    """Ako ni isti termini ne prolaze, casovi iz jezgra smeju da se pomere."""
+
+    prava_faza = resavac._resi_sa_fiksiranim_terminima
+    slobodne_po_pozivu = []
+
+    def zabelezi(*args, **kwargs):
+        slobodne = kwargs.get("slobodne_jedinice", frozenset())
+        slobodne_po_pozivu.append(slobodne)
+        if not slobodne:
+            return None, (), {}, cp_model.INFEASIBLE
+        return prava_faza(*args, **kwargs)
+
+    def sobe_sa_jezgrom(*args, **kwargs):
+        solver, _, _, jedinice, promenljive = args[:5]
+        jedinica = jedinice[0]
+        p = promenljive[jedinica.indeks]
+        lokacija = next(
+            naziv for naziv, koristi in p.lokacije.items()
+            if solver.boolean_value(koristi)
+        )
+        kwargs["sukob_out"].append(
+            SukobProstorije(
+                jedinica.indeks, False, solver.value(p.start), lokacija
+            )
+        )
+        kwargs["status_out"].append(cp_model.INFEASIBLE)
+        return None
+
+    monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", sobe_sa_jezgrom)
+    monkeypatch.setattr(resavac, "_resi_sa_fiksiranim_terminima", zabelezi)
+    rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
+
+    assert slobodne_po_pozivu == [frozenset(), frozenset({0})]
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
+
+
 def test_hladni_tok_posle_prvog_infeasible_sobe_uspeva_na_drugom(monkeypatch):
     pravi_poziv = resavac._dodeli_prostorije_obe
     broj_poziva = 0
@@ -325,6 +409,9 @@ def test_hladni_tok_posle_prvog_infeasible_sobe_uspeva_na_drugom(monkeypatch):
         return pravi_poziv(*args, **kwargs)
 
     monkeypatch.setattr(resavac, "_dodeli_prostorije_obe", prvi_neuspeva)
+    monkeypatch.setattr(
+        resavac, "_resi_sa_fiksiranim_terminima", _termini_bez_resenja
+    )
     pravi_full_rez = resavac._zabrani_i_hintuj_master_dodelu
     broj_full_rezova = 0
 
@@ -387,6 +474,9 @@ def test_popravka_hinta_vazi_samo_za_hladni_master_retry(monkeypatch):
     monkeypatch.setattr(resavac.cp_model, "CpSolver", SolverKojiBelezi)
     monkeypatch.setattr(
         resavac, "_dodeli_prostorije_obe", prvi_room_core_pa_timeout
+    )
+    monkeypatch.setattr(
+        resavac, "_resi_sa_fiksiranim_terminima", _termini_bez_resenja
     )
 
     rezultat_a, rezultat_b = _resi(_ulaz_za_dve_nedelje())
@@ -633,6 +723,8 @@ def test_no_good_menja_kompletnu_master_dodelu():
 
 
 def test_unknown_dodela_soba_ne_pokrece_novi_master(monkeypatch):
+    """Istekla dodela soba sme u fazu istih termina, ali ne u novi master."""
+
     broj_poziva = 0
     broj_rezova = 0
 
@@ -655,7 +747,7 @@ def test_unknown_dodela_soba_ne_pokrece_novi_master(monkeypatch):
 
     assert broj_poziva == 1
     assert broj_rezova == 0
-    assert not rezultat_a.pronadjen and not rezultat_b.pronadjen
+    assert rezultat_a.pronadjen and rezultat_b.pronadjen
 
 
 def test_main_ne_izvozi_delimican_par_nedelja(monkeypatch, tmp_path):

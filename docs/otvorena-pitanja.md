@@ -6,12 +6,6 @@ sa ove liste.
 
 ## Sale
 
-### Narodno pozorište
-
-- Potvrđeno je da su `NP-1` i `NP-2` dve odvojene sale. Kojoj od njih odgovara
-  stara oznaka `NP-сала` iz postojećeg kataloga prostorija? Do odgovora se
-  postojeća oznaka i dalje koristi kao privremeni zajednički resurs.
-
 ### Sale u Sportskoj gimnaziji
 
 Novi strukturisani izvor označava SG-1 kao obaveznu za Narodnu igru – glavni

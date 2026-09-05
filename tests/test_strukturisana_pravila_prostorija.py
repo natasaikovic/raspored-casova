@@ -81,18 +81,19 @@ def test_konkretni_predmet_nadglasava_wildcard_zabranu():
     assert dozvoljena_prostorija(pravila, zahtev, "A", 1)
 
 
-def test_np_aliasi_daju_uniju_whitelist_dostupnosti():
+def test_np_sale_imaju_odvojene_whitelist_dostupnosti():
     dostupnosti = (
         DostupnostProstorije("NP-1", "понедељак", 10, 11, ""),
         DostupnostProstorije("NP-2", "среда", 10, 11, ""),
     )
 
-    assert prostorija_dostupna(dostupnosti, "NP-сала", "понедељак", (10, 11))
-    assert prostorija_dostupna(dostupnosti, "NP-сала", "среда", (10, 11))
-    assert not prostorija_dostupna(dostupnosti, "NP-сала", "уторак", (10, 11))
+    assert prostorija_dostupna(dostupnosti, "NP-1", "понедељак", (10, 11))
+    assert not prostorija_dostupna(dostupnosti, "NP-1", "среда", (10, 11))
+    assert prostorija_dostupna(dostupnosti, "NP-2", "среда", (10, 11))
+    assert not prostorija_dostupna(dostupnosti, "NP-2", "понедељак", (10, 11))
 
 
-def test_loader_odbija_sukob_nivoa_posle_np_kanonizacije():
+def test_loader_odbija_protivrecne_nivoe_za_istu_salu():
     ulaz, sobe, _ = ucitaj_standardne_ulaze("ulazi")
     pravila = (
         _pravilo(
@@ -100,12 +101,12 @@ def test_loader_odbija_sukob_nivoa_posle_np_kanonizacije():
             predmet="Репертоар класичног балета", odeljenje=("III1",),
         ),
         _pravilo(
-            "NP-2", NivoPravilaProstorije.DRUGI,
+            "NP-1", NivoPravilaProstorije.DRUGI,
             predmet="Репертоар класичног балета", odeljenje=("III1",),
         ),
     )
 
-    with pytest.raises(UlazGreska, match="NP канонизација даје сукоб"):
+    with pytest.raises(UlazGreska, match="противречни нивои"):
         proveri_veze_pravila_prostorija(ulaz, sobe, pravila, ())
 
 
@@ -208,7 +209,7 @@ def test_aktivna_pravila_dozvoljavaju_pg_u_svim_salama_i_filtriraju_np():
         "KM-1", "KM-2", "KM-3", "KM-4", "KM-5", "KM-6", "KM-8",
         "SG-1", "SG-2", "SG-3",
     }
-    assert {p.oznaka for p in _moguce_prostorije(rkb, ulaz, sobe, 2)} == {"NP-сала"}
+    assert {p.oznaka for p in _moguce_prostorije(rkb, ulaz, sobe, 2)} == {"NP-1", "NP-2"}
 
 
 def test_tradicionalno_pevanje_sme_izuzetno_u_km8():

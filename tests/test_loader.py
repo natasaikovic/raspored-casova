@@ -261,11 +261,12 @@ class TestProstorije:
     def test_ucitava_stvarni_spisak(self):
         prostorije = ucitaj_prostorije("ulazi/prostorije.csv")
 
-        assert len(prostorije) == 18
+        assert len(prostorije) == 19
         po_oznaci = {p.oznaka: p for p in prostorije}
         assert po_oznaci["KM-1"].tip.value == "сала"
         assert po_oznaci["KM-уч1"].tip.value == "учионица"
-        assert po_oznaci["NP-сала"].lokacija == "Народно позориште"
+        assert po_oznaci["NP-1"].lokacija == "Народно позориште"
+        assert po_oznaci["NP-2"].lokacija == "Народно позориште"
 
     def test_odbija_nepoznat_tip_i_duplikat(self, tmp_path):
         putanja = tmp_path / "prostorije.csv"
