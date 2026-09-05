@@ -3,11 +3,13 @@ import pytest
 from src.loader import (
     UlazGreska,
     ucitaj,
+    ucitaj_dostupnost_prostorija,
     ucitaj_nedostupnost,
+    ucitaj_pravila_prostorija,
     ucitaj_prostorije,
     ucitaj_vise,
 )
-from src.model import Skola, Smena, kapacitet_smene
+from src.model import NivoPravilaProstorije, Skola, Smena, kapacitet_smene
 
 OBS = "ulazi/osnovna_baletska_skola.csv"
 SVI_ULAZI = (
@@ -259,11 +261,12 @@ class TestProstorije:
     def test_ucitava_stvarni_spisak(self):
         prostorije = ucitaj_prostorije("ulazi/prostorije.csv")
 
-        assert len(prostorije) == 18
+        assert len(prostorije) == 19
         po_oznaci = {p.oznaka: p for p in prostorije}
         assert po_oznaci["KM-1"].tip.value == "сала"
         assert po_oznaci["KM-уч1"].tip.value == "учионица"
-        assert po_oznaci["NP-сала"].lokacija == "Народно позориште"
+        assert po_oznaci["NP-1"].lokacija == "Народно позориште"
+        assert po_oznaci["NP-2"].lokacija == "Народно позориште"
 
     def test_odbija_nepoznat_tip_i_duplikat(self, tmp_path):
         putanja = tmp_path / "prostorije.csv"
@@ -280,6 +283,36 @@ class TestProstorije:
         assert len(greska.value.greske) == 2
         assert "непознат тип „шупа“" in str(greska.value)
         assert "већ постоји" in str(greska.value)
+
+
+class TestStrukturisanaPravilaProstorija:
+    def test_ucitava_svih_69_atomskih_pravila(self):
+        pravila = ucitaj_pravila_prostorija("ulazi/pravila_prostorija.csv")
+
+        assert len(pravila) == 69
+        assert {p.nivo for p in pravila} == set(NivoPravilaProstorije)
+        assert all(";" not in p.predmet for p in pravila)
+        assert all(len(p.odeljenja) <= 1 for p in pravila)
+
+    def test_ucitava_sest_opsega_dostupnosti(self):
+        dostupnosti = ucitaj_dostupnost_prostorija(
+            "ulazi/dostupnost_prostorija.csv"
+        )
+
+        assert len(dostupnosti) == 6
+        assert sum(d.prostorija == "NP-1" for d in dostupnosti) == 5
+        assert next(d for d in dostupnosti if d.prostorija == "NP-2").dan == "среда"
+
+    def test_odbija_listu_predmeta_u_jednom_atomskom_pravilu(self, tmp_path):
+        putanja = tmp_path / "pravila.csv"
+        putanja.write_text(
+            "просторија,ниво,предмет,одељења,облик часа,напомена\n"
+            "KM-2,први,Солфеђо; Историја,,,\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(UlazGreska, match="један канонски назив"):
+            ucitaj_pravila_prostorija(putanja)
 
 
 class TestNedostupnost:

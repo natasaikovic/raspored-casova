@@ -9,15 +9,25 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import tempfile
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Collection, Iterable, Sequence
 
 from ortools.sat.python import cp_model
 
-from .loader import ucitaj_nedostupnost, ucitaj_prostorije, ucitaj_vise
+from .loader import (
+    UlazGreska,
+    proveri_veze_pravila_prostorija,
+    ucitaj_dostupnost_prostorija,
+    ucitaj_nedostupnost,
+    ucitaj_pravila_prostorija,
+    ucitaj_prostorije,
+    ucitaj_vise,
+)
 from .izuzeci import dozvoljen_peti_cas, izuzet_od_ogranicenja_pauza
 from .model import (
     BLOKOVI,
@@ -33,23 +43,28 @@ from .model import (
     Zahtev,
 )
 from .pismo import kljuc_pisma, u_latinicu
+from .pravila_prostorija import (
+    dozvoljena_prostorija,
+    kanonska_prostorija,
+    kazna_prostorije,
+    prostorija_dostupna,
+)
 from .proveravac import Cas, Izvestaj, proveri, ucitaj_resenje
 from .vizualizacija import napravi_html
 
 
 VERSKA = "Верска настава"
 GRADJANSKO = "Грађанско васпитање"
-INFORMATIKA = "Рачунарство и информатика"
 ISTORIJA = "Историја"
 ALEKSANDAR_BOSKOVIC = "Александар Бошковић"
 DUSAN_ILIJIN = "Душан Илијин"
 REPERTOAR_KLASICNOG = "Репертоар класичног балета"
-NARODNA_IGRA_GLAVNI = "Народна игра – главни предмет"
 REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
+KLASICAN_BALET = "Класичан балет"
+TRADICIONALNO_PEVANJE = "Традиционално певање"
+SALE_TRADICIONALNOG_PEVANJA = frozenset({"KM-8", "SG-2", "SG-3"})
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
-SALE_PRIMENJENE_GIMNASTIKE = frozenset({"KM-8", "SG-2", "SG-3"})
-NP_SALA = "NP-сала"
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
 NARODNO_POZORISTE = "Народно позориште"
@@ -77,6 +92,43 @@ KORAK_DANA = 20
 # Fiksirani hint iz prethodnog rasporeda rešava se za oko sekund; ovo je
 # samo zaštita da neuspeo pokušaj ne pojede budžet prave pretrage.
 LIMIT_FIKSIRANOG_HINTA = 60.0
+
+# Lokalna promena do dvadeset jedinica i dalje može brzo da se popravi preko
+# fiksiranog toplog starta. Veći broj znači da je prethodni raspored strukturno
+# zastareo; tada pripremni pokušaji lako pojedu gotovo ceo budžet prave pretrage.
+PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA = 20
+
+# Hladni master bira samo termine i lokacije. Poslednji deo ukupnog budzeta
+# cuva se za mali egzaktni model koji zatim zajedno bira konkretne sobe u A i
+# B nedelji. Za kratke testne pozive koristi se polovina dostupnog budzeta.
+REZERVA_ZA_DODELU_PROSTORIJA = 120.0
+# Kada tacna dodela soba padne, isti termini se jos jednom resavaju punim
+# modelom u kojem su i lokacije i sobe slobodne. To je daleko jeftinije
+# od novog master solve-a, koji traje stotinama sekundi.
+REZERVA_ZA_ISTE_TERMINE = 240.0
+NAJVISE_HLADNIH_MASTER_POKUSAJA = 4
+MINIMALNI_BUDZET_HLADNOG_POKUSAJA = 5.0
+
+# Posle room UNSAT reza model već sadrži kompletan interni hint upravo
+# pronađenog master rešenja. CP-SAT tada može da traži njegovu malu popravku
+# pre prelaska na redovnu pretragu. Podrazumevanih 10 konflikata je premalo za
+# ovaj master; 100k daje popravci realnu šansu, a ukupni zidni limit pokušaja i
+# dalje čvrsto ograničava njeno trajanje.
+LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA = 100_000
+
+# Model dodele soba sa funkcijom cilja ponekad vrati sve pretpostavke kao
+# sufficient core. Jedan kratki dokaz bez cilja obicno vrati pravi mali Hall
+# sukob, ali ne sme da uzme vreme narednom master pokusaju.
+PRAG_VELIKOG_JEZGRA_SOBA = 64
+MIN_BUDZET_PONOVNOG_DOKAZA_SOBA = 5.0
+MAX_BUDZET_PONOVNOG_DOKAZA_SOBA = 10.0
+
+# Subota je krajnje sredstvo, a ne ravnopravan šesti dan. Težina je iznad
+# kazne za prekid nastavniku (500) i za salu van Sportske gimnazije (500),
+# pa solver radije prihvata rupu u rasporedu nego čas subotom; ostaje ispod
+# reda veličine tvrdih pravila, da subota i dalje bude moguća kad drugačije
+# ne ide. Podizanje ove vrednosti gura subotu ka „samo ako mora“.
+KAZNA_ZA_SUBOTU = 1500
 
 
 class _TelemetrijaFaze2(cp_model.CpSolverSolutionCallback):
@@ -141,15 +193,23 @@ class Jedinica:
     korepeticija: tuple[int, ...]
 
 
+@dataclass(frozen=True)
+class SukobProstorije:
+    """Jedna master dodela čije je prisustvo deo UNSAT jezgra soba."""
+
+    jedinica_indeks: int
+    nedelja_b: bool
+    start: int
+    lokacija: str
+
+
 @dataclass
 class PromenljiveJedinice:
     start: cp_model.IntVar
-    kraj: cp_model.IntVar
     dan: cp_model.IntVar
     blok: cp_model.IntVar
     interval: cp_model.IntervalVar
     start_b: cp_model.IntVar | None
-    kraj_b: cp_model.IntVar | None
     dan_b: cp_model.IntVar | None
     blok_b: cp_model.IntVar | None
     interval_b: cp_model.IntervalVar | None
@@ -159,6 +219,134 @@ class PromenljiveJedinice:
     prostorije_b: dict[str, cp_model.BoolVar] | None
     lokacije: dict[str, cp_model.BoolVar]
     lokacije_b: dict[str, cp_model.BoolVar] | None
+
+
+KljucSkupaKandidata = tuple[str, TipProstorije, frozenset[str]]
+KljucPomocnogSkupaKandidata = tuple[
+    str, TipProstorije, frozenset[str], frozenset[str]
+]
+
+
+def _intervali_hall_podskupa(
+    kljuc: KljucSkupaKandidata,
+    intervali_skupova: dict[
+        KljucSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+    pomocni_intervali: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+) -> list[cp_model.IntervalVar]:
+    """Vrati intervale ciji je stvarni skup kandidata unutar datog skupa.
+
+    Pomocni interval predstavlja granu jedinice koja bira obicnu salu umesto
+    KM-8. Ukljucuje se samo kada njen izvorni interval nije vec ukljucen, da
+    ista jedinica ne bi bila dvaput uracunata u jednom Hall ogranicenju.
+    """
+
+    lokacija, tip, podskup = kljuc
+    rezultat = [
+        interval
+        for (druga_lokacija, drugi_tip, kandidati), stavke
+        in intervali_skupova.items()
+        if druga_lokacija == lokacija
+        and drugi_tip is tip
+        and kandidati <= podskup
+        for interval in stavke
+    ]
+    rezultat.extend(
+        interval
+        for (
+            druga_lokacija,
+            drugi_tip,
+            kandidati,
+            izvorni_kandidati,
+        ), stavke in pomocni_intervali.items()
+        if druga_lokacija == lokacija
+        and drugi_tip is tip
+        and kandidati <= podskup
+        and not izvorni_kandidati <= podskup
+        for interval in stavke
+    )
+    return rezultat
+
+
+def _blokiraj_nedostupne_prostorije(
+    model: cp_model.CpModel,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    intervali_kapaciteta: dict[
+        tuple[str, TipProstorije], list[cp_model.IntervalVar]
+    ],
+    intervali_skupova: dict[
+        KljucSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+) -> None:
+    """Zauzmi kapacitet lokacije u terminima kada konkretna sala ne radi.
+
+    Model lokacija ne bira sobu, pa bez ovoga vidi lokaciju kao da sve njene
+    sale rade svaki dan. NP-2 radi samo sredom, pa bi master ostalim danima
+    racunao dve sale umesto jedne i faza soba bi taj plan odbila.
+    """
+
+    for prostorija in prostorije:
+        if not any(
+            d.prostorija == prostorija.oznaka
+            for d in ulaz.dostupnost_prostorija
+        ):
+            continue
+        kljuc = (prostorija.lokacija, prostorija.tip)
+        kljuc_skupa = (
+            prostorija.lokacija,
+            prostorija.tip,
+            frozenset({prostorija.oznaka}),
+        )
+        for redni_dan, dan in enumerate(DANI):
+            for blok in range(1, len(BLOKOVI) + 1):
+                if prostorija_dostupna(
+                    ulaz.dostupnost_prostorija, prostorija.oznaka, dan, (blok,)
+                ):
+                    continue
+                interval = model.new_fixed_size_interval_var(
+                    redni_dan * KORAK_DANA + blok,
+                    1,
+                    f"blokada_{prostorija.oznaka}_{redni_dan}_{blok}",
+                )
+                intervali_kapaciteta[kljuc].append(interval)
+                intervali_skupova[kljuc_skupa].append(interval)
+
+
+def _dodaj_hall_ogranicenja(
+    model: cp_model.CpModel,
+    kapaciteti: dict[tuple[str, TipProstorije], int],
+    intervali_skupova: dict[
+        KljucSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+    pomocni_intervali: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ],
+) -> None:
+    """Ogranicava svaki registrovani pravi podskup fizickih prostorija."""
+
+    kljucevi = set(intervali_skupova)
+    kljucevi.update(
+        (lokacija, tip, kandidati)
+        for lokacija, tip, kandidati, _ in pomocni_intervali
+    )
+    for kljuc in sorted(
+        kljucevi,
+        key=lambda x: (x[0], x[1].value, len(x[2]), sorted(x[2])),
+    ):
+        lokacija, tip, kandidati = kljuc
+        if not kandidati or len(kandidati) >= kapaciteti[(lokacija, tip)]:
+            # Puni fizicki skup vec pokriva globalni cumulative.
+            continue
+        intervali = _intervali_hall_podskupa(
+            kljuc, intervali_skupova, pomocni_intervali
+        )
+        if len(kandidati) == 1:
+            model.add_no_overlap(intervali)
+        else:
+            model.add_cumulative(intervali, [1] * len(intervali), len(kandidati))
 
 
 @dataclass(frozen=True)
@@ -281,16 +469,11 @@ def _moguce_prostorije(
     zahtev: Zahtev,
     ulaz: Ulaz,
     prostorije: Sequence[Prostorija],
+    trajanje: int = 2,
 ) -> tuple[Prostorija, ...]:
     predmet = ulaz.predmeti[zahtev.predmet]
     tip = TipProstorije.SALA if predmet.trazi_salu else TipProstorije.UCIONICA
-    if zahtev.predmet == INFORMATIKA:
-        return tuple(p for p in prostorije if p.oznaka == "KM-уч1")
-    if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
-        return tuple(
-            p for p in prostorije if p.oznaka in SALE_PRIMENJENE_GIMNASTIKE
-        )
-    if zahtev.predmet in {NARODNA_IGRA_GLAVNI, REPERTOAR_NARODNE}:
+    if zahtev.predmet == REPERTOAR_NARODNE:
         return tuple(
             p
             for p in prostorije
@@ -298,16 +481,33 @@ def _moguce_prostorije(
             and p.lokacija == SPORTSKA_GIMNAZIJA
             and p.oznaka in SG_SALE
         )
-    if zahtev.predmet == REPERTOAR_KLASICNOG and zahtev.odeljenja[0] in {
-        "III1", "III2", "IV1", "IV2"
-    }:
+    if (
+        not ulaz.pravila_prostorija
+        and zahtev.predmet == REPERTOAR_KLASICNOG
+        and zahtev.odeljenja[0] in {"III1", "III2", "IV1", "IV2"}
+    ):
         return tuple(
             p for p in prostorije if p.tip is tip
         )
-    return tuple(
+    dozvoli_salu_za_pevanje = zahtev.predmet == TRADICIONALNO_PEVANJE
+    kandidati = tuple(
         p
         for p in prostorije
-        if p.tip is tip and p.oznaka != NP_SALA
+        if (
+            p.tip is tip
+            or (dozvoli_salu_za_pevanje and p.oznaka in SALE_TRADICIONALNOG_PEVANJA)
+        )
+        and p.lokacija != NARODNO_POZORISTE
+    ) if zahtev.predmet != REPERTOAR_KLASICNOG else tuple(
+        p for p in prostorije if p.tip is tip
+    )
+    if not ulaz.pravila_prostorija:
+        return kandidati
+    return tuple(
+        p for p in kandidati
+        if dozvoljena_prostorija(
+            ulaz.pravila_prostorija, zahtev, p.oznaka, trajanje
+        )
     )
 
 
@@ -319,14 +519,56 @@ def _kazna_sale_km8(zahtev: Zahtev, oznaka: str) -> int:
     return 0
 
 
-def _kazna_sala_narodne_igre(zahtev: Zahtev, oznaka: str) -> int:
-    """SG-1 je standard; SG-2/SG-3 su izuzetak, prvenstveno za IV5."""
+def _kazna_strukturisanih_pravila(
+    ulaz: Ulaz, zahtev: Zahtev, oznaka: str, trajanje: int
+) -> int:
+    if ulaz.pravila_prostorija:
+        return kazna_prostorije(
+            ulaz.pravila_prostorija, zahtev, oznaka, trajanje
+        )
+    return 0
 
-    if zahtev.predmet != NARODNA_IGRA_GLAVNI or oznaka == "SG-1":
-        return 0
-    if oznaka not in {"SG-2", "SG-3"}:
-        return 100_000
-    return 1_000 if zahtev.odeljenja == ("IV5",) else 10_000
+
+def _ogranici_dostupnost_prostorije(
+    model: cp_model.CpModel,
+    koristi: cp_model.BoolVar,
+    start: cp_model.IntVar,
+    dozvoljeni: Sequence[tuple[int, int]],
+    ulaz: Ulaz,
+    oznaka: str,
+    trajanje: int,
+) -> None:
+    for dan, blok in dozvoljeni:
+        if not prostorija_dostupna(
+            ulaz.dostupnost_prostorija,
+            oznaka,
+            DANI[dan],
+            range(blok, blok + trajanje),
+        ):
+            model.add(start != dan * KORAK_DANA + blok).only_enforce_if(koristi)
+
+
+def _ogranici_dostupnost_lokacije(
+    model: cp_model.CpModel,
+    koristi: cp_model.BoolVar,
+    start: cp_model.IntVar,
+    dozvoljeni: Sequence[tuple[int, int]],
+    ulaz: Ulaz,
+    oznake: Iterable[str],
+    trajanje: int,
+) -> None:
+    oznake = tuple(oznake)
+    for dan, blok in dozvoljeni:
+        if not any(
+            prostorija_dostupna(
+                ulaz.dostupnost_prostorija,
+                oznaka,
+                DANI[dan],
+                range(blok, blok + trajanje),
+            )
+            for oznaka in oznake
+        ):
+            model.add(start != dan * KORAK_DANA + blok).only_enforce_if(koristi)
 
 
 def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
@@ -342,6 +584,23 @@ def _subota_dozvoljena(zahtev: Zahtev, ulaz: Ulaz) -> bool:
     )
 
 
+def _dodaj_kaznu_za_subotu(
+    kazne: list[cp_model.LinearExprT],
+    prisutan_subotom: cp_model.BoolVar,
+    tezina: int = KAZNA_ZA_SUBOTU,
+) -> None:
+    """Naplati svaku sesiju subotom, pa je solver uzima samo kad se isplati.
+
+    Kazna se dodaje bez izuzetaka, i onima kojima je subota neizbežna. Glavni
+    predmet sa fondom 12 ima šest dvočasa na šest različitih dana, pa mu tačno
+    jedan uvek pada subotom — u svakom dopustivom rešenju. Takva kazna je
+    konstantan pomeraj cilja i ne menja koje je rešenje najbolje, dok se za
+    odseke sa fondom 10 (pet dvočasa, šest mogućih dana) subota stvarno plaća.
+    """
+
+    kazne.append(tezina * prisutan_subotom)
+
+
 def _dodaj_subotnje_ogranicenje(
     model: cp_model.CpModel,
     kazne: list[cp_model.LinearExprT],
@@ -349,14 +608,19 @@ def _dodaj_subotnje_ogranicenje(
     prisutan_subotom: cp_model.BoolVar,
     trajanje: int,
     token: str,
+    sa_ciljem: bool = True,
 ) -> None:
     """Subotom zabrani rad posle 15:05 i snažno favorizuj kraj do 13:15."""
 
     kraj_bloka = blok + trajanje - 1
     model.add(kraj_bloka <= 8).only_enforce_if(prisutan_subotom)
+    if not sa_ciljem:
+        return
     kasno = model.new_bool_var(f"{token}_subota_posle_1315")
     model.add(kasno <= prisutan_subotom)
-    model.add(kraj_bloka >= 7).only_enforce_if(kasno)
+    # Polovična reifikacija: „kasno“ ulazi samo u kaznu sa pozitivnim
+    # koeficijentom, pa je dovoljan smer koji ga podiže; minimizacija ga
+    # sama spušta na nulu kad rad staje do 13,15.
     model.add(kraj_bloka <= 6).only_enforce_if([prisutan_subotom, ~kasno])
     kazne.append(2000 * kasno)
 
@@ -374,12 +638,9 @@ def _dodaj_subotnji_prioritet_sg(
         if lokacija == "Спортска гимназија":
             continue
         subotom_van_sg = model.new_bool_var(f"{token}_subota_van_sg_{broj}")
-        model.add_bool_and([prisutan_subotom, koristi]).only_enforce_if(
-            subotom_van_sg
-        )
-        model.add_bool_or([~prisutan_subotom, ~koristi]).only_enforce_if(
-            ~subotom_van_sg
-        )
+        # Polovična reifikacija: promenljiva ulazi samo u kaznu sa pozitivnim
+        # koeficijentom, pa je dovoljna implikacija naviše.
+        model.add_bool_or([~prisutan_subotom, ~koristi, subotom_van_sg])
         kazne.append(500 * subotom_van_sg)
 
 
@@ -545,8 +806,7 @@ def _dodaj_dnevno_pravilo_lokacije(
         posle = model.new_bool_var(
             f"{token}_d{indeks_dana}_j{jedinica.indeks}_posle_puta{sufiks}"
         )
-        model.add(posle <= prisutan)
-        model.add(posle <= menja_lokaciju)
+        model.add_bool_and([prisutan, menja_lokaciju]).only_enforce_if(posle)
         model.add(blok >= granica_prelaza + ima_putni_blok).only_enforce_if(posle)
         model.add(blok + jedinica.trajanje <= granica_prelaza).only_enforce_if(
             [prisutan, ~posle, menja_lokaciju]
@@ -574,7 +834,7 @@ def _dodaj_dnevno_pravilo_lokacije(
     kazne.append(300 * menja_lokaciju)
 
 
-def _dodaj_pravilo_sale_primenjene_gimnastike(
+def _dodaj_pravilo_lokacije_primenjene_gimnastike(
     model: cp_model.CpModel,
     ulaz: Ulaz,
     token: str,
@@ -583,22 +843,17 @@ def _dodaj_pravilo_sale_primenjene_gimnastike(
     promenljive: dict[int, PromenljiveJedinice],
     nedelja_b: bool = False,
 ) -> None:
-    """Veži salu PG za druge, ne-PG časove odeljenja u SG tog dana."""
+    """Ako je Klasičan balet tog dana u SG, i PG mora biti u SG."""
 
     sufiks = "_b" if nedelja_b else ""
     primenjene = [
-        jedinica
-        for jedinica in stavke
-        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet
-        == PRIMENJENA_GIMNASTIKA
+        jedinica for jedinica in stavke
+        if ulaz.zahtevi[jedinica.zahtev_indeks].predmet == PRIMENJENA_GIMNASTIKA
     ]
-    if not primenjene:
-        return
-
-    drugi_u_sg: list[cp_model.BoolVar] = []
+    klasicni_u_sg: list[cp_model.BoolVar] = []
     for jedinica in stavke:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
-        if zahtev.predmet == PRIMENJENA_GIMNASTIKA:
+        if zahtev.predmet != KLASICAN_BALET:
             continue
         _, po_danu, lokacije = _promenljive_za_nedelju(
             promenljive[jedinica.indeks], nedelja_b
@@ -606,37 +861,35 @@ def _dodaj_pravilo_sale_primenjene_gimnastike(
         koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
         if koristi_sg is None:
             continue
-        prisutan_u_sg = model.new_bool_var(
-            f"{token}_d{indeks_dana}_j{jedinica.indeks}_drugi_sg{sufiks}"
+        prisutan = model.new_bool_var(
+            f"{token}_d{indeks_dana}_j{jedinica.indeks}_kb_sg{sufiks}"
         )
         model.add_bool_and(
             [po_danu[indeks_dana], koristi_sg]
-        ).only_enforce_if(prisutan_u_sg)
+        ).only_enforce_if(prisutan)
         model.add_bool_or(
             [~po_danu[indeks_dana], ~koristi_sg]
-        ).only_enforce_if(~prisutan_u_sg)
-        drugi_u_sg.append(prisutan_u_sg)
+        ).only_enforce_if(~prisutan)
+        klasicni_u_sg.append(prisutan)
 
-    ima_drugi_u_sg = model.new_bool_var(
-        f"{token}_d{indeks_dana}_ima_drugi_sg{sufiks}"
+    if not primenjene or not klasicni_u_sg:
+        return
+    ima_klasicni_u_sg = model.new_bool_var(
+        f"{token}_d{indeks_dana}_ima_kb_sg{sufiks}"
     )
-    if drugi_u_sg:
-        model.add_max_equality(ima_drugi_u_sg, drugi_u_sg)
-    else:
-        model.add(ima_drugi_u_sg == 0)
-
+    model.add_max_equality(ima_klasicni_u_sg, klasicni_u_sg)
     for jedinica in primenjene:
         _, po_danu, lokacije = _promenljive_za_nedelju(
             promenljive[jedinica.indeks], nedelja_b
         )
         koristi_sg = lokacije.get(SPORTSKA_GIMNAZIJA)
         if koristi_sg is None:
-            model.add(ima_drugi_u_sg == 0).only_enforce_if(
+            model.add(ima_klasicni_u_sg == 0).only_enforce_if(
                 po_danu[indeks_dana]
             )
         else:
-            model.add(koristi_sg == ima_drugi_u_sg).only_enforce_if(
-                po_danu[indeks_dana]
+            model.add(koristi_sg == 1).only_enforce_if(
+                [po_danu[indeks_dana], ima_klasicni_u_sg]
             )
 
 
@@ -786,6 +1039,7 @@ def _dodaj_kontinuitet_osoba(
     jedinice: Sequence[Jedinica],
     promenljive: dict[int, PromenljiveJedinice],
     nedelja_b: bool = False,
+    sa_ciljem: bool = True,
 ) -> None:
     """Ograniči pauze osoba i dodatno ih smanji kroz funkciju cilja."""
 
@@ -802,6 +1056,35 @@ def _dodaj_kontinuitet_osoba(
                 )[1][indeks_dana]
                 for jedinica, _ in stavke
             ]
+            zauzeto = sum(
+                len(pomeraji)
+                * _promenljive_za_nedelju(
+                    promenljive[jedinica.indeks], nedelja_b
+                )[1][indeks_dana]
+                for jedinica, pomeraji in stavke
+            )
+            # Maksimum od šest angažovanih blokova je čvrsto pravilo i mora
+            # ostati i u fazi izvodljivosti bez funkcije cilja.
+            model.add(zauzeto <= 6)
+
+            if sa_ciljem:
+                preko_optimuma = model.new_int_var(
+                    0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
+                )
+                # Donja granica je dovoljna: domen već daje >= 0, a kazna sa
+                # pozitivnim koeficijentom spušta vrednost na
+                # max(0, zauzeto - 4).
+                model.add(preko_optimuma >= zauzeto - 4)
+                kazne.append(250 * preko_optimuma)
+
+            prati_pauze = (
+                sa_ciljem
+                or not izuzet_od_ogranicenja_pauza(osoba)
+                or osoba == DUSAN_ILIJIN
+            )
+            if not prati_pauze:
+                continue
+
             ima_cas = model.new_bool_var(
                 f"o{broj_osobe}_d{indeks_dana}_ima{sufiks}"
             )
@@ -821,37 +1104,33 @@ def _dodaj_kontinuitet_osoba(
                 prisutan = po_danu[indeks_dana]
                 model.add(prvi <= blok + min(pomeraji)).only_enforce_if(prisutan)
                 model.add(poslednji >= blok + max(pomeraji)).only_enforce_if(prisutan)
-            zauzeto = sum(
-                len(pomeraji)
-                * _promenljive_za_nedelju(
-                    promenljive[jedinica.indeks], nedelja_b
-                )[1][indeks_dana]
-                for jedinica, pomeraji in stavke
-            )
-            model.add(zauzeto <= 6)
-            preko_optimuma = model.new_int_var(
-                0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
-            )
-            model.add_max_equality(preko_optimuma, [0, zauzeto - 4])
-            kazne.append(250 * preko_optimuma)
 
-            ima_pauzu = model.new_bool_var(
-                f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
-            )
+            ima_pauzu: cp_model.BoolVar | None = None
+            if sa_ciljem or not izuzet_od_ogranicenja_pauza(osoba):
+                ima_pauzu = model.new_bool_var(
+                    f"o{broj_osobe}_d{indeks_dana}_pauza{sufiks}"
+                )
             duzina_pauze = model.new_int_var(
                 0,
                 len(BLOKOVI),
                 f"o{broj_osobe}_d{indeks_dana}_duzina_pauze{sufiks}",
             )
-            model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
-            model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
+            if ima_pauzu is not None:
+                # Dovoljan je smer koji podiže indikator: duzina_pauze > 0
+                # traži ima_pauzu = 1. Obrnuti smer bi bio suvišan jer
+                # indikator ulazi samo u kaznu (pozitivnu) i u
+                # sum(dnevne_pauze) <= 1, gde je nula uvek bar jednako dobra.
+                model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
             if not izuzet_od_ogranicenja_pauza(osoba) or osoba == DUSAN_ILIJIN:
                 model.add(duzina_pauze <= 2)
-            dnevne_pauze.append(ima_pauzu)
+            if ima_pauzu is not None:
+                dnevne_pauze.append(ima_pauzu)
             duzine_pauza.append(duzina_pauze)
-            kazne.append(500 * ima_pauzu)
-            kazne.append(100 * duzina_pauze)
+            if sa_ciljem:
+                assert ima_pauzu is not None
+                kazne.append(500 * ima_pauzu)
+                kazne.append(100 * duzina_pauze)
         if not izuzet_od_ogranicenja_pauza(osoba):
             model.add(sum(dnevne_pauze) <= 1)
         if osoba == DUSAN_ILIJIN:
@@ -916,6 +1195,12 @@ def napravi_model(
     intervali_skupova_kandidata_b: dict[
         tuple[str, TipProstorije, frozenset[str]], list[cp_model.IntervalVar]
     ] = defaultdict(list)
+    pomocni_intervali_skupova_kandidata: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ] = defaultdict(list)
+    pomocni_intervali_skupova_kandidata_b: dict[
+        KljucPomocnogSkupaKandidata, list[cp_model.IntervalVar]
+    ] = defaultdict(list)
     jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
     np_izbori: dict[str, list[cp_model.BoolVar]] = defaultdict(list)
     ima_np_program = all(
@@ -953,18 +1238,18 @@ def napravi_model(
         start = model.new_int_var_from_domain(
             cp_model.Domain.from_values(vrednosti_starta), f"{prefiks}_start"
         )
-        kraj = model.new_int_var(1, (len(DANI) - 1) * KORAK_DANA + 15, f"{prefiks}_kraj")
-        model.add(kraj == start + jedinica.trajanje)
         dan = model.new_int_var(0, len(DANI) - 1, f"{prefiks}_dan")
         blok = model.new_int_var(1, len(BLOKOVI), f"{prefiks}_blok")
         model.add(start == dan * KORAK_DANA + blok)
-        interval = model.new_interval_var(start, jedinica.trajanje, kraj, f"{prefiks}_i")
+        interval = model.new_fixed_size_interval_var(
+            start, jedinica.trajanje, f"{prefiks}_i"
+        )
 
         start_b: cp_model.IntVar | None = None
-        kraj_b: cp_model.IntVar | None = None
         dan_b: cp_model.IntVar | None = None
         blok_b: cp_model.IntVar | None = None
         interval_b: cp_model.IntervalVar | None = None
+        dozvoljeni_b = dozvoljeni
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
                 jutarnja_b = (
@@ -999,33 +1284,30 @@ def napravi_model(
                     cp_model.Domain.from_values(vrednosti_starta_b),
                     f"{prefiks}_start_b",
                 )
-                kraj_b = model.new_int_var(
-                    1, (len(DANI) - 1) * KORAK_DANA + 15,
-                    f"{prefiks}_kraj_b",
-                )
-                model.add(kraj_b == start_b + jedinica.trajanje)
                 dan_b = model.new_int_var(0, len(DANI) - 1, f"{prefiks}_dan_b")
                 blok_b = model.new_int_var(1, len(BLOKOVI), f"{prefiks}_blok_b")
                 model.add(start_b == dan_b * KORAK_DANA + blok_b)
-                interval_b = model.new_interval_var(
-                    start_b, jedinica.trajanje, kraj_b, f"{prefiks}_i_b"
+                interval_b = model.new_fixed_size_interval_var(
+                    start_b, jedinica.trajanje, f"{prefiks}_i_b"
                 )
             else:
-                start_b, kraj_b = start, kraj
+                start_b = start
                 dan_b, blok_b = dan, blok
                 interval_b = interval
 
-        po_danu: list[cp_model.BoolVar] = []
-        for indeks_dana in range(len(DANI)):
-            prisutan = model.new_bool_var(f"{prefiks}_d{indeks_dana}")
-            model.add(dan == indeks_dana).only_enforce_if(prisutan)
-            model.add(dan != indeks_dana).only_enforce_if(~prisutan)
-            po_danu.append(prisutan)
+        po_danu: list[cp_model.BoolVar] = [
+            model.new_bool_var(f"{prefiks}_d{indeks_dana}")
+            for indeks_dana in range(len(DANI))
+        ]
         model.add_exactly_one(po_danu)
+        model.add(
+            dan == sum(indeks * prisutan for indeks, prisutan in enumerate(po_danu))
+        )
         dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)
         if not dozvoljena_subota:
             model.add(po_danu[len(DANI) - 1] == 0)
         else:
+            _dodaj_kaznu_za_subotu(kazne, po_danu[len(DANI) - 1])
             _dodaj_subotnje_ogranicenje(
                 model,
                 kazne,
@@ -1033,25 +1315,36 @@ def napravi_model(
                 po_danu[len(DANI) - 1],
                 jedinica.trajanje,
                 prefiks,
+                sa_ciljem,
             )
         po_danu_b: tuple[cp_model.BoolVar, ...] | None = None
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
                 assert dan_b is not None
-                b_dani: list[cp_model.BoolVar] = []
-                for indeks_dana in range(len(DANI)):
-                    prisutan_b = model.new_bool_var(f"{prefiks}_d{indeks_dana}_b")
-                    model.add(dan_b == indeks_dana).only_enforce_if(prisutan_b)
-                    model.add(dan_b != indeks_dana).only_enforce_if(~prisutan_b)
-                    b_dani.append(prisutan_b)
+                b_dani: list[cp_model.BoolVar] = [
+                    model.new_bool_var(f"{prefiks}_d{indeks_dana}_b")
+                    for indeks_dana in range(len(DANI))
+                ]
                 model.add_exactly_one(b_dani)
+                model.add(
+                    dan_b
+                    == sum(
+                        indeks * prisutan_b
+                        for indeks, prisutan_b in enumerate(b_dani)
+                    )
+                )
                 po_danu_b = tuple(b_dani)
                 if not dozvoljena_subota:
                     model.add(b_dani[len(DANI) - 1] == 0)
+                else:
+                    # Nedelja B je zaseban termin, pa se i njena subota plaća.
+                    _dodaj_kaznu_za_subotu(kazne, b_dani[len(DANI) - 1])
             else:
                 po_danu_b = tuple(po_danu)
 
-        moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
+        moguce = _moguce_prostorije(
+            zahtev, ulaz, prostorije, jedinica.trajanje
+        )
         if not moguce:
             raise ValueError(f"{zahtev.gde}: нема одговарајуће просторије")
         izbor_prostorije: dict[str, cp_model.BoolVar] = {}
@@ -1081,16 +1374,19 @@ def napravi_model(
                     f"{prefiks}_lok_{broj_lokacije}"
                 )
                 lokacije[lokacija] = koristi
-                interval_lokacije = model.new_optional_interval_var(
+                interval_lokacije = model.new_optional_fixed_size_interval_var(
                     start,
                     jedinica.trajanje,
-                    kraj,
                     koristi,
                     f"{prefiks}_lok_{broj_lokacije}_i",
                 )
                 intervali_kapaciteta[(lokacija, tip)].append(interval_lokacije)
                 intervali_skupova_kandidata[kljuc_kandidata].append(
                     interval_lokacije
+                )
+                _ogranici_dostupnost_lokacije(
+                    model, koristi, start, dozvoljeni, ulaz,
+                    kandidati_na_lokaciji, jedinica.trajanje,
                 )
                 if kandidati_na_lokaciji == frozenset({"KM-8"}):
                     intervali_prostorija["KM-8"].append(interval_lokacije)
@@ -1106,20 +1402,20 @@ def napravi_model(
                     )
                     model.add(koristi_km8 + koristi_obicnu == koristi)
                     intervali_prostorija["KM-8"].append(
-                        model.new_optional_interval_var(
+                        model.new_optional_fixed_size_interval_var(
                             start,
                             jedinica.trajanje,
-                            kraj,
                             koristi_km8,
                             f"{prefiks}_lok_{broj_lokacije}_km8_i",
                         )
                     )
                     obicne = kandidati_na_lokaciji - {"KM-8"}
-                    intervali_skupova_kandidata[(lokacija, tip, obicne)].append(
-                        model.new_optional_interval_var(
+                    pomocni_intervali_skupova_kandidata[
+                        (lokacija, tip, obicne, kandidati_na_lokaciji)
+                    ].append(
+                        model.new_optional_fixed_size_interval_var(
                             start,
                             jedinica.trajanje,
-                            kraj,
                             koristi_obicnu,
                             f"{prefiks}_lok_{broj_lokacije}_obicna_i",
                         )
@@ -1132,18 +1428,19 @@ def napravi_model(
                     else:
                         model.add(blok == 10).only_enforce_if(koristi)
                 if sa_nedeljom_b:
-                    assert start_b is not None and kraj_b is not None
+                    assert start_b is not None
                     assert lokacije_b is not None
                     if zahtev.smena.menja_se:
                         koristi_b = model.new_bool_var(
                             f"{prefiks}_lok_{broj_lokacije}_b"
                         )
-                        interval_b_lokacije = model.new_optional_interval_var(
-                            start_b,
-                            jedinica.trajanje,
-                            kraj_b,
-                            koristi_b,
-                            f"{prefiks}_lok_{broj_lokacije}_i_b",
+                        interval_b_lokacije = (
+                            model.new_optional_fixed_size_interval_var(
+                                start_b,
+                                jedinica.trajanje,
+                                koristi_b,
+                                f"{prefiks}_lok_{broj_lokacije}_i_b",
+                            )
                         )
                     else:
                         koristi_b = koristi
@@ -1154,6 +1451,10 @@ def napravi_model(
                     )
                     intervali_skupova_kandidata_b[kljuc_kandidata].append(
                         interval_b_lokacije
+                    )
+                    _ogranici_dostupnost_lokacije(
+                        model, koristi_b, start_b, dozvoljeni_b, ulaz,
+                        kandidati_na_lokaciji, jedinica.trajanje,
                     )
                     if kandidati_na_lokaciji == frozenset({"KM-8"}):
                         intervali_prostorija_b["KM-8"].append(
@@ -1177,22 +1478,20 @@ def napravi_model(
                             koristi_km8_b = koristi_km8
                             koristi_obicnu_b = koristi_obicnu
                         intervali_prostorija_b["KM-8"].append(
-                            model.new_optional_interval_var(
+                            model.new_optional_fixed_size_interval_var(
                                 start_b,
                                 jedinica.trajanje,
-                                kraj_b,
                                 koristi_km8_b,
                                 f"{prefiks}_lok_{broj_lokacije}_km8_i_b",
                             )
                         )
                         obicne = kandidati_na_lokaciji - {"KM-8"}
-                        intervali_skupova_kandidata_b[
-                            (lokacija, tip, obicne)
+                        pomocni_intervali_skupova_kandidata_b[
+                            (lokacija, tip, obicne, kandidati_na_lokaciji)
                         ].append(
-                            model.new_optional_interval_var(
+                            model.new_optional_fixed_size_interval_var(
                                 start_b,
                                 jedinica.trajanje,
-                                kraj_b,
                                 koristi_obicnu_b,
                                 f"{prefiks}_lok_{broj_lokacije}_obicna_i_b",
                             )
@@ -1210,29 +1509,38 @@ def napravi_model(
             koristi = model.new_bool_var(f"{prefiks}_{prostorija.oznaka}")
             izbor_prostorije[prostorija.oznaka] = koristi
             po_lokaciji[prostorija.lokacija].append(koristi)
+            kazna_pravila = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, prostorija.oznaka, jedinica.trajanje
+            )
+            if kazna_pravila:
+                kazne.append(kazna_pravila * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
             if kazna_km8:
                 kazne.append(kazna_km8 * koristi)
-            if prostorija.oznaka == NP_SALA:
+            if prostorija.lokacija == NARODNO_POZORISTE:
                 np_izbori[zahtev.odeljenja[0]].append(koristi)
                 if jedinica.trajanje != 2:
                     model.add(koristi == 0)
                 else:
                     model.add(blok == 10).only_enforce_if(koristi)
-            opcion = model.new_optional_interval_var(
-                start, jedinica.trajanje, kraj, koristi,
+            _ogranici_dostupnost_prostorije(
+                model, koristi, start, dozvoljeni, ulaz,
+                prostorija.oznaka, jedinica.trajanje,
+            )
+            opcion = model.new_optional_fixed_size_interval_var(
+                start, jedinica.trajanje, koristi,
                 f"{prefiks}_{prostorija.oznaka}_i",
             )
             intervali_prostorija[prostorija.oznaka].append(opcion)
             if sa_nedeljom_b:
-                assert start_b is not None and kraj_b is not None
+                assert start_b is not None
                 assert izbor_prostorije_b is not None
                 if zahtev.smena.menja_se:
                     koristi_b = model.new_bool_var(
                         f"{prefiks}_{prostorija.oznaka}_b"
                     )
-                    opcion_b = model.new_optional_interval_var(
-                        start_b, jedinica.trajanje, kraj_b, koristi_b,
+                    opcion_b = model.new_optional_fixed_size_interval_var(
+                        start_b, jedinica.trajanje, koristi_b,
                         f"{prefiks}_{prostorija.oznaka}_i_b",
                     )
                 else:
@@ -1241,6 +1549,12 @@ def napravi_model(
                 izbor_prostorije_b[prostorija.oznaka] = koristi_b
                 po_lokaciji_b[prostorija.lokacija].append(koristi_b)
                 intervali_prostorija_b[prostorija.oznaka].append(opcion_b)
+                _ogranici_dostupnost_prostorije(
+                    model, koristi_b, start_b, dozvoljeni_b, ulaz,
+                    prostorija.oznaka, jedinica.trajanje,
+                )
+                if zahtev.smena.menja_se and kazna_pravila:
+                    kazne.append(kazna_pravila * koristi_b)
                 if zahtev.smena.menja_se and kazna_km8:
                     kazne.append(kazna_km8 * koristi_b)
         if not samo_lokacije:
@@ -1267,7 +1581,7 @@ def napravi_model(
             else:
                 lokacije_b = lokacije
 
-        if dozvoljena_subota:
+        if dozvoljena_subota and sa_ciljem:
             _dodaj_subotnji_prioritet_sg(
                 model,
                 kazne,
@@ -1278,12 +1592,10 @@ def napravi_model(
 
         promenljive[jedinica.indeks] = PromenljiveJedinice(
             start=start,
-            kraj=kraj,
             dan=dan,
             blok=blok,
             interval=interval,
             start_b=start_b,
-            kraj_b=kraj_b,
             dan_b=dan_b,
             blok_b=blok_b,
             interval_b=interval_b,
@@ -1300,39 +1612,17 @@ def napravi_model(
         if zahtev.korepetitor:
             resurs = _resurs_korepetitora(zahtev.korepetitor)
             for pomeraj in jedinica.korepeticija:
-                pocetak_korepeticije = model.new_int_var(
-                    1, (len(DANI) - 1) * KORAK_DANA + 14,
-                    f"{prefiks}_kor_{pomeraj}_start",
-                )
-                model.add(pocetak_korepeticije == start + pomeraj)
-                kraj_korepeticije = model.new_int_var(
-                    2, (len(DANI) - 1) * KORAK_DANA + 15,
-                    f"{prefiks}_kor_{pomeraj}_kraj",
-                )
-                model.add(kraj_korepeticije == pocetak_korepeticije + 1)
                 intervali_korepetitora[resurs].append(
-                    model.new_interval_var(
-                        pocetak_korepeticije, 1, kraj_korepeticije,
-                        f"{prefiks}_kor_{pomeraj}_i",
+                    model.new_fixed_size_interval_var(
+                        start + pomeraj, 1, f"{prefiks}_kor_{pomeraj}_i",
                     )
                 )
                 if sa_nedeljom_b:
                     assert start_b is not None
-                    pocetak_korepeticije_b = model.new_int_var(
-                        1, (len(DANI) - 1) * KORAK_DANA + 14,
-                        f"{prefiks}_kor_{pomeraj}_start_b",
-                    )
-                    model.add(pocetak_korepeticije_b == start_b + pomeraj)
-                    kraj_korepeticije_b = model.new_int_var(
-                        2, (len(DANI) - 1) * KORAK_DANA + 15,
-                        f"{prefiks}_kor_{pomeraj}_kraj_b",
-                    )
-                    model.add(kraj_korepeticije_b == pocetak_korepeticije_b + 1)
                     intervali_korepetitora_b[resurs].append(
-                        model.new_interval_var(
-                            pocetak_korepeticije_b,
+                        model.new_fixed_size_interval_var(
+                            start_b + pomeraj,
                             1,
-                            kraj_korepeticije_b,
                             f"{prefiks}_kor_{pomeraj}_i_b",
                         )
                     )
@@ -1355,12 +1645,24 @@ def napravi_model(
     kapaciteti = defaultdict(int)
     for prostorija in prostorije:
         kapaciteti[(prostorija.lokacija, prostorija.tip)] += 1
+    if samo_lokacije:
+        _blokiraj_nedostupne_prostorije(
+            model, ulaz, prostorije,
+            intervali_kapaciteta, intervali_skupova_kandidata,
+        )
+        if sa_nedeljom_b:
+            _blokiraj_nedostupne_prostorije(
+                model, ulaz, prostorije,
+                intervali_kapaciteta_b, intervali_skupova_kandidata_b,
+            )
     for kljuc, intervali in intervali_kapaciteta.items():
         model.add_cumulative(intervali, [1] * len(intervali), kapaciteti[kljuc])
-    for (_, _, kandidati), intervali in intervali_skupova_kandidata.items():
-        model.add_cumulative(
-            intervali, [1] * len(intervali), len(kandidati)
-        )
+    _dodaj_hall_ogranicenja(
+        model,
+        kapaciteti,
+        intervali_skupova_kandidata,
+        pomocni_intervali_skupova_kandidata,
+    )
     if sa_nedeljom_b:
         for osoba in sorted(set(intervali_nastavnika_b) | set(intervali_korepetitora_b)):
             model.add_no_overlap(
@@ -1373,10 +1675,12 @@ def napravi_model(
             model.add_cumulative(
                 intervali, [1] * len(intervali), kapaciteti[kljuc]
             )
-        for (_, _, kandidati), intervali in intervali_skupova_kandidata_b.items():
-            model.add_cumulative(
-                intervali, [1] * len(intervali), len(kandidati)
-            )
+        _dodaj_hall_ogranicenja(
+            model,
+            kapaciteti,
+            intervali_skupova_kandidata_b,
+            pomocni_intervali_skupova_kandidata_b,
+        )
 
     # Identične jedinice istog zahteva uređujemo hronološki da uklonimo
     # veliki broj simetričnih rešenja.
@@ -1487,15 +1791,9 @@ def napravi_model(
                 stavke,
                 promenljive,
             )
-            _dodaj_pravilo_sale_primenjene_gimnastike(
-                model,
-                ulaz,
-                token,
-                indeks_dana,
-                stavke,
-                promenljive,
+            _dodaj_pravilo_lokacije_primenjene_gimnastike(
+                model, ulaz, token, indeks_dana, stavke, promenljive
             )
-
             if odeljenje.skola is Skola.OSNOVNA:
                 ukupno = [
                     jedinica.trajanje
@@ -1539,7 +1837,7 @@ def napravi_model(
                     promenljive,
                     nedelja_b=True,
                 )
-                _dodaj_pravilo_sale_primenjene_gimnastike(
+                _dodaj_pravilo_lokacije_primenjene_gimnastike(
                     model,
                     ulaz,
                     token,
@@ -1576,11 +1874,17 @@ def napravi_model(
     # najviše dva bloka. U dozvoljenom okviru cilj i dalje favorizuje potpuni
     # kontinuitet.
     _dodaj_kontinuitet_osoba(
-        model, kazne, ulaz, jedinice, promenljive
+        model, kazne, ulaz, jedinice, promenljive, sa_ciljem=sa_ciljem
     )
     if sa_nedeljom_b:
         _dodaj_kontinuitet_osoba(
-            model, kazne, ulaz, jedinice, promenljive, nedelja_b=True
+            model,
+            kazne,
+            ulaz,
+            jedinice,
+            promenljive,
+            nedelja_b=True,
+            sa_ciljem=sa_ciljem,
         )
 
     # Blaga funkcija kvaliteta: prednost imaju Knez Miletina i raniji blokovi.
@@ -1635,7 +1939,9 @@ def _kanonizuj_hintove(
             odeljenja=tuple(nadji(o, odeljenja) for o in c.odeljenja),
             nastavnik=nadji(c.nastavnik, nastavnici),
             korepetitor=(nadji(c.korepetitor, korepetitori) if c.korepetitor else None),
-            prostorija=nadji(c.prostorija, oznake_prostorija),
+            prostorija=kanonska_prostorija(
+                nadji(c.prostorija, oznake_prostorija)
+            ),
             red=c.red,
         )
         for c in hintovi
@@ -1646,8 +1952,8 @@ def _upari_hintove(
     ulaz: Ulaz,
     jedinice_zahteva: dict[int, list[Jedinica]],
     hintovi: Sequence[Cas],
-) -> dict[int, tuple[int, int]]:
-    """Za svaku jedinicu nađi (dan, blok) u prethodnom rasporedu.
+) -> dict[int, tuple[int, int, str]]:
+    """Za svaku jedinicu nađi (dan, blok, prostoriju) prethodnog rasporeda.
 
     Redovi CSV-a se uparuju sa jedinicama istog zahteva tako da se poklope
     trajanje i obrazac korepeticije. Jedinice bez para se preskaču, pa se
@@ -1658,7 +1964,7 @@ def _upari_hintove(
     for cas in hintovi:
         po_kljucu[(cas.predmet, cas.nastavnik, tuple(cas.odeljenja))].append(cas)
 
-    rezultat: dict[int, tuple[int, int]] = {}
+    rezultat: dict[int, tuple[int, int, str]] = {}
     for zahtev_indeks, jedinice in jedinice_zahteva.items():
         zahtev = ulaz.zahtevi[zahtev_indeks]
         redovi = po_kljucu.get(
@@ -1679,6 +1985,8 @@ def _upari_hintove(
                             i for i in neiskorisceni
                             if redovi[i].dan == prvi.dan
                             and redovi[i].blok == prvi.blok + pomeraj
+                            and kanonska_prostorija(redovi[i].prostorija)
+                            == kanonska_prostorija(prvi.prostorija)
                         ),
                         None,
                     )
@@ -1699,7 +2007,9 @@ def _upari_hintove(
                 continue
             neiskorisceni.difference_update(izabran)
             cas = redovi[izabran[0]]
-            rezultat[jedinica.indeks] = (DANI.index(cas.dan), cas.blok)
+            rezultat[jedinica.indeks] = (
+                DANI.index(cas.dan), cas.blok, cas.prostorija
+            )
     return rezultat
 
 
@@ -1729,7 +2039,7 @@ def _pripremi_hintove(
     """
 
     rezultat: HintoviJedinica = defaultdict(list)
-    if not hintovi:
+    if not hintovi and not hintovi_b:
         return {}
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
         if not casovi:
@@ -1737,7 +2047,7 @@ def _pripremi_hintove(
         upareno = _upari_hintove(
             ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
-        for indeks, (dan, blok) in upareno.items():
+        for indeks, (dan, blok, _prostorija) in upareno.items():
             p = promenljive[indeks]
             if nedelja_b:
                 if p.start_b is None or p.start_b is p.start:
@@ -1824,6 +2134,7 @@ def _nivoi_oslobadjanja(
     jedinice: Sequence[Jedinica],
     hintovi_jedinica: HintoviJedinica,
     najvise_nivoa: int = 2,
+    pocetno_slobodne: Iterable[int] = (),
 ) -> list[set[int]]:
     """Skupovi jedinica koje se redom oslobađaju kad fiksirani hint ne prolazi.
 
@@ -1833,6 +2144,7 @@ def _nivoi_oslobadjanja(
     """
 
     slobodne = {j.indeks for j in jedinice if j.indeks not in hintovi_jedinica}
+    slobodne.update(pocetno_slobodne)
     nivoi = [set(slobodne)]
     susedi = _susedi_jedinica(ulaz, jedinice)
     for _ in range(najvise_nivoa):
@@ -1879,6 +2191,7 @@ def _dodeli_prostorije(
     fiksne: dict[int, str] | None = None,
     vremensko_ogranicenje: float = 60,
     broj_radnika: int = 8,
+    status_out: list[cp_model.CpSolverStatus] | None = None,
 ) -> dict[int, str] | None:
     """Dodeli konkretne prostorije pošto su termini i lokacije već poznati."""
 
@@ -1901,12 +2214,22 @@ def _dodeli_prostorije(
         )
         moguce = [
             prostorija
-            for prostorija in _moguce_prostorije(zahtev, ulaz, prostorije)
+            for prostorija in _moguce_prostorije(
+                zahtev, ulaz, prostorije, jedinica.trajanje
+            )
             if prostorija.lokacija == lokacija
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija,
+                prostorija.oznaka,
+                DANI[start // KORAK_DANA],
+                range(start % KORAK_DANA, start % KORAK_DANA + jedinica.trajanje),
+            )
         ]
         if jedinica.indeks in fiksne:
             moguce = [p for p in moguce if p.oznaka == fiksne[jedinica.indeks]]
         if not moguce:
+            if status_out is not None:
+                status_out.append(cp_model.INFEASIBLE)
             return None
         izbori[jedinica.indeks] = {}
         for prostorija in moguce:
@@ -1914,7 +2237,9 @@ def _dodeli_prostorije(
                 f"j{jedinica.indeks}_{prostorija.oznaka}"
             )
             izbori[jedinica.indeks][prostorija.oznaka] = koristi
-            kazna = _kazna_sala_narodne_igre(zahtev, prostorija.oznaka)
+            kazna = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, prostorija.oznaka, jedinica.trajanje
+            )
             if kazna:
                 kazne.append(kazna * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, prostorija.oznaka)
@@ -1937,6 +2262,8 @@ def _dodeli_prostorije(
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
     status = solver.solve(model)
+    if status_out is not None:
+        status_out.append(status)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None
     return {
@@ -1949,6 +2276,51 @@ def _dodeli_prostorije(
     }
 
 
+def _ponovo_dokazi_veliko_jezgro_soba(
+    model: cp_model.CpModel,
+    jezgro: Sequence[int],
+    mapirani_literali: Collection[int],
+    preostalo_vreme: float,
+    broj_radnika: int,
+) -> list[int]:
+    """Bez cilja ponovo dokaži veliko jezgro i vrati ga samo ako je mapirano."""
+
+    originalno = list(jezgro)
+    if (
+        len(originalno) <= PRAG_VELIKOG_JEZGRA_SOBA
+        or preostalo_vreme < MIN_BUDZET_PONOVNOG_DOKAZA_SOBA
+    ):
+        return originalno
+
+    model.clear_objective()
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = min(
+        MAX_BUDZET_PONOVNOG_DOKAZA_SOBA, preostalo_vreme
+    )
+    solver.parameters.num_search_workers = broj_radnika
+    status = solver.solve(model)
+    if status != cp_model.INFEASIBLE:
+        print(
+            "ROOM CORE — objective-free re-proof nije dokazao INFEASIBLE "
+            f"({_status_tekst(status)}); zadržavam originalno jezgro"
+        )
+        return originalno
+
+    novo = list(solver.sufficient_assumptions_for_infeasibility())
+    mapirani = set(mapirani_literali)
+    if not novo or any(
+        (literal if literal >= 0 else -literal - 1) not in mapirani
+        for literal in novo
+    ):
+        print(
+            "ROOM CORE — objective-free re-proof vratio je nepotpuno "
+            "mapirano jezgro; zadržavam originalno jezgro"
+        )
+        return originalno
+    print(f"ROOM CORE — objective-free re-proof: {len(originalno)} -> {len(novo)}")
+    return novo
+
+
 def _dodeli_prostorije_obe(
     solver_termina: cp_model.CpSolver,
     ulaz: Ulaz,
@@ -1957,6 +2329,8 @@ def _dodeli_prostorije_obe(
     promenljive: dict[int, PromenljiveJedinice],
     vremensko_ogranicenje: float = 60,
     broj_radnika: int = 8,
+    status_out: list[cp_model.CpSolverStatus] | None = None,
+    sukob_out: list[SukobProstorije] | None = None,
 ) -> tuple[dict[int, str], dict[int, str]] | None:
     """Zajedno dodeli prostorije za A i B uz iste sobe stalnih smena."""
 
@@ -1966,6 +2340,30 @@ def _dodeli_prostorije_obe(
     intervali_a: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     intervali_b: dict[str, list[cp_model.IntervalVar]] = defaultdict(list)
     kazne: list[cp_model.LinearExprT] = []
+    pretpostavke: dict[int, SukobProstorije] = {}
+
+    def obavezna_dodela(
+        jedinica: Jedinica,
+        nedelja_b: bool,
+        start: int,
+        lokacija: str,
+        izbori: dict[str, cp_model.BoolVar],
+    ) -> cp_model.BoolVar:
+        oznaka_nedelje = "b" if nedelja_b else "a"
+        aktivna = model.new_bool_var(
+            f"j{jedinica.indeks}_aktivna_{oznaka_nedelje}"
+        )
+        # Gašenje pretpostavke zaista uklanja jedinicu iz room problema. To je
+        # važno da jezgro bude dovoljan, a ne samo dijagnostički skup.
+        model.add(sum(izbori.values()) == 1).only_enforce_if(aktivna)
+        for koristi in izbori.values():
+            model.add(koristi == 0).only_enforce_if(aktivna.negated())
+        model.add_assumption(aktivna)
+        pretpostavke[aktivna.index] = SukobProstorije(
+            jedinica.indeks, nedelja_b, start, lokacija
+        )
+        return aktivna
+
     for jedinica in jedinice:
         zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
         p = promenljive[jedinica.indeks]
@@ -1974,17 +2372,35 @@ def _dodeli_prostorije_obe(
         start_b = solver_termina.value(p.start_b)
         lokacija_a = next(n for n, x in p.lokacije.items() if solver_termina.boolean_value(x))
         lokacija_b = next(n for n, x in p.lokacije_b.items() if solver_termina.boolean_value(x))
-        moguce = _moguce_prostorije(zahtev, ulaz, prostorije)
-        moguce_a = [s for s in moguce if s.lokacija == lokacija_a]
-        moguce_b = [s for s in moguce if s.lokacija == lokacija_b]
-        if not moguce_a or not moguce_b:
-            return None
+        moguce = _moguce_prostorije(
+            zahtev, ulaz, prostorije, jedinica.trajanje
+        )
+        moguce_a = [
+            s for s in moguce
+            if s.lokacija == lokacija_a
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija, s.oznaka,
+                DANI[start_a // KORAK_DANA],
+                range(start_a % KORAK_DANA, start_a % KORAK_DANA + jedinica.trajanje),
+            )
+        ]
+        moguce_b = [
+            s for s in moguce
+            if s.lokacija == lokacija_b
+            and prostorija_dostupna(
+                ulaz.dostupnost_prostorija, s.oznaka,
+                DANI[start_b // KORAK_DANA],
+                range(start_b % KORAK_DANA, start_b % KORAK_DANA + jedinica.trajanje),
+            )
+        ]
         izbori_a[jedinica.indeks] = {}
         izbori_b[jedinica.indeks] = {}
         for soba in moguce_a:
             koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_a")
             izbori_a[jedinica.indeks][soba.oznaka] = koristi
-            kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
+            kazna = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, soba.oznaka, jedinica.trajanje
+            )
             if kazna:
                 kazne.append(kazna * koristi)
             kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
@@ -1994,30 +2410,36 @@ def _dodeli_prostorije_obe(
                 start_a, jedinica.trajanje, koristi,
                 f"j{jedinica.indeks}_{soba.oznaka}_i_a",
             ))
-        model.add_exactly_one(izbori_a[jedinica.indeks].values())
-        if zahtev.smena.menja_se:
-            for soba in moguce_b:
-                koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_b")
-                izbori_b[jedinica.indeks][soba.oznaka] = koristi
-                kazna = _kazna_sala_narodne_igre(zahtev, soba.oznaka)
-                if kazna:
-                    kazne.append(kazna * koristi)
-                kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
-                if kazna_km8:
-                    kazne.append(kazna_km8 * koristi)
-                intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
-                    start_b, jedinica.trajanje, koristi,
-                    f"j{jedinica.indeks}_{soba.oznaka}_i_b",
-                ))
-            model.add_exactly_one(izbori_b[jedinica.indeks].values())
-        else:
-            izbori_b[jedinica.indeks] = izbori_a[jedinica.indeks]
-            for soba in moguce_a:
-                intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
-                    start_b, jedinica.trajanje,
-                    izbori_a[jedinica.indeks][soba.oznaka],
-                    f"j{jedinica.indeks}_{soba.oznaka}_i_b",
-                ))
+        aktivna_a = obavezna_dodela(
+            jedinica, False, start_a, lokacija_a, izbori_a[jedinica.indeks]
+        )
+        for soba in moguce_b:
+            koristi = model.new_bool_var(f"j{jedinica.indeks}_{soba.oznaka}_b")
+            izbori_b[jedinica.indeks][soba.oznaka] = koristi
+            kazna = _kazna_strukturisanih_pravila(
+                ulaz, zahtev, soba.oznaka, jedinica.trajanje
+            )
+            if kazna:
+                kazne.append(kazna * koristi)
+            kazna_km8 = _kazna_sale_km8(zahtev, soba.oznaka)
+            if kazna_km8:
+                kazne.append(kazna_km8 * koristi)
+            intervali_b[soba.oznaka].append(model.new_optional_fixed_size_interval_var(
+                start_b, jedinica.trajanje, koristi,
+                f"j{jedinica.indeks}_{soba.oznaka}_i_b",
+            ))
+        aktivna_b = obavezna_dodela(
+            jedinica, True, start_b, lokacija_b, izbori_b[jedinica.indeks]
+        )
+        if not zahtev.smena.menja_se:
+            sve_sobe = set(izbori_a[jedinica.indeks]) | set(
+                izbori_b[jedinica.indeks]
+            )
+            for oznaka in sve_sobe:
+                model.add(
+                    izbori_a[jedinica.indeks].get(oznaka, 0)
+                    == izbori_b[jedinica.indeks].get(oznaka, 0)
+                ).only_enforce_if((aktivna_a, aktivna_b))
     for stavke in intervali_a.values():
         model.add_no_overlap(stavke)
     for stavke in intervali_b.values():
@@ -2027,7 +2449,22 @@ def _dodeli_prostorije_obe(
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = vremensko_ogranicenje
     solver.parameters.num_search_workers = broj_radnika
+    pocetak_resavanja = time.monotonic()
     status = solver.solve(model)
+    if status_out is not None:
+        status_out.append(status)
+    if status == cp_model.INFEASIBLE and sukob_out is not None:
+        jezgro = _ponovo_dokazi_veliko_jezgro_soba(
+            model,
+            solver.sufficient_assumptions_for_infeasibility(),
+            pretpostavke,
+            vremensko_ogranicenje - (time.monotonic() - pocetak_resavanja),
+            broj_radnika,
+        )
+        for literal in jezgro:
+            indeks = literal if literal >= 0 else -literal - 1
+            if indeks in pretpostavke:
+                sukob_out.append(pretpostavke[indeks])
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None
 
@@ -2038,6 +2475,208 @@ def _dodeli_prostorije_obe(
         }
 
     return izvuci(izbori_a), izvuci(izbori_b)
+
+
+def _resi_sa_fiksiranim_terminima(
+    solver_termina: cp_model.CpSolver,
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    nedostupnosti: Sequence[Nedostupnost],
+    jutarnja_smena: Smena,
+    promenljive_mastera: dict[int, PromenljiveJedinice],
+    sa_nedeljom_b: bool,
+    vremensko_ogranicenje: float,
+    broj_radnika: int,
+    seme: int,
+    slobodne_jedinice: frozenset[int] = frozenset(),
+) -> tuple[
+    cp_model.CpSolver,
+    tuple[Jedinica, ...],
+    dict[int, PromenljiveJedinice],
+    cp_model.CpSolverStatus,
+]:
+    """Zadrzi termine iz mastera, a pusti lokacije i sobe da se biraju ponovo.
+
+    Master bira lokacije ne znajuci koja sala u njima moze da primi cas, pa
+    tacna dodela soba ume da padne i kad su termini sasvim dobri. Pun model sa
+    zakucanim terminima resava tu istu dodelu bez ogranicenja na lokaciju i uz
+    sva pravila o kretanju izmedju zgrada.
+
+    `slobodne_jedinice` ostaju bez zakucanog termina. Kada ni isti termini ne
+    prolaze, pusta se samo sacica casova iz UNSAT jezgra soba; to je mnogo
+    jeftinije od novog master solvea, a popravlja bas ono sto je zapelo.
+    """
+
+    model, jedinice, promenljive = napravi_model(
+        ulaz, prostorije, nedostupnosti, jutarnja_smena,
+        sa_nedeljom_b=sa_nedeljom_b, samo_lokacije=False, sa_ciljem=False,
+    )
+    for jedinica in jedinice:
+        if jedinica.indeks in slobodne_jedinice:
+            continue
+        master = promenljive_mastera[jedinica.indeks]
+        nova = promenljive[jedinica.indeks]
+        model.add(nova.start == solver_termina.value(master.start))
+        if nova.start_b is not None and master.start_b is not None:
+            model.add(nova.start_b == solver_termina.value(master.start_b))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = broj_radnika
+    solver.parameters.random_seed = seme
+    solver.parameters.max_time_in_seconds = vremensko_ogranicenje
+    return solver, jedinice, promenljive, solver.solve(model)
+
+
+def _jedinice_oko_jezgra(
+    solver_lokacija: cp_model.CpSolver,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+    sukob: Sequence[SukobProstorije],
+) -> frozenset[int]:
+    """Sve jedinice koje master drzi na istoj lokaciji istog dana kao jezgro.
+
+    Pustiti samo jezgro obicno nije dovoljno: casovi oko njega drze sale
+    zauzete, pa se sudar samo pomeri. Ovaj skup je i dalje jedan dan jedne
+    zgrade, dakle mali deo rasporeda.
+    """
+
+    dani_jezgra = {
+        (stavka.lokacija, stavka.start // KORAK_DANA) for stavka in sukob
+    }
+    slobodne: set[int] = set()
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        parovi = [(p.start, p.lokacije)]
+        if p.start_b is not None and p.lokacije_b is not None:
+            parovi.append((p.start_b, p.lokacije_b))
+        for start, lokacije in parovi:
+            lokacija = next(
+                (
+                    naziv for naziv, koristi in lokacije.items()
+                    if solver_lokacija.boolean_value(koristi)
+                ),
+                None,
+            )
+            if lokacija is None:
+                continue
+            if (lokacija, solver_lokacija.value(start) // KORAK_DANA) in dani_jezgra:
+                slobodne.add(jedinica.indeks)
+                break
+    return frozenset(slobodne)
+
+
+def _ispisi_sukob_soba(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice: Sequence[Jedinica],
+    sukob: Sequence[SukobProstorije],
+) -> None:
+    """Ispisi sta cini room UNSAT jezgro, da se uzrok vidi iz loga."""
+
+    po_indeksu = {j.indeks: j for j in jedinice}
+    for stavka in sorted(
+        sukob, key=lambda s: (s.lokacija, s.start, s.jedinica_indeks)
+    ):
+        jedinica = po_indeksu.get(stavka.jedinica_indeks)
+        if jedinica is None:
+            continue
+        zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+        kandidati = sorted(
+            p.oznaka
+            for p in _moguce_prostorije(
+                zahtev, ulaz, prostorije, jedinica.trajanje
+            )
+            if p.lokacija == stavka.lokacija
+        )
+        dan = DANI[stavka.start // KORAK_DANA]
+        blok = stavka.start % KORAK_DANA
+        nedelja = "B" if stavka.nedelja_b else "A"
+        print(
+            f"  JEZGRO {nedelja} {dan} blok {blok} (x{jedinica.trajanje}) "
+            f"{zahtev.predmet} [{','.join(zahtev.odeljenja)}] "
+            f"-> {stavka.lokacija} medju {{{', '.join(kandidati)}}}"
+        )
+
+
+def _vrednosti_hladnog_mastera(
+    solver: cp_model.CpSolver,
+    jedinice: Sequence[Jedinica],
+    promenljive: dict[int, PromenljiveJedinice],
+) -> tuple[list[cp_model.IntVar], list[int]]:
+    """Izvuci jednu kompletnu, deduplikovanu dodelu termina i lokacija A/B."""
+
+    varijable: list[cp_model.IntVar] = []
+    vrednosti: list[int] = []
+    vidjene: set[int] = set()
+
+    def dodaj(varijabla: cp_model.IntVar | None) -> None:
+        if varijabla is None or varijabla.index in vidjene:
+            return
+        vidjene.add(varijabla.index)
+        varijable.append(varijabla)
+        vrednosti.append(solver.value(varijabla))
+
+    for jedinica in jedinice:
+        p = promenljive[jedinica.indeks]
+        dodaj(p.start)
+        for koristi in p.lokacije.values():
+            dodaj(koristi)
+        dodaj(p.start_b)
+        for koristi in (p.lokacije_b or {}).values():
+            dodaj(koristi)
+    return varijable, vrednosti
+
+
+def _zabrani_i_hintuj_master_dodelu(
+    model: cp_model.CpModel,
+    varijable: Sequence[cp_model.IntVar],
+    vrednosti: Sequence[int],
+) -> None:
+    """Zabrani baš ovu kombinaciju, ali je iskoristi kao smernicu za susednu."""
+
+    model.add_forbidden_assignments(varijable, [vrednosti])
+    model.clear_hints()
+    for varijabla, vrednost in zip(varijable, vrednosti, strict=True):
+        model.add_hint(varijabla, vrednost)
+
+
+def _zabrani_sukob_i_hintuj_master_dodelu(
+    model: cp_model.CpModel,
+    promenljive: dict[int, PromenljiveJedinice],
+    sukob: Sequence[SukobProstorije],
+    hint_varijable: Sequence[cp_model.IntVar],
+    hint_vrednosti: Sequence[int],
+) -> int:
+    """Dodaj no-good samo za start+lokaciju iz room UNSAT jezgra."""
+
+    varijable: list[cp_model.IntVar] = []
+    vrednosti: list[int] = []
+    vidjene: dict[int, int] = {}
+
+    def dodaj(varijabla: cp_model.IntVar, vrednost: int) -> None:
+        prethodna = vidjene.get(varijabla.index)
+        if prethodna is not None:
+            if prethodna != vrednost:
+                raise ValueError("UNSAT jezgro sadrži protivrečne vrednosti master varijable")
+            return
+        vidjene[varijabla.index] = vrednost
+        varijable.append(varijabla)
+        vrednosti.append(vrednost)
+
+    for stavka in sukob:
+        p = promenljive[stavka.jedinica_indeks]
+        start = p.start_b if stavka.nedelja_b else p.start
+        lokacije = p.lokacije_b if stavka.nedelja_b else p.lokacije
+        assert start is not None and lokacije is not None
+        dodaj(start, stavka.start)
+        dodaj(lokacije[stavka.lokacija], 1)
+
+    if not varijable:
+        return 0
+    model.add_forbidden_assignments(varijable, [vrednosti])
+    model.clear_hints()
+    for varijabla, vrednost in zip(hint_varijable, hint_vrednosti, strict=True):
+        model.add_hint(varijabla, vrednost)
+    return len(varijable)
 
 
 def _izvuci_casove(
@@ -2085,6 +2724,80 @@ def _izvuci_casove(
     return tuple(replace_red(cas, indeks + 2) for indeks, cas in enumerate(redovi))
 
 
+def _analiziraj_prostorije_hintova(
+    ulaz: Ulaz,
+    prostorije: Sequence[Prostorija],
+    jedinice_zahteva: dict[int, list[Jedinica]],
+    hintovi: Sequence[Cas],
+    hintovi_b: Sequence[Cas],
+) -> tuple[set[int], int]:
+    """Nađi jedinice čiji stari termin zahteva promenu lokacije.
+
+    Promena konkretne sobe na istoj lokaciji ne oslobađa termin: strogi model
+    će izabrati drugu hard-dozvoljenu i vremenski dostupnu sobu. Problem samo
+    u jednoj nedelji oslobađa celu jedinicu, odnosno oba njena termina.
+    """
+
+    po_indeksu = {
+        jedinica.indeks: jedinica
+        for jedinice in jedinice_zahteva.values()
+        for jedinica in jedinice
+    }
+    po_oznaci = {
+        kanonska_prostorija(prostorija.oznaka): prostorija
+        for prostorija in prostorije
+    }
+    slobodne: set[int] = set()
+    transformisane_sobe: set[int] = set()
+    for casovi in (hintovi, hintovi_b):
+        if not casovi:
+            continue
+        upareno = _upari_hintove(
+            ulaz,
+            jedinice_zahteva,
+            _kanonizuj_hintove(ulaz, casovi, prostorije),
+        )
+        for indeks, (dan, blok, stara_oznaka) in upareno.items():
+            jedinica = po_indeksu[indeks]
+            zahtev = ulaz.zahtevi[jedinica.zahtev_indeks]
+            stara = po_oznaci.get(kanonska_prostorija(stara_oznaka))
+            if stara is None:
+                slobodne.add(indeks)
+                continue
+            dostupne = [
+                kandidat
+                for kandidat in _moguce_prostorije(
+                    zahtev, ulaz, prostorije, jedinica.trajanje
+                )
+                if prostorija_dostupna(
+                    ulaz.dostupnost_prostorija,
+                    kandidat.oznaka,
+                    DANI[dan],
+                    range(blok, blok + jedinica.trajanje),
+                )
+            ]
+            stara_kanonska = kanonska_prostorija(stara.oznaka)
+            if any(
+                kanonska_prostorija(kandidat.oznaka) == stara_kanonska
+                for kandidat in dostupne
+            ):
+                continue
+            if any(kandidat.lokacija == stara.lokacija for kandidat in dostupne):
+                transformisane_sobe.add(indeks)
+            else:
+                slobodne.add(indeks)
+    return slobodne, len(transformisane_sobe - slobodne)
+
+
+def _broj_nevazecih_dodela_prostorija(
+    analiza: tuple[set[int], int],
+) -> int:
+    """Saberi jedinice koje menjaju sobu ili celu lokaciju bez dupliranja."""
+
+    promene_lokacije, promene_sobe = analiza
+    return len(promene_lokacije) + promene_sobe
+
+
 def _resi_fiksiranim_hintom(
     model: cp_model.CpModel,
     solver: cp_model.CpSolver,
@@ -2096,6 +2809,8 @@ def _resi_fiksiranim_hintom(
     hintovi_b: Sequence[Cas],
     vremensko_ogranicenje: float,
     pocetak: float,
+    oznaka_faze: str = "FAZA 1",
+    analiza_prostorija: tuple[set[int], int] | None = None,
 ) -> cp_model.CpSolverStatus:
     """Pokušaj prethodni raspored kao fiksiran, sve labavije oko izmena."""
 
@@ -2106,17 +2821,55 @@ def _resi_fiksiranim_hintom(
         ulaz, prostorije, jedinice_zahteva, promenljive, hintovi, hintovi_b
     )
     if not pripremljeni:
-        print("FAZA 1 — hint se ne poklapa ni sa jednom jedinicom; tražim novo rešenje")
+        print(
+            f"{oznaka_faze} — hint se ne poklapa ni sa jednom jedinicom; "
+            "tražim novo rešenje"
+        )
         return cp_model.UNKNOWN
 
+    if analiza_prostorija is None:
+        analiza_prostorija = _analiziraj_prostorije_hintova(
+            ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
+        )
+        pocetno_slobodne, transformisane_sobe = analiza_prostorija
+        print(
+            f"HINT: {transformisane_sobe} неважећих соба мења се унутар исте "
+            f"локације; {len(pocetno_slobodne)} јединица мора да промени "
+            "локацију."
+        )
+    else:
+        pocetno_slobodne, _ = analiza_prostorija
+
+    model.clear_hints()
+    cuvari: dict[int, cp_model.BoolVar] = {}
+    for indeks, parovi in pripremljeni.items():
+        cuvar = model.new_bool_var(f"hint_j{indeks}")
+        cuvari[indeks] = cuvar
+        vidjene_promenljive: set[int] = set()
+        for promenljiva, vrednost in parovi:
+            # Start jednoznačno određuje dan i blok; jedna reifikovana
+            # jednakost po nedelji pravi znatno manji assumption model.
+            if not promenljiva.name.endswith(("_start", "_start_b")):
+                continue
+            if promenljiva.index in vidjene_promenljive:
+                continue
+            model.add(promenljiva == vrednost).only_enforce_if(cuvar)
+            vidjene_promenljive.add(promenljiva.index)
+
+    slobodne = _nivoi_oslobadjanja(
+        ulaz, jedinice, pripremljeni, najvise_nivoa=0,
+        pocetno_slobodne=pocetno_slobodne,
+    )[0]
     status = cp_model.UNKNOWN
-    solver.parameters.fix_variables_to_their_hinted_value = True
-    for nivo, slobodne in enumerate(
-        _nivoi_oslobadjanja(ulaz, jedinice, pripremljeni)
-    ):
-        fiksirane = _primeni_hintove(model, pripremljeni, slobodne)
-        if fiksirane == 0:
+    for pokusaj in range(3):
+        aktivni = {
+            indeks: cuvar for indeks, cuvar in cuvari.items()
+            if indeks not in slobodne
+        }
+        if not aktivni:
             break
+        model.clear_assumptions()
+        model.add_assumptions(aktivni.values())
         preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
         if preostalo <= 0:
             break
@@ -2124,23 +2877,91 @@ def _resi_fiksiranim_hintom(
         korak = time.monotonic()
         status = solver.solve(model)
         trajanje = time.monotonic() - korak
-        opis = (
-            "prethodni raspored je i dalje dopustiv"
-            if nivo == 0
-            else f"prethodni raspored prolazi uz {len(slobodne)} oslobođenih jedinica"
-        )
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            print(f"FAZA 1 — {opis} (fiksirani hint, nivo {nivo}, {trajanje:.3f} s)")
+            print(
+                f"{oznaka_faze} — prethodni raspored prolazi uz "
+                f"{len(slobodne)} oslobođenih jedinica "
+                f"(core покушај {pokusaj}, {trajanje:.3f} s)"
+            )
             break
+        if status != cp_model.INFEASIBLE:
+            print(
+                f"{oznaka_faze} — core покушај {pokusaj} "
+                f"({len(aktivni)} fiksiranih) nije dao jezgro: "
+                f"{_status_tekst(status)}, {trajanje:.3f} s"
+            )
+            break
+        jezgro_literala = set(solver.sufficient_assumptions_for_infeasibility())
+        po_literalu = {cuvar.index: indeks for indeks, cuvar in aktivni.items()}
+        jezgro = {
+            po_literalu[literal]
+            for literal in jezgro_literala
+            if literal in po_literalu
+        }
+        pre = len(slobodne)
+        slobodne.update(jezgro)
         print(
-            f"FAZA 1 — fiksirani hint nivo {nivo} ({fiksirane} jedinica) ne prolazi: "
-            f"{_status_tekst(status)}, {trajanje:.3f} s"
+            f"{oznaka_faze} — core покушај {pokusaj}: INFEASIBLE за "
+            f"{trajanje:.3f} s; језгро {len(jezgro)}, "
+            f"укупно слободних {len(slobodne)}."
         )
-    solver.parameters.fix_variables_to_their_hinted_value = False
+        if len(slobodne) == pre:
+            break
+    model.clear_assumptions()
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         _primeni_hintove(model, pripremljeni)
-        print("FAZA 1 — prethodni raspored nije upotrebljiv kao fiksirani hint; tražim novo rešenje")
+        print(
+            f"{oznaka_faze} — prethodni raspored nije upotrebljiv kao "
+            "fiksirani hint; tražim novo rešenje"
+        )
     return status
+
+
+def _prenesi_resenje_kao_hint(
+    model: cp_model.CpModel,
+    solver: cp_model.CpSolver,
+    jedinice: Sequence[Jedinica],
+    prethodne: dict[int, PromenljiveJedinice],
+    sledece: dict[int, PromenljiveJedinice],
+) -> None:
+    """Zameni postojeće hintove nedupliranim rešenjem prethodnog modela."""
+
+    model.clear_hints()
+    hintovani_indeksi: set[int] = set()
+
+    def prenesi(prethodna: cp_model.IntVar, sledeca: cp_model.IntVar) -> None:
+        if sledeca.index in hintovani_indeksi:
+            return
+        model.add_hint(sledeca, solver.value(prethodna))
+        hintovani_indeksi.add(sledeca.index)
+
+    for jedinica in jedinice:
+        p1 = prethodne[jedinica.indeks]
+        p2 = sledece[jedinica.indeks]
+        for prethodna, sledeca in (
+            (p1.start, p2.start), (p1.dan, p2.dan), (p1.blok, p2.blok),
+        ):
+            prenesi(prethodna, sledeca)
+        for lokacija in set(p1.lokacije) & set(p2.lokacije):
+            prenesi(p1.lokacije[lokacija], p2.lokacije[lokacija])
+        for prostorija in set(p1.prostorije) & set(p2.prostorije):
+            prenesi(p1.prostorije[prostorija], p2.prostorije[prostorija])
+        if p1.start_b is not None and p2.start_b is not None:
+            for prethodna, sledeca in (
+                (p1.start_b, p2.start_b),
+                (p1.dan_b, p2.dan_b),
+                (p1.blok_b, p2.blok_b),
+            ):
+                assert prethodna is not None and sledeca is not None
+                prenesi(prethodna, sledeca)
+        if p1.lokacije_b is not None and p2.lokacije_b is not None:
+            for lokacija in set(p1.lokacije_b) & set(p2.lokacije_b):
+                prenesi(p1.lokacije_b[lokacija], p2.lokacije_b[lokacija])
+        if p1.prostorije_b is not None and p2.prostorije_b is not None:
+            for prostorija in set(p1.prostorije_b) & set(p2.prostorije_b):
+                prenesi(
+                    p1.prostorije_b[prostorija], p2.prostorije_b[prostorija]
+                )
 
 
 def _resi_u_dve_faze(
@@ -2154,108 +2975,437 @@ def _resi_u_dve_faze(
     hintovi: Sequence[Cas] = (),
     sa_nedeljom_b: bool = False,
     hintovi_b: Sequence[Cas] = (),
-) -> tuple[KandidatTermina | None, KandidatTermina | None, str]:
-    """Prvo nađi dopustivo rešenje, zatim ga koristi kao hint optimizaciji."""
+) -> tuple[
+    cp_model.CpSolver | None,
+    tuple[Jedinica, ...],
+    dict[int, PromenljiveJedinice],
+    str,
+    dict[int, str] | None,
+    dict[int, str] | None,
+]:
+    """Nađi lokacije, zatim konkretne sobe, pa optimizuj strogi model."""
 
     pocetak = time.monotonic()
-    limit_prve = max(60.0, vremensko_ogranicenje - 300.0)
+    rok_sa_rezervom = max(60.0, vremensko_ogranicenje - 300.0)
+    rok_pripreme = min(rok_sa_rezervom, vremensko_ogranicenje)
+
+    # Odluka o hladnom startu donosi se pre gradnje i rešavanja pripremnog
+    # modela. Tako masovno zastareo hint ne troši budžet stroge faze.
+    analiza_hinta: tuple[set[int], int] | None = None
+    koristi_pripremu = bool(hintovi or hintovi_b)
+    if koristi_pripremu:
+        jedinice_za_analizu = _jedinice(ulaz)
+        jedinice_zahteva: dict[int, list[Jedinica]] = defaultdict(list)
+        for jedinica in jedinice_za_analizu:
+            jedinice_zahteva[jedinica.zahtev_indeks].append(jedinica)
+        analiza_hinta = _analiziraj_prostorije_hintova(
+            ulaz, prostorije, jedinice_zahteva, hintovi, hintovi_b
+        )
+        promene_lokacije, promene_sobe = analiza_hinta
+        broj_nevazecih = _broj_nevazecih_dodela_prostorija(analiza_hinta)
+        print(
+            f"HINT: {promene_sobe} неважећих соба мења се унутар исте "
+            f"локације; {len(promene_lokacije)} јединица мора да промени "
+            "локацију."
+        )
+        if broj_nevazecih > PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA:
+            koristi_pripremu = False
+            print(
+                f"HINT: {broj_nevazecih} неважећих додела прелази праг "
+                f"{PRAG_HLADNOG_STARTA_NEVAZECIH_SOBA}; одбацујем hint и "
+                "покрећем хладни локацијски master."
+            )
+
+    model_pripreme = None
+    jedinice_pripreme: tuple[Jedinica, ...] = ()
+    promenljive_pripreme: dict[int, PromenljiveJedinice] = {}
+    if koristi_pripremu:
+        model_pripreme, jedinice_pripreme, promenljive_pripreme = napravi_model(
+            ulaz,
+            prostorije,
+            nedostupnosti,
+            jutarnja_smena,
+            sa_nedeljom_b=sa_nedeljom_b,
+            samo_lokacije=True,
+            sa_ciljem=False,
+            hintovi=hintovi,
+            hintovi_b=hintovi_b,
+        )
+    else:
+        print("PRIPREMA — прескочена; хладни локацијски master добија буџет")
+        # Bez upotrebljivog prethodnog rasporeda puni model konkretnih soba je
+        # nepotrebno tezak. Jedan neprekinut master solve bira termine i
+        # lokacije, a mali egzaktni model u rezervisanom vremenu bira sobe.
+        model_lokacija, jedinice_lokacija, promenljive_lokacija = napravi_model(
+            ulaz,
+            prostorije,
+            nedostupnosti,
+            jutarnja_smena,
+            sa_nedeljom_b=sa_nedeljom_b,
+            samo_lokacije=True,
+            sa_ciljem=False,
+        )
+        greska_modela = model_lokacija.validate()
+        if greska_modela:
+            raise RuntimeError(f"Неисправан модел локација: {greska_modela}")
+
+        minimalni_budzet = min(
+            MINIMALNI_BUDZET_HLADNOG_POKUSAJA,
+            max(0.1, vremensko_ogranicenje / 10),
+        )
+        for pokusaj in range(1, NAJVISE_HLADNIH_MASTER_POKUSAJA + 1):
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            rezerva = min(
+                REZERVA_ZA_DODELU_PROSTORIJA + REZERVA_ZA_ISTE_TERMINE,
+                max(0.0, preostalo / 2),
+            )
+            limit_lokacija = max(0.0, preostalo - rezerva)
+            if limit_lokacija < minimalni_budzet:
+                print(
+                    f"HLADNI POKUŠAJ {pokusaj} — nema dovoljno vremena za "
+                    "novi master i sobe"
+                )
+                break
+
+            solver_lokacija = cp_model.CpSolver()
+            solver_lokacija.parameters.num_search_workers = broj_radnika
+            solver_lokacija.parameters.random_seed = seme
+            # Isti nalaz kao u fazi 1, izmeren posebno na ovom modelu:
+            # 4 radnika, pun master A+B, seme 1 — 875 s podrazumevano prema
+            # 352 s sa nivoom 3; seme 2 — 576 s prema 256 s.
+            solver_lokacija.parameters.symmetry_level = 3
+            solver_lokacija.parameters.max_time_in_seconds = limit_lokacija
+            if pokusaj > 1:
+                solver_lokacija.parameters.repair_hint = True
+                solver_lokacija.parameters.hint_conflict_limit = (
+                    LIMIT_KONFLIKATA_POPRAVKE_MASTER_HINTA
+                )
+            pocetak_lokacija = time.monotonic()
+            status_lokacija = solver_lokacija.solve(model_lokacija)
+            trajanje_lokacija = time.monotonic() - pocetak_lokacija
+            print(
+                f"HLADNI POKUŠAJ {pokusaj} — master "
+                f"{_status_tekst(status_lokacija)}, {trajanje_lokacija:.3f} s"
+            )
+            if status_lokacija not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                status = _status_tekst(status_lokacija)
+                print(f"FAZA 1 — neuspeh/timeout: {status}")
+                print("FAZA 2 — dodela konkretnih prostorija: 0.000 s")
+                return (
+                    None, jedinice_lokacija, promenljive_lokacija,
+                    f"neuspeh/timeout (lokacijski master): {status}", None, None,
+                )
+
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo <= 0:
+                break
+            limit_soba = min(REZERVA_ZA_DODELU_PROSTORIJA, preostalo)
+            pocetak_soba = time.monotonic()
+            statusi_soba: list[cp_model.CpSolverStatus] = []
+            sukob_soba: list[SukobProstorije] = []
+            if sa_nedeljom_b:
+                dodela = _dodeli_prostorije_obe(
+                    solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                    promenljive_lokacija, vremensko_ogranicenje=limit_soba,
+                    broj_radnika=broj_radnika, status_out=statusi_soba,
+                    sukob_out=sukob_soba,
+                )
+            else:
+                dodela_a = _dodeli_prostorije(
+                    solver_lokacija, ulaz, prostorije, jedinice_lokacija,
+                    promenljive_lokacija, vremensko_ogranicenje=limit_soba,
+                    broj_radnika=broj_radnika, status_out=statusi_soba,
+                )
+                dodela = (dodela_a, None) if dodela_a is not None else None
+            trajanje_soba = time.monotonic() - pocetak_soba
+            status_soba = (
+                statusi_soba[-1] if statusi_soba
+                else cp_model.FEASIBLE if dodela is not None
+                else cp_model.INFEASIBLE
+            )
+            print(
+                f"HLADNI POKUŠAJ {pokusaj} — sobe "
+                f"{_status_tekst(status_soba)}, {trajanje_soba:.3f} s"
+            )
+            if dodela is not None:
+                dodela_a, dodela_b = dodela
+                print("FAZA 2 — konkretne prostorije dodeljene")
+                return (
+                    solver_lokacija, jedinice_lokacija, promenljive_lokacija,
+                    "dopustivo (hladni lokacijski master + faza 2 dodela soba); "
+                    "objective n/d",
+                    dodela_a, dodela_b,
+                )
+            nivoi_popravke = (
+                ("ISTI TERMINI", frozenset()),
+                (
+                    "TERMINI OSIM JEZGRA",
+                    frozenset(s.jedinica_indeks for s in sukob_soba),
+                ),
+                (
+                    "TERMINI OSIM DANA JEZGRA",
+                    _jedinice_oko_jezgra(
+                        solver_lokacija, jedinice_lokacija,
+                        promenljive_lokacija, sukob_soba,
+                    ),
+                ),
+            )
+            vec_probano: set[frozenset[int]] = set()
+            for oznaka, slobodne in nivoi_popravke:
+                if slobodne in vec_probano:
+                    continue
+                vec_probano.add(slobodne)
+                preostalo = vremensko_ogranicenje - (
+                    time.monotonic() - pocetak
+                )
+                limit_termina = min(
+                    REZERVA_ZA_ISTE_TERMINE, max(0.0, preostalo)
+                )
+                if limit_termina < minimalni_budzet:
+                    break
+                pocetak_termina = time.monotonic()
+                (
+                    solver_termina, jedinice_termina, promenljive_termina,
+                    status_termina,
+                ) = _resi_sa_fiksiranim_terminima(
+                    solver_lokacija, ulaz, prostorije, nedostupnosti,
+                    jutarnja_smena, promenljive_lokacija, sa_nedeljom_b,
+                    limit_termina, broj_radnika, seme,
+                    slobodne_jedinice=slobodne,
+                )
+                print(
+                    f"{oznaka} {pokusaj} — "
+                    f"{_status_tekst(status_termina)}, "
+                    f"{time.monotonic() - pocetak_termina:.3f} s"
+                )
+                if status_termina in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                    print("FAZA 2 — konkretne prostorije dodeljene")
+                    return (
+                        solver_termina, jedinice_termina, promenljive_termina,
+                        "dopustivo (hladni master + popravka termina uz "
+                        "slobodne sobe); objective n/d",
+                        None, None,
+                    )
+            if status_soba != cp_model.INFEASIBLE:
+                print("FAZA 2 — pretraga soba nije dokazala neizvodljivost; prekidam")
+                break
+            if pokusaj == NAJVISE_HLADNIH_MASTER_POKUSAJA:
+                break
+
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo < 2 * minimalni_budzet:
+                print("FAZA 2 — nema dovoljno vremena za sledeći master i sobe")
+                break
+            varijabile, vrednosti = _vrednosti_hladnog_mastera(
+                solver_lokacija, jedinice_lokacija, promenljive_lokacija
+            )
+            if sukob_soba:
+                _ispisi_sukob_soba(
+                    ulaz, prostorije, jedinice_lokacija, sukob_soba
+                )
+                velicina_reza = _zabrani_sukob_i_hintuj_master_dodelu(
+                    model_lokacija, promenljive_lokacija, sukob_soba,
+                    varijabile, vrednosti,
+                )
+                print(
+                    f"HLADNI POKUŠAJ {pokusaj} — room UNSAT jezgro "
+                    f"{len(sukob_soba)}, rez {velicina_reza}; pokušavam "
+                    "susedno rešenje"
+                )
+            else:
+                _zabrani_i_hintuj_master_dodelu(
+                    model_lokacija, varijabile, vrednosti
+                )
+                print(
+                    f"HLADNI POKUŠAJ {pokusaj} — room UNSAT jezgro nije "
+                    "dostupno; zabranjena je cela master dodela"
+                )
+
+        print("FAZA 2 — konkretne prostorije nisu dodeljene")
+        return (
+            None, jedinice_lokacija, promenljive_lokacija,
+            "neuspeh/timeout (dodela konkretnih prostorija)", None, None,
+        )
+    # Svi modeli koji će se rešavati grade se pre prvog solve poziva, tako da
+    # i vreme konstrukcije ulazi u isti ukupni zidni budžet.
     model_1, jedinice_1, promenljive_1 = napravi_model(
         ulaz,
         prostorije,
         nedostupnosti,
         jutarnja_smena,
         sa_nedeljom_b=sa_nedeljom_b,
-        samo_lokacije=True,
+        samo_lokacije=False,
         sa_ciljem=False,
-        hintovi=hintovi,
-        hintovi_b=hintovi_b,
     )
-    solver_1 = cp_model.CpSolver()
-    solver_1.parameters.num_search_workers = broj_radnika
-    solver_1.parameters.random_seed = seme
-    status_1 = cp_model.UNKNOWN
-    if hintovi:
-        # Prethodni raspored je obično i dalje dopustiv. Nepotpun hint CP-SAT
-        # ne uspeva da dopuni pretragom, ali fiksiranje hintovanih termina
-        # daje rešenje za sekundu. Ako ulaz više ne dozvoljava stari
-        # raspored, odgovor je INFEASIBLE za deo sekunde; tada se redom
-        # oslobađaju jedinice oko izmene, pa tek onda ide obična pretraga.
-        status_1 = _resi_fiksiranim_hintom(
-            model_1, solver_1, ulaz, prostorije, jedinice_1, promenljive_1,
-            hintovi, hintovi_b, vremensko_ogranicenje, pocetak,
-        )
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        proteklo = time.monotonic() - pocetak
-        solver_1.parameters.max_time_in_seconds = _preostali_limit_prve_faze(
-            limit_prve,
-            vremensko_ogranicenje,
-            proteklo,
-        )
-        status_1 = solver_1.solve(model_1)
-    trajanje_prve = time.monotonic() - pocetak
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        preostalo = vremensko_ogranicenje - trajanje_prve
-        if preostalo > 0:
-            print(
-                "FAZA 1 — prvi rok je istekao; nastavljam do ukupnog "
-                f"ograničenja ({preostalo:.1f} s preostalo)"
-            )
-            solver_1.parameters.max_time_in_seconds = preostalo
-            status_1 = solver_1.solve(model_1)
-            trajanje_prve = time.monotonic() - pocetak
-    print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
-    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        status = _status_tekst(status_1)
-        print(f"FAZA 1 — neuspeh/timeout: {status}")
-        print("FAZA 2 — trajanje: 0.000 s")
-        return None, None, f"neuspeh/timeout (faza 1): {status}"
-    print("FAZA 1 — dopustivo rešenje pronađeno")
-    kandidat_1 = KandidatTermina(
-        solver_1,
-        jedinice_1,
-        promenljive_1,
-        "dopustivo (faza 1)",
-    )
-
     model_2, jedinice_2, promenljive_2 = napravi_model(
         ulaz,
         prostorije,
         nedostupnosti,
         jutarnja_smena,
         sa_nedeljom_b=sa_nedeljom_b,
-        samo_lokacije=True,
+        samo_lokacije=False,
         sa_ciljem=True,
     )
-    for indeks in range(len(model_1.proto.variables)):
-        prethodna = model_1.get_int_var_from_proto_index(indeks)
-        sledeca = model_2.get_int_var_from_proto_index(indeks)
-        model_2.add_hint(sledeca, solver_1.value(prethodna))
+    solver_pripreme: cp_model.CpSolver | None = None
+    status_pripreme = cp_model.UNKNOWN
+    if koristi_pripremu:
+        assert model_pripreme is not None
+        assert analiza_hinta is not None
+        solver_pripreme = cp_model.CpSolver()
+        solver_pripreme.parameters.num_search_workers = broj_radnika
+        solver_pripreme.parameters.random_seed = seme
+        status_pripreme = _resi_fiksiranim_hintom(
+            model_pripreme, solver_pripreme, ulaz, prostorije,
+            jedinice_pripreme, promenljive_pripreme,
+            hintovi, hintovi_b, rok_pripreme, pocetak,
+            oznaka_faze="PRIPREMA",
+            analiza_prostorija=analiza_hinta,
+        )
+    if koristi_pripremu and status_pripreme not in (
+        cp_model.OPTIMAL, cp_model.FEASIBLE
+    ):
+        assert model_pripreme is not None
+        assert solver_pripreme is not None
+        proteklo = time.monotonic() - pocetak
+        limit_pripreme = _preostali_limit_prve_faze(
+            rok_sa_rezervom,
+            vremensko_ogranicenje,
+            proteklo,
+        )
+        if limit_pripreme > 0:
+            solver_pripreme.parameters.max_time_in_seconds = limit_pripreme
+            status_pripreme = solver_pripreme.solve(model_pripreme)
+    trajanje_pripreme = time.monotonic() - pocetak
+    if koristi_pripremu:
+        print(f"PRIPREMA — trajanje: {trajanje_pripreme:.3f} s")
+    else:
+        print("PRIPREMA — прескочена; цео буџет остаје строгој фази")
+    priprema_uspela = status_pripreme in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    if koristi_pripremu and not priprema_uspela:
+        status = _status_tekst(status_pripreme)
+        print(
+            f"PRIPREMA — neuspeh/timeout: {status}; "
+            "FAZA 1 nastavlja bez pripremnog hinta"
+        )
+    elif priprema_uspela:
+        print("PRIPREMA — dopustivi termini i lokacije pronađeni")
+
+    if vremensko_ogranicenje - (time.monotonic() - pocetak) <= 0:
+        print("FAZA 1 — timeout pre rešavanja strogog modela")
+        print("FAZA 1 — trajanje: 0.000 s")
+        print("FAZA 2 — trajanje: 0.000 s")
+        return (
+            None, jedinice_1, promenljive_1,
+            "neuspeh/timeout (faza 1): vremensko ograničenje",
+            None, None,
+        )
+
+    pocetak_prve = time.monotonic()
+    if priprema_uspela:
+        assert solver_pripreme is not None
+        _prenesi_resenje_kao_hint(
+            model_1, solver_pripreme, jedinice_pripreme,
+            promenljive_pripreme, promenljive_1,
+        )
+    greska_modela_1 = model_1.validate()
+    if greska_modela_1:
+        raise RuntimeError(f"Неисправан модел фазе 1: {greska_modela_1}")
+
+    solver_1 = cp_model.CpSolver()
+    solver_1.parameters.num_search_workers = broj_radnika
+    solver_1.parameters.random_seed = seme
+    # Model faze 1 je pun simetrija (razredi sa istim fondom časova, međusobno
+    # zamenljive prostorije iste lokacije), pa podrazumevani `symmetry_level=2`
+    # ne uspeva da ih iskoristi. Sa nivoom 3 CP-SAT dodatno lomi simetriju u
+    # pretrazi. Mereno na 4 radnika, ograničenje 900 s, pun model A+B:
+    # podrazumevano — nijedno dopustivo rešenje (seme 1, mereno jednom);
+    # sa `symmetry_level=3` — rešenje za 428 s i 882 s (semena 2 i 1).
+    # Varijansa je velika, pa te dve brojke treba čitati kao jedan nalaz
+    # („nađe rešenje u okviru roka“), ne kao poređenje semena.
+    # Namerno se menja samo faza 1 (tražena je gola dopustivost); faza 2 ima
+    # svoj solver i ostaje na podrazumevanim parametrima jer za cilj nemamo
+    # merenja.
+    solver_1.parameters.symmetry_level = 3
+    status_1 = cp_model.UNKNOWN
+    if not koristi_pripremu:
+        # Hladan start mora biti jedan neprekinut CP-SAT pokušaj. Prekid posle
+        # 1500 s i ponovno pokretanje sa rezervom gubi celo dotadašnje stablo
+        # pretrage baš kada strogi model mora da se pronađe ispočetka.
+        preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+        if preostalo > 0:
+            solver_1.parameters.max_time_in_seconds = preostalo
+            status_1 = solver_1.solve(model_1)
+    else:
+        preostalo_do_rezerve = _preostali_limit_prve_faze(
+            rok_sa_rezervom,
+            vremensko_ogranicenje,
+            time.monotonic() - pocetak,
+        )
+        if preostalo_do_rezerve > 0:
+            solver_1.parameters.max_time_in_seconds = preostalo_do_rezerve
+            status_1 = solver_1.solve(model_1)
+        if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
+            if preostalo > 0:
+                print(
+                    "FAZA 1 — nema konkretnu dodelu do rezerve; "
+                    "koristim rezervu za validan raspored "
+                    f"({preostalo:.1f} s preostalo)"
+                )
+                solver_1.parameters.max_time_in_seconds = preostalo
+                status_1 = solver_1.solve(model_1)
+    trajanje_prve = time.monotonic() - pocetak_prve
+    print(f"FAZA 1 — trajanje: {trajanje_prve:.3f} s")
+    if status_1 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        status = _status_tekst(status_1)
+        print(f"FAZA 1 — neuspeh/timeout: {status}")
+        print("FAZA 2 — trajanje: 0.000 s")
+        return (
+            None, jedinice_1, promenljive_1,
+            f"neuspeh/timeout (faza 1): {status}",
+            None, None,
+        )
+    print("FAZA 1 — dopustiv raspored sa konkretnim prostorijama pronađen")
+
+    if vremensko_ogranicenje - (time.monotonic() - pocetak) <= 0:
+        print("FAZA 2 — timeout pre početka optimizacije")
+        return (
+            solver_1, jedinice_1, promenljive_1,
+            "dopustivo (faza 1); faza 2: timeout",
+            None, None,
+        )
+
+    pocetak_druge = time.monotonic()
+    _prenesi_resenje_kao_hint(
+        model_2, solver_1, jedinice_1, promenljive_1, promenljive_2
+    )
+    greska_modela_2 = model_2.validate()
+    if greska_modela_2:
+        raise RuntimeError(f"Неисправан модел фазе 2: {greska_modela_2}")
 
     preostalo = vremensko_ogranicenje - (time.monotonic() - pocetak)
     if preostalo <= 0:
         print("FAZA 2 — timeout pre početka optimizacije")
-        return kandidat_1, None, "dopustivo (faza 1); faza 2: timeout"
-
+        return (
+            solver_1, jedinice_1, promenljive_1,
+            "dopustivo (faza 1); faza 2: timeout",
+            None, None,
+        )
     solver_2 = cp_model.CpSolver()
     solver_2.parameters.max_time_in_seconds = preostalo
     solver_2.parameters.num_search_workers = broj_radnika
     solver_2.parameters.random_seed = seme
-    telemetrija = _TelemetrijaFaze2()
-    status_2 = solver_2.solve(model_2, telemetrija)
-    trajanje_druge = time.monotonic() - pocetak - trajanje_prve
+    status_2 = solver_2.solve(model_2)
+    trajanje_druge = time.monotonic() - pocetak_druge
     print(f"FAZA 2 — trajanje: {max(0.0, trajanje_druge):.3f} s")
     _ispisi_zavrsnu_telemetriju_faze_2(solver_2, status_2)
     if status_2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         status = _status_tekst(status_2)
         print(f"FAZA 2 — optimizovano rešenje: {status}")
-        kandidat_2 = KandidatTermina(
-            solver_2,
-            jedinice_2,
-            promenljive_2,
-            f"optimizovano (faza 2): {status}",
-            optimizovan=True,
+        return (
+            solver_2, jedinice_2, promenljive_2,
+            f"optimizovano (faza 2): {status}", None, None,
         )
-        return kandidat_1, kandidat_2, kandidat_2.status
 
     status = _status_tekst(status_2)
     print(f"FAZA 2 — neuspeh/timeout: {status}; koristi se dopustivo rešenje iz faze 1")
@@ -2263,6 +3413,8 @@ def _resi_u_dve_faze(
         kandidat_1,
         None,
         f"dopustivo (faza 1); faza 2 neuspeh/timeout: {status}",
+        None,
+        None,
     )
 
 
@@ -2280,7 +3432,7 @@ def resi_nedelju(
 ) -> Rezultat:
     """Reši jednu nedelju i proveri dobijene časove nezavisnim proveravačem."""
 
-    kandidat_1, kandidat_2, status_tekst = _resi_u_dve_faze(
+    solver, jedinice, promenljive, status_tekst, sobe_a, _ = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2292,29 +3444,18 @@ def resi_nedelju(
         sa_nedeljom_b,
         hintovi_b,
     )
-    kandidat = kandidat_2 or kandidat_1
-    if kandidat is None:
+    if solver is None:
         return Rezultat(status_tekst, (), None, None)
 
-    dodela = _dodeli_prostorije(
-        kandidat.solver,
-        ulaz,
-        prostorije,
-        kandidat.jedinice,
-        kandidat.promenljive,
-        broj_radnika=broj_radnika,
-    )
-    if dodela is None:
-        return Rezultat("НЕМА ДОДЕЛЕ ПРОСТОРИЈА", (), None, None)
     casovi = _izvuci_casove(
-        kandidat.solver,
-        ulaz,
-        kandidat.jedinice,
-        kandidat.promenljive,
-        dodeljene_prostorije=dodela,
+        solver, ulaz, jedinice, promenljive, dodeljene_prostorije=sobe_a
     )
     izvestaj = proveri(ulaz, prostorije, nedostupnosti, casovi, jutarnja_smena)
-    cilj = kandidat.solver.objective_value if kandidat.optimizovan else None
+    if not izvestaj.ispravan:
+        return Rezultat(
+            f"{status_tekst}; hard validacija nije prošla", (), izvestaj, None
+        )
+    cilj = solver.objective_value if "faza 2" in status_tekst and "optimizovano" in status_tekst else None
     return Rezultat(status_tekst, casovi, izvestaj, cilj)
 
 
@@ -2551,7 +3692,7 @@ def resi_obe_nedelje(
 ) -> tuple[Rezultat, Rezultat]:
     """Reši A i B zajedno, da izbor rasporeda A ne može blokirati B."""
 
-    kandidat_faze_1, kandidat_faze_2, status_tekst = _resi_u_dve_faze(
+    solver, jedinice, promenljive, status_tekst, sobe_a, sobe_b = _resi_u_dve_faze(
         ulaz,
         prostorije,
         nedostupnosti,
@@ -2563,59 +3704,41 @@ def resi_obe_nedelje(
         True,
         hintovi_b,
     )
-    if kandidat_faze_1 is None:
+    if solver is None:
         prazan = Rezultat(status_tekst, (), None, None)
         return prazan, prazan
-
-    kandidat_hinta = _kandidat_originalnog_hinta(
-        ulaz, prostorije, nedostupnosti, hintovi, hintovi_b
+    casovi_a = _izvuci_casove(
+        solver, ulaz, jedinice, promenljive,
+        dodeljene_prostorije=sobe_a,
     )
-    if kandidat_hinta is None:
-        print("ZAŠTITA KVALITETA — kompletan A+B hint nije prosleđen")
-    elif not _validan_kandidat_para(kandidat_hinta):
-        _, hint_a, hint_b = kandidat_hinta
-        assert hint_a.izvestaj is not None and hint_b.izvestaj is not None
-        print(
-            "ZAŠTITA KVALITETA — originalni hint nije ispravan: "
-            f"A={len(hint_a.izvestaj.greske)} grešaka, "
-            f"B={len(hint_b.izvestaj.greske)} grešaka"
+    casovi_b = _izvuci_casove(
+        solver, ulaz, jedinice, promenljive, nedelja_b=True,
+        dodeljene_prostorije=sobe_b,
+    )
+    izvestaj_a = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_a, Smena.CRVENA
+    )
+    izvestaj_b = proveri(
+        ulaz, prostorije, nedostupnosti, casovi_b, Smena.PLAVA
+    )
+    if not izvestaj_a.ispravan or not izvestaj_b.ispravan:
+        status = f"{status_tekst}; hard validacija A/B nije prošla"
+        return (
+            Rezultat(status, (), izvestaj_a, None),
+            Rezultat(status, (), izvestaj_b, None),
         )
-
-    kandidat_2 = _materijalizuj_kandidata_obe_nedelje(
-        "FAZA 2",
-        kandidat_faze_2,
-        ulaz,
-        prostorije,
-        nedostupnosti,
-        broj_radnika,
+    cilj = solver.objective_value if "optimizovano" in status_tekst else None
+    return Rezultat(
+        status_tekst,
+        casovi_a,
+        izvestaj_a,
+        cilj,
+    ), Rezultat(
+        status_tekst,
+        casovi_b,
+        izvestaj_b,
+        cilj,
     )
-
-    def napravi_kandidata_faze_1() -> KandidatPara | None:
-        # Ova zaštitna dodela prostorija radi posle zajedničkog solver budžeta
-        # faza 1+2 i zato ga ne umanjuje.
-        return _materijalizuj_kandidata_faze_1(
-            kandidat_faze_1,
-            ulaz,
-            prostorije,
-            nedostupnosti,
-            broj_radnika,
-        )
-
-    izabrani = _izaberi_sa_regresionom_granicom(
-        kandidat_2, kandidat_hinta, napravi_kandidata_faze_1
-    )
-    if izabrani is None:
-        prazan = Rezultat("НЕМА ВАЛИДНОГ КАНДИДАТА", (), None, None)
-        return prazan, prazan
-
-    naziv, rezultat_a, rezultat_b = izabrani
-    assert rezultat_a.izvestaj is not None and rezultat_b.izvestaj is not None
-    print(
-        f"ZAŠTITA KVALITETA — izabran je {naziv}: "
-        f"A={len(rezultat_a.izvestaj.upozorenja)}, "
-        f"B={len(rezultat_b.izvestaj.upozorenja)} upozorenja"
-    )
-    return rezultat_a, rezultat_b
 
 
 def sacuvaj_csv(putanja: str | Path, casovi: Sequence[Cas]) -> None:
@@ -2642,6 +3765,52 @@ def sacuvaj_csv(putanja: str | Path, casovi: Sequence[Cas]) -> None:
             )
 
 
+def _sacuvaj_izlaze_atomski(
+    direktorijum: Path,
+    casovi_a: Sequence[Cas],
+    casovi_b: Sequence[Cas],
+) -> None:
+    """Pripremi ceo A/B/HTML skup, pa ga zameni uz rollback pri grešci."""
+
+    direktorijum.mkdir(parents=True, exist_ok=True)
+    imena = ("nedelja_a.csv", "nedelja_b.csv", "raspored.html")
+    with tempfile.TemporaryDirectory(
+        prefix=".raspored-", dir=direktorijum
+    ) as privremeni:
+        priprema = Path(privremeni)
+        sacuvaj_csv(priprema / imena[0], casovi_a)
+        sacuvaj_csv(priprema / imena[1], casovi_b)
+        napravi_html(
+            priprema / imena[0], priprema / imena[1], priprema / imena[2]
+        )
+        if not all((priprema / ime).is_file() for ime in imena):
+            raise RuntimeError("Није припремљен цео скуп излазних датотека")
+
+        rezervne = priprema / "prethodni"
+        rezervne.mkdir()
+        sklonjeni: list[str] = []
+        postavljeni: list[str] = []
+        try:
+            for ime in imena:
+                cilj = direktorijum / ime
+                if cilj.exists():
+                    os.replace(cilj, rezervne / ime)
+                    sklonjeni.append(ime)
+            for ime in imena:
+                os.replace(priprema / ime, direktorijum / ime)
+                postavljeni.append(ime)
+        except BaseException:
+            for ime in postavljeni:
+                cilj = direktorijum / ime
+                if cilj.exists():
+                    cilj.unlink()
+            for ime in sklonjeni:
+                rezerva = rezervne / ime
+                if rezerva.exists():
+                    os.replace(rezerva, direktorijum / ime)
+            raise
+
+
 def ucitaj_standardne_ulaze(
     direktorijum: str | Path,
 ) -> tuple[Ulaz, tuple[Prostorija, ...], tuple[Nedostupnost, ...]]:
@@ -2653,9 +3822,26 @@ def ucitaj_standardne_ulaze(
             direktorijum / "ostali_casovi.csv",
         ]
     )
+    try:
+        pravila = ucitaj_pravila_prostorija(
+            direktorijum / "pravila_prostorija.csv"
+        )
+        dostupnost = ucitaj_dostupnost_prostorija(
+            direktorijum / "dostupnost_prostorija.csv"
+        )
+    except FileNotFoundError as greska:
+        raise UlazGreska(
+            [f"недостаје обавезна датотека „{Path(greska.filename).name}“"]
+        ) from greska
+    prostorije = ucitaj_prostorije(direktorijum / "prostorije.csv")
+    proveri_veze_pravila_prostorija(ulaz, prostorije, pravila, dostupnost)
     return (
-        ulaz,
-        ucitaj_prostorije(direktorijum / "prostorije.csv"),
+        replace(
+            ulaz,
+            pravila_prostorija=pravila,
+            dostupnost_prostorija=dostupnost,
+        ),
+        prostorije,
         ucitaj_nedostupnost(direktorijum / "nedostupnost.csv"),
     )
 
@@ -2708,20 +3894,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("nedelja_b.csv", rezultat_b),
     ):
         print(f"{ime}: {rezultat.status}")
+        if rezultat.izvestaj is not None:
+            print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.pronadjen:
             izlazni_status = 1
             continue
-        putanja = argumenti.izlaz / ime
-        sacuvaj_csv(putanja, rezultat.casovi)
         assert rezultat.izvestaj is not None
-        print(rezultat.izvestaj.tekst(latinica=True))
         if not rezultat.izvestaj.ispravan:
             izlazni_status = 1
-    if rezultat_a.pronadjen and rezultat_b.pronadjen:
-        napravi_html(
-            argumenti.izlaz / "nedelja_a.csv",
-            argumenti.izlaz / "nedelja_b.csv",
-            argumenti.izlaz / "raspored.html",
+    oba_validna = (
+        izlazni_status == 0
+        and rezultat_a.pronadjen
+        and rezultat_b.pronadjen
+        and rezultat_a.izvestaj is not None
+        and rezultat_b.izvestaj is not None
+        and rezultat_a.izvestaj.ispravan
+        and rezultat_b.izvestaj.ispravan
+    )
+    if oba_validna:
+        _sacuvaj_izlaze_atomski(
+            argumenti.izlaz, rezultat_a.casovi, rezultat_b.casovi
         )
         print(f"HTML: {argumenti.izlaz / 'raspored.html'}")
     return izlazni_status

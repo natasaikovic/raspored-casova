@@ -9,6 +9,7 @@ not discover the next error after each round trip.
 from __future__ import annotations
 
 import csv
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
@@ -18,9 +19,12 @@ from dataclasses import replace
 from .model import (
     BLOKOVI,
     DANI,
+    DostupnostProstorije,
     Nedostupnost,
+    NivoPravilaProstorije,
     Odeljenje,
     Predmet,
+    PraviloProstorije,
     Prostorija,
     Skola,
     Smena,
@@ -210,6 +214,7 @@ def _ceo_broj(
     broj_reda: int,
     greske: list[str],
     obavezan: bool = False,
+    proveri_pozitivnost: bool = True,
 ) -> int | None:
     """Parse a non-negative integer cell; empty means zero unless required."""
     if not vrednost:
@@ -224,7 +229,7 @@ def _ceo_broj(
             f"ред {broj_reda}: „{kolona}“ мора бити цео број, а пише „{vrednost}“"
         )
         return None
-    if broj < 0 or (obavezan and broj == 0):
+    if proveri_pozitivnost and (broj < 0 or (obavezan and broj == 0)):
         greske.append(f"ред {broj_reda}: „{kolona}“ мора бити већи од нуле")
         return None
     return broj
@@ -418,6 +423,194 @@ def ucitaj_prostorije(putanja: str | Path) -> tuple[Prostorija, ...]:
     if greske:
         raise UlazGreska(greske)
     return tuple(prostorije)
+
+
+KOLONE_PRAVILA_PROSTORIJA = (
+    "просторија", "ниво", "предмет", "одељења", "облик часа", "напомена",
+)
+DOZVOLJENI_OBLICI_CASA = frozenset({"", "двочас"})
+ODELJENJE_RE = re.compile(r"^(?:П1|[1-4][1-5]|(?:I|II|III|IV)[1-5](?:[АБ])?)$")
+
+
+def ucitaj_pravila_prostorija(
+    putanja: str | Path,
+) -> tuple[PraviloProstorije, ...]:
+    """Učitaj atomska pravila prostorija i prijavi sve greške odjednom."""
+
+    redovi = _procitaj_redove(Path(putanja), KOLONE_PRAVILA_PROSTORIJA)
+    greske: list[str] = []
+    pravila: list[PraviloProstorije] = []
+    vidjeno: dict[tuple[object, ...], int] = {}
+    nivoi = {nivo.value: nivo for nivo in NivoPravilaProstorije}
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        prostorija = red["просторија"]
+        predmet = " ".join(red["предмет"].split())
+        if not prostorija:
+            greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
+        if not predmet:
+            greske.append(f"ред {broj_reda}: „предмет“ не сме бити празно")
+        elif ";" in predmet:
+            greske.append(
+                f"ред {broj_reda}: „предмет“ мора садржати један канонски "
+                "назив, без листе раздвојене тачком и запетом"
+            )
+        sirovi_nivo = red["ниво"]
+        nivo = nivoi.get(sirovi_nivo)
+        if nivo is None:
+            greske.append(
+                f"ред {broj_reda}: непознат ниво „{sirovi_nivo}“; дозвољено је "
+                + ", ".join(f"„{ime}“" for ime in nivoi)
+            )
+        sirova_odeljenja = red["одељења"]
+        odeljenja: tuple[str, ...] = ()
+        if sirova_odeljenja:
+            delovi = tuple(deo.strip() for deo in sirova_odeljenja.split(","))
+            if any(not deo for deo in delovi):
+                greske.append(f"ред {broj_reda}: „одељења“ има празну ознаку")
+            nepoznata = [deo for deo in delovi if deo and not ODELJENJE_RE.fullmatch(deo)]
+            if nepoznata:
+                greske.append(
+                    f"ред {broj_reda}: неисправна ознака одељења "
+                    + ", ".join(f"„{oznaka}“" for oznaka in nepoznata)
+                )
+            if len(set(delovi)) != len(delovi):
+                greske.append(f"ред {broj_reda}: „одељења“ садрже дуплу ознаку")
+            odeljenja = tuple(deo for deo in delovi if deo)
+        oblik = red["облик часа"]
+        if oblik not in DOZVOLJENI_OBLICI_CASA:
+            greske.append(
+                f"ред {broj_reda}: непознат облик часа „{oblik}“; "
+                "дозвољено је празно или „двочас“"
+            )
+        kljuc = (
+            prostorija, nivo.value if nivo else sirovi_nivo, predmet,
+            oblik or "", tuple(sorted(set(odeljenja))),
+        )
+        if kljuc in vidjeno:
+            greske.append(
+                f"ред {broj_reda}: правило већ постоји у реду {vidjeno[kljuc]}"
+            )
+        else:
+            vidjeno[kljuc] = broj_reda
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        pravila.append(PraviloProstorije(
+            prostorija, nivo, predmet, odeljenja, oblik or None, red["напомена"]
+        ))
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(pravila)
+
+
+KOLONE_DOSTUPNOSTI_PROSTORIJA = (
+    "просторија", "дан", "од блока", "до блока", "напомена",
+)
+
+
+def ucitaj_dostupnost_prostorija(
+    putanja: str | Path,
+) -> tuple[DostupnostProstorije, ...]:
+    """Učitaj whitelist opsege dostupnosti prostorija."""
+
+    redovi = _procitaj_redove(Path(putanja), KOLONE_DOSTUPNOSTI_PROSTORIJA)
+    greske: list[str] = []
+    rezultat: list[DostupnostProstorije] = []
+    vidjeno: dict[tuple[str, str, str, str], int] = {}
+    for broj_reda, red in enumerate(redovi, start=2):
+        pocetni_broj_gresaka = len(greske)
+        prostorija = red["просторија"]
+        if not prostorija:
+            greske.append(f"ред {broj_reda}: „просторија“ не сме бити празно")
+        dan = red["дан"]
+        if dan not in DANI:
+            greske.append(
+                f"ред {broj_reda}: непознат дан „{dan}“; дозвољено је {', '.join(DANI)}"
+            )
+        od_bloka = _ceo_broj(
+            red["од блока"], "од блока", broj_reda, greske,
+            obavezan=True, proveri_pozitivnost=False,
+        )
+        do_bloka = _ceo_broj(
+            red["до блока"], "до блока", broj_reda, greske,
+            obavezan=True, proveri_pozitivnost=False,
+        )
+        for kolona, broj in (("од блока", od_bloka), ("до блока", do_bloka)):
+            if broj is not None and not 1 <= broj <= len(BLOKOVI):
+                greske.append(
+                    f"ред {broj_reda}: „{kolona}“ мора бити између 1 и "
+                    f"{len(BLOKOVI)}, а пише {broj}"
+                )
+        if od_bloka is not None and do_bloka is not None and od_bloka > do_bloka:
+            greske.append(
+                f"ред {broj_reda}: „од блока“ ({od_bloka}) мора бити мање "
+                f"или једнако „до блока“ ({do_bloka})"
+            )
+        kljuc = (prostorija, dan, red["од блока"], red["до блока"])
+        if kljuc in vidjeno:
+            greske.append(
+                f"ред {broj_reda}: доступност већ постоји у реду {vidjeno[kljuc]}"
+            )
+        else:
+            vidjeno[kljuc] = broj_reda
+        if len(greske) > pocetni_broj_gresaka:
+            continue
+        rezultat.append(DostupnostProstorije(
+            prostorija, dan, od_bloka, do_bloka, red["напомена"]
+        ))
+    if greske:
+        raise UlazGreska(greske)
+    return tuple(rezultat)
+
+
+def proveri_veze_pravila_prostorija(
+    ulaz: Ulaz,
+    prostorije: Iterable[Prostorija],
+    pravila: Iterable[PraviloProstorije],
+    dostupnosti: Iterable[DostupnostProstorije],
+) -> None:
+    """Proveri reference tek kada su učitani svi standardni ulazi."""
+
+    greske: list[str] = []
+    oznake_soba = {p.oznaka for p in prostorije}
+    pravila = tuple(pravila)
+    for pravilo in pravila:
+        if pravilo.prostorija not in oznake_soba:
+            greske.append(
+                f"правило просторија: непозната просторија „{pravilo.prostorija}“"
+            )
+        if pravilo.predmet != "*" and pravilo.predmet not in ulaz.predmeti:
+            greske.append(
+                f"правило просторија: непознат предмет „{pravilo.predmet}“"
+            )
+        for odeljenje in pravilo.odeljenja:
+            if odeljenje not in ulaz.odeljenja:
+                greske.append(
+                    f"правило просторија: непознато одељење „{odeljenje}“"
+                )
+    for dostupnost in dostupnosti:
+        if dostupnost.prostorija not in oznake_soba:
+            greske.append(
+                "доступност просторија: непозната просторија "
+                f"„{dostupnost.prostorija}“"
+            )
+    kanonski_nivoi: dict[tuple[object, ...], set[NivoPravilaProstorije]] = defaultdict(set)
+    for pravilo in pravila:
+        kljuc = (
+            pravilo.prostorija,
+            pravilo.predmet,
+            pravilo.odeljenja,
+            pravilo.oblik_casa,
+        )
+        kanonski_nivoi[kljuc].add(pravilo.nivo)
+    for (soba, predmet, odeljenja, oblik), nivoi in kanonski_nivoi.items():
+        if len(nivoi) > 1:
+            greske.append(
+                f"правила просторија: противречни нивои за {soba}, "
+                f"„{predmet}“, {odeljenja or 'сва одељења'}, {oblik or 'сваки облик'}"
+            )
+    if greske:
+        raise UlazGreska(dict.fromkeys(greske))
 
 
 KOLONE_NEDOSTUPNOSTI = ("наставник", "дан", "од блока", "до блока", "напомена")

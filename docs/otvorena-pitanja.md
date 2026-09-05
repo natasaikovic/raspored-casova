@@ -6,26 +6,18 @@ sa ove liste.
 
 ## Sale
 
-### Sale KM-3 i KM-6
-
-- Koji predmeti ili odeljenja treba da imaju prednost u salama KM-3 i KM-6?
-- Da li neku od ove dve sale treba koristiti ređe ili samo u posebnim
-  slučajevima?
-
 ### Sale u Sportskoj gimnaziji
 
-Za Narodnu igru – glavni predmet već je potvrđeno da prednost ima SG-1, dok se
-SG-2 i SG-3 koriste kada SG-1 nije dostupna.
+Novi strukturisani izvor označava SG-1 kao obaveznu za Narodnu igru – glavni
+predmet. Za SG-2 i SG-3 nema nijednog strukturisanog reda.
 
 - Da li SG-2 i SG-3 imaju još neku posebnu namenu ili prednost za određene
   predmete i odeljenja?
 - Da li među salama SG-1, SG-2 i SG-3 postoji redosled po veličini ili kvalitetu
   koji treba poštovati i za ostale predmete?
-
-### Sala KM-8 i Primenjena gimnastika
-
-- Da li je KM-8 zaista isključivo za Primenjenu gimnastiku ili i dalje važi da
-  drugi predmeti mogu da je koriste samo u nuždi?
+- U strukturisanom izvoru uz `SG-1` piše `Репертоар савремене игре` za
+  odeljenja narodnog odseka `I5`–`IV5`, dok aktivni ulaz za njih ima
+  `Репертоар народне игре`. Da li je naziv predmeta u pravilu omaška?
 
 ## Predmeti i nastavnici
 

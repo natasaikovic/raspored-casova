@@ -20,15 +20,47 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
 
 ### Dvočasi
 
+- Svaki dvočas mora biti održan spojeno. Ako učenici imaju dva časa istog
+  predmeta istog dana, ta dva časa moraju biti uzastopna. Ovo pravilo važi i
+  za srednju i za osnovnu školu.
 - **Glavni predmet** (Klasičan balet 12č, Savremena igra 10č, Narodna igra 10č)
   je **uvek dvočas, tačno jedan dnevno, nikad dva u istom danu**. Iz toga sledi
   da odseci sa 12 časova glavnog predmeta imaju čas i **subotom** (6 dvočasa).
 - Ostali igrački predmeti sa neparnim fondom: dvočas + samostalan čas (3 = 2+1).
+- Potvrđeni neparni fondovi nisu greška u prepisu: Istorijsko balske igre po
+  1 čas za `41`, `42` i `43`; Primenjena gimnastika po 1 čas za `31`, `32`,
+  `33` i `34`; Karakterne igre po 3 časa za `I1`, `I2`, `II1`, `II2`, `II5А`
+  i `II5Б`; Klasičan balet po 3 časa za `II5А`, `II5Б` i `П1`; Repertoar
+  klasičnog baleta po 3 časa za `I1`, `I2`, `II1` i `II2`; Savremena igra po
+  3 časa za `II1` i `II2`. Fond od 3 časa raspoređuje se kao jedan spojeni
+  dvočas i jedan samostalan čas, osim što za `П1` ostaje nerazjašnjena
+  protivrečnost sa postojećim pravilom o tri pojedinačna časa ponedeljkom,
+  sredom i petkom.
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
 - Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
+- Srpski jezik sa fondom 3 raspoređuje se kao jedan spojeni dvočas jednog dana
+  i jedan samostalan čas drugog dana.
+- Biologija, Sociologija, Psihologija, Filozofija i Istorija igre obavezno se
+  drže kao spojeni dvočasi, jer su njihovi nastavnici u školi samo jedan ili
+  dva dana.
+- Za Mariju Arambašić Savić poželjno je da jednog dana drži samo Filozofiju, a
+  drugog samo Sociologiju, kao dvočase. Grupisanje svakog od ta dva predmeta u
+  isti dan je poželjno, ali nije čvrsto pravilo; spojeni dvočasi jesu obavezni.
+- Za Engleski i Francuski jezik, Istoriju i Matematiku poželjno je izbeći dva
+  časa istog dana. Ako ipak moraju biti istog dana, moraju biti spojeni.
+- Računarstvo i informatika sa fondom 2 obavezno se drži kao spojeni dvočas.
 
 ### Subota
 
+- **Subota je krajnje sredstvo, a ne ravnopravan šesti dan.** U idealnom
+  rasporedu subotom nema nastave; čas se subotom drži samo kad se drugačije
+  ne može iskombinovati. Formalizovano je kao cena, ne kao zabrana: svaka
+  sesija subotom nosi kaznu u cilju (`KAZNA_ZA_SUBOTU`), veću od kazne za
+  prekid nastavniku i za salu van Sportske gimnazije.
+- Jedini slučaj u kom je subota neizbežna je glavni predmet sa fondom 12
+  (Klasičan balet SBŠ): šest dvočasa na šest različitih dana znači da tačno
+  jedan uvek pada subotom. Kazna se i njima naplaćuje, ali je tada konstantan
+  pomeraj cilja koji ne menja izbor ostalih dana, pa izuzetak nije potreban.
 - Subotom se prvo popunjavaju sale Sportske gimnazije.
 - Nastava treba da se završi do 13:15 (zaključno sa blokom 6).
 - Ako raspored nije moguće napraviti u tom okviru, dozvoljeni su blokovi 7 i 8,
@@ -126,15 +158,20 @@ iz nedelje u nedelju; zahtev za simetriju na njega se ne primenjuje.
 
 ## Učionice, sale i lokacije
 
-Spisak prostorija je u `ulazi/prostorije.csv` (18 prostorija, izvučene iz
-prošlogodišnjeg rasporeda — nisu se menjale). Kolona `приоритет` još nije
-popunjena.
+Aktivni katalog je u `ulazi/prostorije.csv` (18 prostorija). Pravila po
+predmetu, odeljenju i obliku časa nalaze se u
+`ulazi/pravila_prostorija.csv`, a vremenski opsezi u
+`ulazi/dostupnost_prostorija.csv`. Pet nivoa i privremeno mapiranje NP oznaka
+opisani su u [pravila-prostorija.md](pravila-prostorija.md). Stara brojčana
+kolona `приоритет` nije dovoljan izvor za ova višedimenzionalna pravila.
 
 ### Knez Miletina
 
 - šest redovnih sala;
-- sala br. 8, koja je obavezna za **Primenjenu gimnastiku**, a za druge
-  predmete koristi se samo u nuždi;
+- `KM-3` i `KM-6` su manje sale. Najčešće se koriste za OBŠ, a u SBŠ za
+  sporedne predmete kada nema dovoljno prostora;
+- sala br. 8, u kojoj se načelno održava **Primenjena gimnastika**, jer su u
+  njoj gimnastički rekviziti, a neravan pod nije pogodan za igračke predmete;
 - četiri učionice;
 - jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
   samo u nuždi;
@@ -146,14 +183,19 @@ popunjena.
 - jedna učionica.
 - Predmeti **Narodna igra – glavni predmet** i **Repertoar narodne igre**
   održavaju se isključivo u salama `SG-1`, `SG-2` i `SG-3`.
-- Za **Narodnu igru – glavni predmet** prioritet je `SG-1`. Ako ona nije
-  dostupna, `SG-2` ili `SG-3` prvenstveno se dodeljuju odeljenju `IV5`, koje
-  ima najmanje učenika; odstupanje za druga odeljenja je lošije rešenje.
+- **Narodna igra – glavni predmet** mora da bude u `SG-1`. Odeljenje `IV5`
+  ima manje učenika i u nuždi sme da se smesti u manju salu. Nije potvrđeno da
+  li se pod „manjom salom“ misli samo na `SG-2` ili i na `SG-3`, niti je
+  izričito odgovoreno da li isti izuzetak sme da važi za druga odeljenja.
 
 ### Narodno pozorište
 
-- jedna sala;
-- može se koristiti samo od 16:00 do 17:40;
+- dve različite sale;
+- jedna sala dostupna je svakog dana osim subote od 16:00;
+- druga sala dostupna je samo sredom od 16:00;
+- oznaka `NP-сала` iz postojećeg CSV-a još nije jednoznačno povezana sa
+  oznakama `NP-1` i `NP-2`, pa se oznake u `ulazi/prostorije.csv` ne menjaju
+  dok se to ne razjasni;
 - koristi se samo za predmet **Repertoar klasičnog baleta**;
 - `IV1` ima u toj sali **dva dvočasa nedeljno**;
 - `IV2` ima u toj sali **dva dvočasa nedeljno**;
@@ -162,31 +204,70 @@ popunjena.
   koje od ta dva odeljenja koristi taj termin ako to olakšava raspored.
 
 Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
+Iako dva nastavna časa formalno imaju odmor između njih, svi igrački dvočasi
+drže se spojeno: odmor se ne koristi, pa je potvrđeno da čas u Narodnom
+pozorištu sme da traje do 17:40.
 
 ### Posebne prostorije i prioriteti
 
+- Učionice `KM-уч1`, `KM-уч2`, `KM-уч3`, `KM-уч7` i `SG-музуч` koriste se
+  za opšteobrazovne i pojedine stručne predmete: Srpski, Engleski i Francuski
+  jezik, Matematiku, Istoriju, Biologiju, Psihologiju, Sociologiju, Filozofiju,
+  Versku nastavu, Građansko vaspitanje, Etnologiju, Etnomuzikologiju, Istoriju
+  igre, Solfeđo i Tradicionalno pevanje, uz posebna ograničenja za poslednja
+  dva predmeta navedena ispod.
 - Informatika se održava u specijalnoj učionici.
 - Gluma se održava isključivo u videoteci.
-- Sala `KM-8` čuva se za **Primenjenu gimnastiku**. Drugi predmet može biti u
-  toj sali samo u nuždi i takva dodela nosi veliku kaznu.
-- Primenjena gimnastika može biti samo u `KM-8`, `SG-2` ili `SG-3`. Za dato
-  odeljenje i dan, ako odeljenje ima bilo koji drugi čas u Sportskoj gimnaziji,
-  Primenjena gimnastika mora biti u `SG-2` ili `SG-3`, kako učenici ne bi menjali
-  lokaciju. Ako tog dana nema drugog časa u Sportskoj gimnaziji, Primenjena
-  gimnastika mora biti u `KM-8`. Sam čas Primenjene gimnastike ne računa se kao
-  dokaz da je odeljenje tog dana u Sportskoj gimnaziji.
+- Primenjena gimnastika u načelu se održava u `KM-8`, ali sme da se održi u
+  bilo kojoj sali. Ako se časovi Klasičnog baleta nekog odeljenja održavaju u
+  Sportskoj gimnaziji, časovi Primenjene gimnastike tog odeljenja moraju se
+  održati na istoj lokaciji, kako učenici ne bi menjali lokaciju.
+- `KM-8` nije pogodna za igračke predmete zbog neravnog poda. Izuzetno, u njoj
+  sme da se održava **Tradicionalno pevanje**, jer sala ima klavir, a učenici
+  mogu da sede na podu. Drugi predmeti nisu potvrđeni kao dozvoljeni u `KM-8`.
 - Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
   glavni predmet**.
 - Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
 - Sala br. 2 prioritetno se koristi za **Karakterne igre**.
 - Sala br. 5 prioritetno se koristi za **Savremenu igru**, **Repertoar
   savremene igre** i **Improvizacije**.
+- Odeljenja sa indeksima `1` i `2` pripadaju odseku Klasičan balet, sa
+  indeksima `3` i `4` odseku Savremena igra, a sa indeksom `5` odseku Narodna
+  igra.
+- Na odseku Klasičan balet glavni predmeti su Klasičan balet — glavni predmet,
+  Repertoar klasičnog baleta i Duetna igra; Savremena igra i Karakterne igre
+  su sporedni predmeti.
+- Na odseku Savremena igra glavni predmeti su Savremena igra — glavni predmet,
+  Repertoar savremene igre i Improvizacije; Klasičan balet i Igre XX veka su
+  sporedni predmeti. Iako je sporedan, Klasičan balet je bolje smestiti u veću
+  salu.
+- Na odseku Narodna igra glavni predmeti su Narodna igra — glavni predmet i
+  Repertoar narodne igre; Klasičan balet, Karakterne igre i Savremena igra su
+  sporedni predmeti. Repertoar narodne igre sme u manje sale Sportske
+  gimnazije, naročito za `IV5`, koje ima 11 učenika.
+- Starija odeljenja i glavni predmeti imaju prednost u većim salama u odnosu
+  na mlađa odeljenja i sporedne predmete.
+- **Repertoar klasičnog baleta** treba raspoređivati u veće sale, naročito za
+  starije razrede. Dozvoljene su `KM-1`, `KM-2`, `KM-4`, `KM-5` i `SG-1`, kao
+  i posebni termini u Narodnom pozorištu opisani iznad. Predmet ne sme da se
+  održava u `KM-3`, `KM-6`, `SG-2` ni `SG-3`.
 - Sale imaju prioritete: bolje sale treba koristiti češće, a lošije izbegavati kad god je moguće.
 - Učenici smeju promeniti lokaciju najviše jednom u toku dana.
 - Pri promeni lokacije **Knez Miletina ↔ Sportska gimnazija**, časovi moraju
   biti neposredno jedan za drugim, bez putnog bloka.
 - Pri drugim promenama lokacije između časova mora postojati tačno jedan
   slobodan blok za put.
+
+Odgovor administratorke za Solfeđo i Tradicionalno pevanje koristi oznaku
+`KM-2`, dok `ulazi/prostorije.csv` pod tom oznakom trenutno vodi salu, a
+učionicu vodi kao `KM-уч2`. Dok se ne potvrdi koja je od te dve oznake tačna,
+ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
+
+- U Sportskoj gimnaziji **Solfeđo** (i za OBŠ i za SBŠ) mora da se održava u
+  `SG-музуч`, jer ta učionica ima klavir.
+- **Tradicionalno pevanje** prvenstveno se održava u muzičkim učionicama. Ako
+  u njima nema mesta, sme da se održi u `KM-8`, `SG-2` ili `SG-3`, jer i te
+  sale imaju klavir.
 
 ## Nastavnici i korepetitori
 
@@ -211,6 +292,13 @@ Svaki od ovih termina u Narodnom pozorištu je dvočas **16:00–17:40**.
 - Kosta Milanović je korepetitor za Repertoar klasičnog baleta u odeljenjima
   IV1 i IV2, a Mirjana Anđelković za Primenjenu gimnastiku u odeljenjima 24,
   31, 32 i 34 i Istorijsko balske igre u odeljenjima 41, 42 i 43.
+- Dijana Jovanović u krajnjoj nuždi sme da ima samo 18 časova. Dva časa
+  korepeticije Primenjene gimnastike koja su joj skinuta zbog nemogućeg
+  rasporeda nisu unapred dodeljena drugoj osobi.
+- Korepetitori Primenjene gimnastike Dijana Jovanović, Đorđina Ubović,
+  Mirjana Anđelković i Jovan Marinković smeju da razmenjuju odeljenja, ali
+  nedeljni fond svakog od njih mora ostati isti: koliko časova neko preda
+  drugome u jednim odeljenjima, toliko mora dobiti u drugim odeljenjima.
 
 ## Vremenski blokovi
 
