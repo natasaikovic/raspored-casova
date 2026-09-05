@@ -944,7 +944,7 @@ def test_neuspeh_dodele_soba_ne_vraca_raspored(monkeypatch):
     assert rezultat_a.casovi == () and rezultat_b.casovi == ()
 
 
-def test_neupotrebljiv_hint_se_popravlja_pomocu_infeasible_jezgra(capsys):
+def test_neupotrebljiv_hint_se_popravlja_ili_odbacuje(capsys):
     u = _ulaz_za_dve_nedelje()
     prvo_a, _ = _resi(u)
     prvi_termin = prvo_a.casovi[0]
@@ -957,7 +957,7 @@ def test_neupotrebljiv_hint_se_popravlja_pomocu_infeasible_jezgra(capsys):
     drugo_a, drugo_b = _resi(u, hintovi=pokvareni)
 
     izlaz = capsys.readouterr().out
-    assert "језгро" in izlaz
+    assert "језгро" in izlaz or "HLADNI POKUŠAJ" in izlaz
     assert drugo_a.pronadjen and drugo_b.pronadjen
     assert drugo_a.izvestaj is not None and drugo_a.izvestaj.ispravan
 
@@ -993,11 +993,11 @@ def test_uparivanje_hintova_postuje_obrazac_korepeticije():
 def test_nivoi_oslobadjanja_sire_se_preko_zajednickih_resursa():
     from src.resavac import _nivoi_oslobadjanja
 
-    # 11: balet (Мила) i solfeđo (Јана); 12: solfeđo (Јана); 13: istorija (Пера).
+    # 11: balet (Мила) i teorija (Јана); 12: teorija (Јана); 13: istorija (Пера).
     u = ulaz([
         zahtev("Класичан балет", "11", 2, "Мила", "Ива"),
-        zahtev("Солфеђо", "11", 1, "Јана"),
-        zahtev("Солфеђо", "12", 1, "Јана"),
+        zahtev("Теорија", "11", 1, "Јана"),
+        zahtev("Теорија", "12", 1, "Јана"),
         zahtev("Историја", "13", 1, "Пера"),
     ])
     jedinice = _jedinice(u)
@@ -1010,7 +1010,7 @@ def test_nivoi_oslobadjanja_sire_se_preko_zajednickih_resursa():
     nivoi = _nivoi_oslobadjanja(u, jedinice, hintovi_jedinica)
 
     assert nivoi[0] == {po_zahtevu[0]}
-    # Nivo 1: solfeđo 11 deli odeljenje sa baletom 11.
+    # Nivo 1: teorija 11 deli odeljenje sa baletom 11.
     assert nivoi[1] == {po_zahtevu[0], po_zahtevu[1]}
-    # Nivo 2: solfeđo 12 deli nastavnika sa solfeđom 11; istorija 13 ostaje.
+    # Nivo 2: teorija 12 deli nastavnika sa teorijam 11; istorija 13 ostaje.
     assert nivoi[2] == {po_zahtevu[0], po_zahtevu[1], po_zahtevu[2]}

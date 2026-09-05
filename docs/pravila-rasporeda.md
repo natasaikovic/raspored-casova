@@ -37,7 +37,8 @@ Srednja škola **nema smene** — radi ceo dan i sme da koristi bilo koji blok
   protivrečnost sa postojećim pravilom o tri pojedinačna časa ponedeljkom,
   sredom i petkom.
 - **Repertoar i Karakterne igre treba kombinovati** (raspoređivati zajedno).
-- Predmeti sa fondom 1 (npr. Solfeđo u osnovnoj) nisu dvočasi.
+- Novo izričito pravilo 2026/27 zamenjuje raniji izuzetak za Solfeđo sa fondom 1:
+  neparan fond predmeta koji zahteva isključivo dvočase predstavlja sukob ulaza.
 - Srpski jezik sa fondom 3 raspoređuje se kao jedan spojeni dvočas jednog dana
   i jedan samostalan čas drugog dana.
 - Biologija, Sociologija, Psihologija, Filozofija i Istorija igre obavezno se
@@ -387,3 +388,17 @@ odeljenjima i dvočasi su sada zapisani gore i u ulaznim fajlovima.
 - U školi je isključivo ponedeljkom, četvrtkom i petkom; utorkom i sredom radi u drugoj školi.
 - Nijedna grupa ne sme imati dva časa istorije u istom danu; ovo je čvrsto pravilo za istoriju.
 - Dušan Ilijin sme imati ukupno najviše dva prazna bloka između svojih časova u toku cele nedelje.
+
+## Strogi blokovi — poslednja izričita odluka za 2026/27
+
+Svi igrački predmeti sa parnim fondom imaju isključivo dvočase, uključujući
+Igre XX veka i Repertoar savremene igre (bez korepetitora). Svi predmeti moraju
+činiti neprekinut blok unutar dana za svaku učeničku grupu, i spojena odeljenja.
+Dvočas ima uzastopne nastavne blokove i isto osoblje, grupu i prostoriju.
+Tradicionalno pevanje, Solfeđo, Etnomuzikologija, Istorija igre, Biologija,
+Sociologija, Psihologija i Filozofija zahtevaju isključivo dvočase. Ranije
+pravilo za Računarstvo i informatiku ostaje. Tačni ključevi predmeta su u
+`src/blokovi.py`; ulaz nema zasebne numeričke šifre predmeta.
+Srpski jezik i književnost sa fondom 3 zahteva 2+1 u različitim danima.
+Neparni fondovi obaveznih dvočasa prijavljuju se zbirno sa izvornim CSV redom;
+rešavač odbija ulaz pre korišćenja starog rasporeda/hintova. Fondovi se ne menjaju.

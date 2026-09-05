@@ -369,7 +369,7 @@ def test_putni_blok_nije_dozvoljen_izmedju_drugih_lokacija():
 
 def test_knez_miletina_sportska_gimnazija_moraju_biti_neposredne():
     z1 = zahtev("Историја", ["11"], 1, "Ана")
-    z2 = zahtev("Солфеђо", ["11"], 1, "Ива", red=3)
+    z2 = zahtev("Теорија", ["11"], 1, "Ива", red=3)
     ulaz = napravi_ulaz([z1, z2])
     prostorije = (
         Prostorija("KM-U1", "Кнез Милетина 8", TipProstorije.UCIONICA, None, ""),
@@ -394,7 +394,7 @@ def test_knez_miletina_sportska_gimnazija_moraju_biti_neposredne():
 
 def test_jedna_nedeljna_pauza_osobe_do_dva_bloka_je_samo_upozorenje():
     z1 = zahtev("Историја", ["11"], 1, "Ана")
-    z2 = zahtev("Солфеђо", ["12"], 1, "Ана", red=3)
+    z2 = zahtev("Теорија", ["12"], 1, "Ана", red=3)
     ulaz = napravi_ulaz([z1, z2])
     casovi = (
         Cas("понедељак", 1, z1.predmet, ("11",), "Ана", None, "U1", 2),

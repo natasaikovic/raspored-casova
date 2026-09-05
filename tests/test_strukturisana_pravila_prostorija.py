@@ -112,6 +112,11 @@ def test_loader_odbija_protivrecne_nivoe_za_istu_salu():
 
 def test_model_prve_faze_ima_konkretne_prostorije_i_nema_cilj():
     ulaz, prostorije, nedostupnosti = ucitaj_standardne_ulaze("ulazi")
+    # Ovaj test ispituje sobe na usaglašenom podskupu, ne rešivost punog ulaza.
+    from dataclasses import replace
+    from src.blokovi import OBAVEZNI_DVOCASI
+    ulaz = replace(ulaz, zahtevi=tuple(z for z in ulaz.zahtevi
+        if not (z.predmet in OBAVEZNI_DVOCASI and z.fond % 2)))
     model, jedinice, promenljive = napravi_model(
         ulaz, prostorije, nedostupnosti,
         next(iter((ulaz.odeljenja[o].smena for o in ulaz.odeljenja if o == "11"))),
