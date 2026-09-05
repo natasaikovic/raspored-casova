@@ -170,7 +170,7 @@ kolona `приоритет` nije dovoljan izvor za ova višedimenzionalna pravil
 - šest redovnih sala;
 - `KM-3` i `KM-6` su manje sale. Najčešće se koriste za OBŠ, a u SBŠ za
   sporedne predmete kada nema dovoljno prostora;
-- sala br. 8: **isključivo Primenjena gimnastika**, bez izuzetaka (2026/27);
+- sala br. 8: **samo tačne dozvole iz `ulazi/dozvole_km8.csv`**, sa svim uslovima (2026/27);
 - četiri učionice;
 - jedna biblioteka, koja je najmanja učionica i koristi se za opšte predmete
   samo u nuždi;
@@ -221,10 +221,21 @@ pozorištu sme da traje do 17:40.
   bilo kojoj sali. Ako se časovi Klasičnog baleta nekog odeljenja održavaju u
   Sportskoj gimnaziji, časovi Primenjene gimnastike tog odeljenja moraju se
   održati na istoj lokaciji, kako učenici ne bi menjali lokaciju.
-- `KM-8` je zbog neravnog poda i bezbednosti **strogo zabranjena za sve
-  predmete i aktivnosti osim Primenjene gimnastike**, uključujući
-  Tradicionalno pevanje. Sme ostati prazna; stari rasporedi i nedostatak
-  drugih sala nisu izuzeci. Ovo zamenjuje sve ranije dozvole za KM-8.
+- `KM-8`: od 5. septembra 2026. važi zatvorena lista od **60 dozvola**
+  iz Excel lista „КМ-8“, preneta u `ulazi/dozvole_km8.csv`. To zamenjuje
+  prethodnu zabranu „isključivo Primenjena gimnastika“. Sve nenavedene
+  kombinacije nivoa škole, predmeta i tačne grupe su strogo zabranjene.
+  Dozvola nije obavezna dodela i popunjenost KM-8 nije cilj optimizacije.
+- Scensko narodne igre za OBŠ `41`, `42`, `43` smeju u KM-8 samo u svojoj
+  stvarnoj prepodnevnoj smeni, posebno provereno u A i B nedelji.
+- Karakterne igre za SBŠ `I1`, `I2`, `II1`, `II2`: najviše **jedan čas
+  nedeljno po odeljenju** u KM-8. Fond ostaje 3 (2+1); ceo dvočas ide u
+  drugu dozvoljenu salu. Dvočas se ne sme deliti između sala niti zameniti
+  pojedinačnim časovima. Ova kvota ne važi za ostale dozvoljene polugrupe.
+- Arapske i rimske oznake i polugrupe A/B su različiti identiteti.
+  Klasičan balet nije Klasičan balet – glavni predmet; Scensko narodne igre
+  nisu drugi predmeti narodne igre. Nedeljni fond i zaposleni iz Excel-a
+  čuvaju se kao poreklo dozvole, ne dodaju se postojećim zaduženjima.
 - Sala br. 4 je najveća i prioritetno se koristi za **Klasičan balet —
   glavni predmet**.
 - Sale br. 1, 2 i 5 jednake su veličine i koriste se za srednju školu.
@@ -267,7 +278,8 @@ ovo ograničenje se ne prenosi na oznaku prostorije u CSV-u.
   `SG-музуч`, jer ta učionica ima klavir.
 - **Tradicionalno pevanje** prvenstveno se održava u muzičkim učionicama. Ako
   u njima nema mesta, sme da se održi u `SG-2` ili `SG-3`, jer i te
-  sale imaju klavir.
+  sale imaju klavir. KM-8 je dodatno dozvoljena samo tačnim grupama iz
+  `dozvole_km8.csv`.
 
 ## Nastavnici i korepetitori
 

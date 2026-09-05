@@ -4,6 +4,7 @@ import pytest
 from ortools.sat.python import cp_model
 
 from src.model import (
+    DozvolaKM8,
     NivoPravilaProstorije,
     Odeljenje,
     Predmet,
@@ -16,6 +17,7 @@ from src.model import (
     Zahtev,
 )
 from src.proveravac import Cas, proveri
+from src.km8 import dozvoljen_km8, ucitaj_dozvole_km8
 from src.resavac import (
     _dodeli_prostorije,
     _dodeli_prostorije_obe,
@@ -73,6 +75,7 @@ def _ulaz(sa_drugim=True):
                 "KM-8", NivoPravilaProstorije.OBAVEZNO, PG, (), None, "",
             ),
         ),
+        dozvole_km8=ucitaj_dozvole_km8("ulazi/dozvole_km8.csv"),
     )
 
 
@@ -123,7 +126,7 @@ def test_proveravac_odbija_svaki_drugi_cas_u_km8():
     )
     izvestaj = proveri(ulaz, SALE, (), casovi)
     assert not izvestaj.ispravan
-    assert sum("КМ-8 је строго забрањена" in g for g in izvestaj.greske) == 2
+    assert sum("КМ-8," in g for g in izvestaj.greske) == 2
 
 
 def _ulaz_pg_i_klasicni():
@@ -212,7 +215,12 @@ def _ulaz_kapaciteta(vrste, menjaju_se=False):
                 "KM-8", NivoPravilaProstorije.OBAVEZNO, PG, (), None, "",
             ),
         )
-    return Ulaz(tuple(zahtevi), odeljenja, predmeti, Skola.OSNOVNA, pravila)
+    dozvole = tuple(DozvolaKM8(i+2, Skola.OSNOVNA, z.predmet, z.odeljenja[0],
+                              z.razred, z.fond, z.fond_korepeticije,
+                              z.nastavnik, z.korepetitor, "", False, None, None)
+                    for i, z in enumerate(zahtevi) if z.predmet == PG)
+    return Ulaz(tuple(zahtevi), odeljenja, predmeti, Skola.OSNOVNA, pravila,
+                dozvole_km8=dozvole)
 
 
 def _fiksiraj_sve(model, jedinice, promenljive, lokacija, blok=1, nedelja_b=False):
@@ -438,20 +446,19 @@ def test_zabrana_ne_zavisi_od_pisma_pravila_ili_poznatog_predmeta(soba, predmet)
     # Čak ni stara eksplicitna dozvola ne nadjačava bezbednosno pravilo.
     stara_pravila = (PraviloProstorije(soba, NivoPravilaProstorije.PRVI,
                                       predmet, (), None, ""),)
-    assert not dozvoljena_prostorija(stara_pravila, z, soba, 1)
+    assert not dozvoljen_km8(replace(_ulaz(), pravila_prostorija=stara_pravila), z, 1)
     cas = Cas("уторак", 3, predmet, ("11",), "Мила", "Ива", soba, 2)
     izvestaj = proveri(_ulaz(), SALE, (), (cas,), Smena.PLAVA)
     assert not izvestaj.ispravan
-    poruka = next(g for g in izvestaj.greske if "КМ-8 је строго забрањена" in g)
-    for tekst in ("Недеља Б", "уторак", "блок 3", "11", predmet):
+    poruka = next(g for g in izvestaj.greske if "КМ-8," in g)
+    for tekst in ("уторак", "блок 3", "11", predmet):
         assert tekst in poruka
 
 
 @pytest.mark.parametrize("soba", ["KM-8", "КМ-8"])
 @pytest.mark.parametrize("predmet", [PG, "Primenjena gimnastika"])
 def test_pg_u_oba_pisma_i_u_drugim_salama(soba, predmet):
-    from src.pravila_prostorija import bezbedna_namena_km8
-    assert bezbedna_namena_km8(soba, predmet)
+    assert dozvoljen_km8(_ulaz(), replace(_ulaz().zahtevi[0], predmet=predmet), 2)
     ulaz = replace(_ulaz(False), pravila_prostorija=())
     assert {p.oznaka for p in _moguce_prostorije(ulaz.zahtevi[0], ulaz, SALE)} == {
         p.oznaka for p in SALE

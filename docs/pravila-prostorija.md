@@ -40,13 +40,25 @@ kapacitet lokacije zauzima u terminima kada ta sala ne radi.
 
 ## Pravila koja ostaju u kodu
 
-CSV označava KM-8 kao prvi izbor za Primenjenu gimnastiku, ali su joj dozvoljene
-i druge sale. Ako je Klasičan balet istog odeljenja tog dana u Sportskoj
-gimnaziji, lokacija Primenjene gimnastike se sa njim obavezno usklađuje.
-KM-8 je 2026/27. strogo zabranjena za sve osim Primenjene gimnastike,
-uključujući Tradicionalno pevanje. Obe oznake KM-8/КМ-8 označavaju istu salu.
-CSV još ne može
-da izrazi kvote pet termina u Narodnom pozorištu ni subotnji prioritet lokacije
-Sportske gimnazije. Ta pravila zato ostaju u kodu do proširenja formata.
-Bezbednosna zabrana drugih namena KM-8 primenjuje se u svim fazama,
-čak i bez CSV pravila. Proveravač svaku povredu prijavljuje kao grešku.
+Dozvole za KM-8 su posebna, obavezna CSV lista `ulazi/dozvole_km8.csv`.
+Svaki od 60 redova čuva svih osam izvornih kolona i broj reda Excel lista,
+nivo škole i mašinski čitljive uslove. Prazna lista ne dozvoljava ništa,
+a nedostajuća datoteka je greška. Nepoznata napomena ili neslaganje napomene
+sa strukturiranim uslovima je greška pri učitavanju.
+
+Filter se primenjuje pre svih povrataka kandidata prostorija, u punom modelu,
+u lokacijskom masteru posebno za A/B, pri naknadnoj dodeli sala i obradi
+hintova. Jedinice ostaju nedeljni blokovi 2+1; dozvola jednog časa ne deli
+jedinicu od dva časa. Puni model i naknadna dodela imaju zbirnu nedeljnu kvotu.
+Proveravač nezavisno proverava svaki čas, stvarnu smenu, nedeljnu kvotu i
+susedne časove istog predmeta/grupe čak i kad su upisani u različite sale.
+Oznake KM-8 i КМ-8 predstavljaju istu salu.
+
+Raniji prioritet KM-8 za Primenjenu gimnastiku i rezervna namena za
+Tradicionalno pevanje ostaju u opštoj tabeli, sada ograničeni na tačne
+grupe. Oni ne mogu da zaobiđu zatvorenu listu dozvola.
+
+Primenjena gimnastika sme i u druge sale. Ako je Klasičan balet istog
+odeljenja tog dana u Sportskoj gimnaziji, lokacija Primenjene gimnastike se
+sa njim obavezno usklađuje. Kvote pet termina u Narodnom pozorištu i subotnji
+prioritet Sportske gimnazije ostaju nepromenjeni.

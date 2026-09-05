@@ -30,15 +30,6 @@ def kanonska_prostorija(oznaka: str) -> str:
     return "KM-8" if kljuc_pisma(oznaka).casefold() == "km-8" else oznaka
 
 
-def bezbedna_namena_km8(prostorija: str, predmet: str) -> bool:
-    """Bez izuzetaka: KM-8 je 2026/27. samo za Primenjenu gimnastiku."""
-
-    return kanonska_prostorija(prostorija) != "KM-8" or (
-        kljuc_pisma(" ".join(predmet.split())).casefold()
-        == "primenjena gimnastika"
-    )
-
-
 def _oblik_odgovara(pravilo: PraviloProstorije, trajanje: int) -> bool:
     return pravilo.oblik_casa is None or (
         pravilo.oblik_casa == "двочас" and trajanje == 2
@@ -118,8 +109,6 @@ def dozvoljena_prostorija(
 ) -> bool:
     """Primeni zabranu i presek obaveznih skupova svih odeljenja."""
 
-    if not bezbedna_namena_km8(prostorija, zahtev.predmet):
-        return False
     odeljenja = _odeljenja(zahtev)
     for odeljenje in odeljenja:
         nivo = _nivo_za_odeljenje(

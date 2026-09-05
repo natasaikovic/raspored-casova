@@ -208,6 +208,23 @@ class Zahtev:
 
 
 @dataclass(frozen=True)
+class DozvolaKM8:
+    red_excel: int
+    skola: Skola
+    predmet: str
+    odeljenje: str
+    razred: str
+    fond: int
+    fond_korepeticije: int
+    nastavnik: str
+    korepetitor: str | None
+    napomena: str
+    samo_pre_podne: bool
+    najvise_casova: int | None
+    najvece_trajanje: int | None
+
+
+@dataclass(frozen=True)
 class Ulaz:
     """A parsed and validated input file."""
 
@@ -218,6 +235,7 @@ class Ulaz:
     skola: Skola | None
     pravila_prostorija: tuple[PraviloProstorije, ...] = ()
     dostupnost_prostorija: tuple[DostupnostProstorije, ...] = ()
+    dozvole_km8: tuple[DozvolaKM8, ...] = ()
 
     @property
     def ukupno_casova(self) -> int:

@@ -39,6 +39,7 @@ from .model import (
     Zahtev,
 )
 from .pismo import kljuc_pisma, u_latinicu
+from .km8 import proveri_km8, ucitaj_dozvole_km8
 from .pravila_prostorija import (
     kanonska_prostorija,
     bolji_eksplicitni_kandidati,
@@ -80,7 +81,7 @@ REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
 KLASICAN_BALET = "Класичан балет"
 TRADICIONALNO_PEVANJE = "Традиционално певање"
-SALE_TRADICIONALNOG_PEVANJA = frozenset({"SG-2", "SG-3"})
+SALE_TRADICIONALNOG_PEVANJA = frozenset({"KM-8", "SG-2", "SG-3"})
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -262,19 +263,7 @@ def proveri(
         raise ValueError("Јутарња смена мора бити црвена или плава")
 
     casovi = _kanonizuj_casove(ulaz, prostorije, casovi)
-    # Nezavisna provera svakog reda, uključujući nepoznat/prazan predmet.
-    oznaka_nedelje = nedelja or ("А" if jutarnja_smena is Smena.CRVENA else "Б")
-    for cas in casovi:
-        if kanonska_prostorija(cas.prostorija) == "KM-8" and (
-            kljuc_pisma(" ".join(cas.predmet.split())).casefold()
-            != "primenjena gimnastika"
-        ):
-            izvestaj.greske.append(
-                f"Недеља {oznaka_nedelje}, {cas.dan}, блок {cas.blok}, "
-                f"одељење {';'.join(cas.odeljenja)}, предмет „{cas.predmet}“ "
-                f"({cas.gde}): КМ-8 је строго забрањена; дозвољена је "
-                "искључиво Примењена гимнастика."
-            )
+    izvestaj.greske.extend(proveri_km8(ulaz, casovi, jutarnja_smena))
     prostorije_po_oznaci = {kanonska_prostorija(p.oznaka): p for p in prostorije}
     zahtevi_po_odeljenju = {
         (zahtev.predmet, odeljenje): zahtev
@@ -1228,6 +1217,7 @@ def proveri_datoteku(
             ulaz,
             pravila_prostorija=pravila,
             dostupnost_prostorija=dostupnost,
+            dozvole_km8=ucitaj_dozvole_km8(direktorijum / "dozvole_km8.csv"),
         )
         nedostupnosti = ucitaj_nedostupnost(direktorijum / "nedostupnost.csv")
         casovi = ucitaj_resenje(resenje)
