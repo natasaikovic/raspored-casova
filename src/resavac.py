@@ -1299,13 +1299,14 @@ def napravi_model(
                 dan_b, blok_b = dan, blok
                 interval_b = interval
 
-        po_danu: list[cp_model.BoolVar] = []
-        for indeks_dana in range(len(DANI)):
-            prisutan = model.new_bool_var(f"{prefiks}_d{indeks_dana}")
-            model.add(dan == indeks_dana).only_enforce_if(prisutan)
-            model.add(dan != indeks_dana).only_enforce_if(~prisutan)
-            po_danu.append(prisutan)
+        po_danu: list[cp_model.BoolVar] = [
+            model.new_bool_var(f"{prefiks}_d{indeks_dana}")
+            for indeks_dana in range(len(DANI))
+        ]
         model.add_exactly_one(po_danu)
+        model.add(
+            dan == sum(indeks * prisutan for indeks, prisutan in enumerate(po_danu))
+        )
         dozvoljena_subota = _subota_dozvoljena(zahtev, ulaz)
         if not dozvoljena_subota:
             model.add(po_danu[len(DANI) - 1] == 0)
@@ -1324,13 +1325,18 @@ def napravi_model(
         if sa_nedeljom_b:
             if zahtev.smena.menja_se:
                 assert dan_b is not None
-                b_dani: list[cp_model.BoolVar] = []
-                for indeks_dana in range(len(DANI)):
-                    prisutan_b = model.new_bool_var(f"{prefiks}_d{indeks_dana}_b")
-                    model.add(dan_b == indeks_dana).only_enforce_if(prisutan_b)
-                    model.add(dan_b != indeks_dana).only_enforce_if(~prisutan_b)
-                    b_dani.append(prisutan_b)
+                b_dani: list[cp_model.BoolVar] = [
+                    model.new_bool_var(f"{prefiks}_d{indeks_dana}_b")
+                    for indeks_dana in range(len(DANI))
+                ]
                 model.add_exactly_one(b_dani)
+                model.add(
+                    dan_b
+                    == sum(
+                        indeks * prisutan_b
+                        for indeks, prisutan_b in enumerate(b_dani)
+                    )
+                )
                 po_danu_b = tuple(b_dani)
                 if not dozvoljena_subota:
                     model.add(b_dani[len(DANI) - 1] == 0)
