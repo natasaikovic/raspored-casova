@@ -508,3 +508,31 @@ def test_analiza_broji_zabranjene_hintove_iako_se_ne_unose_u_model():
     assert not _validan_kandidat_para(_kandidat_originalnog_hinta(
         ulaz, SALE[:2], (), hint, hint,
     ))
+
+
+def test_odbacivanje_km8_hinta_ne_pomera_preostale_jedinice():
+    from collections import defaultdict
+    from src.resavac import _pripremi_hintove, KORAK_DANA
+
+    ulaz = _ulaz_kapaciteta(("drugi",))
+    z = replace(ulaz.zahtevi[0], fond=3)
+    ulaz = replace(ulaz, zahtevi=(z,))
+    hint = tuple(
+        Cas(dan, 1, z.predmet, z.odeljenja, z.nastavnik, None, soba, i+2)
+        for i, (dan, soba) in enumerate((
+            ("понедељак", "КМ-8"), ("уторак", "KM-1"), ("среда", "KM-1"),
+        ))
+    )
+    model, jedinice, promenljive = napravi_model(
+        ulaz, SALE[:2], (), Smena.CRVENA, sa_ciljem=False,
+    )
+    po_zahtevu = defaultdict(list)
+    for j in jedinice:
+        po_zahtevu[j.zahtev_indeks].append(j)
+    pripremljeni = _pripremi_hintove(
+        ulaz, SALE[:2], po_zahtevu, promenljive, hint,
+    )
+    assert jedinice[0].indeks not in pripremljeni
+    for dan, j in enumerate(jedinice[1:], start=1):
+        vrednosti = {var.index: value for var, value in pripremljeni[j.indeks]}
+        assert vrednosti[promenljive[j.indeks].start.index] == dan * KORAK_DANA + 1

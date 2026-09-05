@@ -1969,16 +1969,22 @@ def _pripremi_hintove(
     for nedelja_b, casovi in ((False, hintovi), (True, hintovi_b)):
         if not casovi:
             continue
-        # Dijagnostika mora videti izvorne sporne sobe, ali u model ne
-        # unosimo ni njihove termine. Zato filtriramo tek na ovom ulazu.
-        bezbedni = tuple(
-            c for c in casovi
-            if bezbedna_namena_km8(c.prostorija, c.predmet)
-        )
+        # Najpre sačuvaj identitet jedinica iz celog starog rasporeda.
+        # Filtriranje redova pre uparivanja pomerilo bi preostale termine
+        # na druge jedinice, različito u A i B, i stvaralo lažne sukobe.
         upareno = _upari_hintove(
-            ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, bezbedni, prostorije)
+            ulaz, jedinice_zahteva, _kanonizuj_hintove(ulaz, casovi, prostorije)
         )
+        zahtevi_jedinica = {
+            j.indeks: ulaz.zahtevi[zahtev_indeks]
+            for zahtev_indeks, jedinice in jedinice_zahteva.items()
+            for j in jedinice
+        }
         for indeks, (dan, blok, _prostorija) in upareno.items():
+            if not bezbedna_namena_km8(
+                _prostorija, zahtevi_jedinica[indeks].predmet
+            ):
+                continue
             p = promenljive[indeks]
             if nedelja_b:
                 if p.start_b is None or p.start_b is p.start:
