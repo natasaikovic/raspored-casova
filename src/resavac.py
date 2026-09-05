@@ -618,7 +618,9 @@ def _dodaj_subotnje_ogranicenje(
         return
     kasno = model.new_bool_var(f"{token}_subota_posle_1315")
     model.add(kasno <= prisutan_subotom)
-    model.add(kraj_bloka >= 7).only_enforce_if(kasno)
+    # Polovična reifikacija: „kasno“ ulazi samo u kaznu sa pozitivnim
+    # koeficijentom, pa je dovoljan smer koji ga podiže; minimizacija ga
+    # sama spušta na nulu kad rad staje do 13,15.
     model.add(kraj_bloka <= 6).only_enforce_if([prisutan_subotom, ~kasno])
     kazne.append(2000 * kasno)
 
@@ -636,12 +638,9 @@ def _dodaj_subotnji_prioritet_sg(
         if lokacija == "Спортска гимназија":
             continue
         subotom_van_sg = model.new_bool_var(f"{token}_subota_van_sg_{broj}")
-        model.add_bool_and([prisutan_subotom, koristi]).only_enforce_if(
-            subotom_van_sg
-        )
-        model.add_bool_or([~prisutan_subotom, ~koristi]).only_enforce_if(
-            ~subotom_van_sg
-        )
+        # Polovična reifikacija: promenljiva ulazi samo u kaznu sa pozitivnim
+        # koeficijentom, pa je dovoljna implikacija naviše.
+        model.add_bool_or([~prisutan_subotom, ~koristi, subotom_van_sg])
         kazne.append(500 * subotom_van_sg)
 
 
