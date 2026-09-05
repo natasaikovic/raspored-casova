@@ -3096,6 +3096,10 @@ def _resi_u_dve_faze(
             solver_lokacija = cp_model.CpSolver()
             solver_lokacija.parameters.num_search_workers = broj_radnika
             solver_lokacija.parameters.random_seed = seme
+            # Isti nalaz kao u fazi 1, izmeren posebno na ovom modelu:
+            # 4 radnika, pun master A+B, seme 1 — 875 s podrazumevano prema
+            # 352 s sa nivoom 3; seme 2 — 576 s prema 256 s.
+            solver_lokacija.parameters.symmetry_level = 3
             solver_lokacija.parameters.max_time_in_seconds = limit_lokacija
             if pokusaj > 1:
                 solver_lokacija.parameters.repair_hint = True
@@ -3336,6 +3340,18 @@ def _resi_u_dve_faze(
     solver_1 = cp_model.CpSolver()
     solver_1.parameters.num_search_workers = broj_radnika
     solver_1.parameters.random_seed = seme
+    # Model faze 1 je pun simetrija (razredi sa istim fondom časova, međusobno
+    # zamenljive prostorije iste lokacije), pa podrazumevani `symmetry_level=2`
+    # ne uspeva da ih iskoristi. Sa nivoom 3 CP-SAT dodatno lomi simetriju u
+    # pretrazi. Mereno na 4 radnika, ograničenje 900 s, pun model A+B:
+    # podrazumevano — nijedno dopustivo rešenje (seme 1, mereno jednom);
+    # sa `symmetry_level=3` — rešenje za 428 s i 882 s (semena 2 i 1).
+    # Varijansa je velika, pa te dve brojke treba čitati kao jedan nalaz
+    # („nađe rešenje u okviru roka“), ne kao poređenje semena.
+    # Namerno se menja samo faza 1 (tražena je gola dopustivost); faza 2 ima
+    # svoj solver i ostaje na podrazumevanim parametrima jer za cilj nemamo
+    # merenja.
+    solver_1.parameters.symmetry_level = 3
     status_1 = cp_model.UNKNOWN
     if not koristi_pripremu:
         # Hladan start mora biti jedan neprekinut CP-SAT pokušaj. Prekid posle
