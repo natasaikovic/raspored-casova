@@ -1072,7 +1072,10 @@ def _dodaj_kontinuitet_osoba(
                 preko_optimuma = model.new_int_var(
                     0, 2, f"o{broj_osobe}_d{indeks_dana}_preko_4{sufiks}"
                 )
-                model.add_max_equality(preko_optimuma, [0, zauzeto - 4])
+                # Donja granica je dovoljna: domen već daje >= 0, a kazna sa
+                # pozitivnim koeficijentom spušta vrednost na
+                # max(0, zauzeto - 4).
+                model.add(preko_optimuma >= zauzeto - 4)
                 kazne.append(250 * preko_optimuma)
 
             prati_pauze = (
@@ -1114,8 +1117,11 @@ def _dodaj_kontinuitet_osoba(
                 f"o{broj_osobe}_d{indeks_dana}_duzina_pauze{sufiks}",
             )
             if ima_pauzu is not None:
+                # Dovoljan je smer koji podiže indikator: duzina_pauze > 0
+                # traži ima_pauzu = 1. Obrnuti smer bi bio suvišan jer
+                # indikator ulazi samo u kaznu (pozitivnu) i u
+                # sum(dnevne_pauze) <= 1, gde je nula uvek bar jednako dobra.
                 model.add(duzina_pauze == 0).only_enforce_if(~ima_pauzu)
-                model.add(duzina_pauze >= 1).only_enforce_if(ima_pauzu)
             model.add(duzina_pauze == poslednji - prvi + 1 - zauzeto)
             if not izuzet_od_ogranicenja_pauza(osoba) or osoba == DUSAN_ILIJIN:
                 model.add(duzina_pauze <= 2)
