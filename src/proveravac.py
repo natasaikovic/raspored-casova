@@ -40,6 +40,7 @@ from .model import (
 )
 from .pismo import kljuc_pisma, u_latinicu
 from .pravila_prostorija import (
+    kanonska_prostorija,
     bolji_eksplicitni_kandidati,
     dozvoljena_prostorija,
     nivo_prostorije,
@@ -79,7 +80,7 @@ REPERTOAR_NARODNE = "Репертоар народне игре"
 PRIMENJENA_GIMNASTIKA = "Примењена гимнастика"
 KLASICAN_BALET = "Класичан балет"
 TRADICIONALNO_PEVANJE = "Традиционално певање"
-SALE_TRADICIONALNOG_PEVANJA = frozenset({"KM-8", "SG-2", "SG-3"})
+SALE_TRADICIONALNOG_PEVANJA = frozenset({"SG-2", "SG-3"})
 SG_SALE = frozenset({"SG-1", "SG-2", "SG-3"})
 KNEZ_MILETINA = "Кнез Милетина 8"
 SPORTSKA_GIMNAZIJA = "Спортска гимназија"
@@ -252,6 +253,7 @@ def proveri(
     nedostupnosti: Sequence[Nedostupnost],
     casovi: Sequence[Cas],
     jutarnja_smena: Smena = Smena.CRVENA,
+    nedelja: str | None = None,
 ) -> Izvestaj:
     """Proveri kompletno rešenje. Funkcija ne prekida na prvoj grešci."""
 
@@ -260,14 +262,26 @@ def proveri(
         raise ValueError("Јутарња смена мора бити црвена или плава")
 
     casovi = _kanonizuj_casove(ulaz, prostorije, casovi)
-    prostorije_po_oznaci = {p.oznaka: p for p in prostorije}
+    # Nezavisna provera svakog reda, uključujući nepoznat/prazan predmet.
+    oznaka_nedelje = nedelja or ("А" if jutarnja_smena is Smena.CRVENA else "Б")
+    for cas in casovi:
+        if kanonska_prostorija(cas.prostorija) == "KM-8" and (
+            kljuc_pisma(" ".join(cas.predmet.split())).casefold()
+            != "primenjena gimnastika"
+        ):
+            izvestaj.greske.append(
+                f"Недеља {oznaka_nedelje}, {cas.dan}, блок {cas.blok}, "
+                f"одељење {';'.join(cas.odeljenja)}, предмет „{cas.predmet}“ "
+                f"({cas.gde}): КМ-8 је строго забрањена; дозвољена је "
+                "искључиво Примењена гимнастика."
+            )
+    prostorije_po_oznaci = {kanonska_prostorija(p.oznaka): p for p in prostorije}
     zahtevi_po_odeljenju = {
         (zahtev.predmet, odeljenje): zahtev
         for zahtev in ulaz.zahtevi
         for odeljenje in zahtev.odeljenja
     }
     pogodjeni: dict[int, tuple[Zahtev, ...]] = {}
-    upozorene_sesije_km8: set[tuple[object, ...]] = set()
     upozorene_sesije_pravila: set[tuple[object, ...]] = set()
 
     def trajanje_sesije(cas: Cas) -> int:
@@ -291,7 +305,6 @@ def proveri(
             nedostupnosti,
             jutarnja_smena,
             izvestaj,
-            upozorene_sesije_km8,
             upozorene_sesije_pravila,
             trajanje_sesije(cas),
         )
@@ -459,7 +472,7 @@ def _kanonizuj_casove(
             korepetitor=(
                 nadji(cas.korepetitor, korepetitori) if cas.korepetitor else None
             ),
-            prostorija=nadji(cas.prostorija, oznake_prostorija),
+            prostorija=kanonska_prostorija(nadji(cas.prostorija, oznake_prostorija)),
         )
         for cas in casovi
     )
@@ -473,7 +486,6 @@ def _proveri_red(
     nedostupnosti: Sequence[Nedostupnost],
     jutarnja_smena: Smena,
     izvestaj: Izvestaj,
-    upozorene_sesije_km8: set[tuple[object, ...]],
     upozorene_sesije_pravila: set[tuple[object, ...]],
     trajanje_sesije: int,
 ) -> tuple[Zahtev, ...]:
@@ -551,17 +563,6 @@ def _proveri_red(
                 f"{cas.gde}: предмет „{cas.predmet}“ тражи {ocekivani_tip.value}, "
                 f"а {cas.prostorija} је {prostorija.tip.value}"
             )
-        if cas.prostorija == "KM-8" and cas.predmet != PRIMENJENA_GIMNASTIKA:
-            sesija = (
-                cas.dan, cas.predmet, cas.odeljenja, cas.nastavnik,
-                cas.korepetitor, cas.prostorija,
-            )
-            if sesija not in upozorene_sesije_km8:
-                upozorene_sesije_km8.add(sesija)
-                izvestaj.upozorenja.append(
-                    f"{cas.gde}: KM-8 треба чувати за предмет "
-                    f"{PRIMENJENA_GIMNASTIKA}; други предмет је дозвољен само у нужди"
-                )
         if cas.predmet == REPERTOAR_NARODNE:
             if prostorija.lokacija != SPORTSKA_GIMNAZIJA:
                 izvestaj.greske.append(
